@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vt_realsense_capture</name>
+  <version>0.2.0</version>
+  <description>Three-camera RealSense Topic capture and MCAP control.</description>
+  <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+  <depend>nlohmann-json-dev</depend>
+  <depend>librealsense2</depend>
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>realsense2_camera</depend>
+  <depend>realsense2_camera_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>vt_camera_msgs</depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>ros2bag</exec_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>ros2launch</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

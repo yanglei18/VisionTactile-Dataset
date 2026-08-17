@@ -1,0 +1,36 @@
+# ROS 2 / colcon
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+build/
+install/
+log/
+
+# Captured data and evidence
+artifacts/
+bags/
+*.bag
+*.db3
+*.mcap
+*.pcap
+*.pcapng
+*.webm
+*.zip
+lark-*.png
+rs-save-to-disk-output-*
+
+# Python and test caches
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Local tools and worktrees
+.cache/
+.worktrees/
+.superpowers/
+docs/superpowers/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/

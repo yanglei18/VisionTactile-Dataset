@@ -1,0 +1,31 @@
+cameras:
+  - name: d405_1
+    model_token: D405
+    serial: "000000000001"
+    firmware: "5.15.1.55"
+    asic_serial: "100000000001"
+    color_module: depth_module
+  - name: d405_2
+    model_token: D405
+    serial: "000000000002"
+    firmware: "5.15.1.55"
+    asic_serial: "100000000002"
+    color_module: depth_module
+  - name: d436
+    model_token: D436
+    serial: "000000000003"
+    firmware: "5.17.0.213"
+    asic_serial: "100000000003"
+    color_module: rgb_camera
+stream:
+  width: 1280
+  height: 720
+  fps: 30
+  color_format: RGB8
+  color_encoding: rgb8
+  depth_format: Z16
+  depth_encoding: 16UC1
+recording:
+  max_bag_duration_seconds: 300
+  max_bag_size_bytes: 137438953472
+  max_cache_size_bytes: 1073741824

@@ -1,0 +1,13 @@
+std_msgs/Header header
+string session_id
+string request_id
+string session_label
+string hostname
+string kernel_version
+string ros_distro
+string realsense_ros_version
+string librealsense_version
+string git_commit
+string config_sha256
+CameraDescriptor[] cameras
+StreamProfile[] streams

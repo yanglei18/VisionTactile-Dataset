@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Test public tree checker
+        run: python3 tools/test_check_public_tree.py
+      - name: Test VIVE tracker validator
+        run: PYTHONPATH=tools/vut_validation/src python3 -m unittest discover -s tools/vut_validation/tests -v
+      - name: Validate public tree
+        run: python3 tools/check_public_tree.py
+      - name: Validate pinned PyVUT tree
+        run: python3 third_party/pyvut/tools/check_public_tree.py
+      - name: Check whitespace
+        run: |
+          EMPTY_TREE="$(git hash-object -w -t tree /dev/null)"
+          git diff --check "$EMPTY_TREE" HEAD
+
+  ros2-jazzy:
+    runs-on: ubuntu-latest
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-latest
+    steps:
+      - name: Build and test ROS 2 packages
+        uses: ros-tooling/action-ros-ci@v0.4
+        with:
+          import-token: ${{ secrets.GITHUB_TOKEN }}
+          package-name: vt_camera_msgs vt_realsense_capture vt_tracker_msgs vt_vive_tracker vt_vive_tracker_gui
+          target-ros2-distro: jazzy
+          no-symlink-install: true
+          coverage-result: false

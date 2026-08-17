@@ -1,0 +1,12 @@
+std_msgs/Header header
+string role
+string tracker_id
+uint64 host_monotonic_ns
+uint64 host_realtime_ns
+uint16 packet_index
+uint8 tracking_status
+uint8 raw_buttons
+bool pose_valid
+geometry_msgs/Pose pose
+geometry_msgs/Vector3 linear_acceleration
+geometry_msgs/Vector3 angular_velocity

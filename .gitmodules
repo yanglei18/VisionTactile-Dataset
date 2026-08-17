@@ -1,0 +1,3 @@
+[submodule "third_party/pyvut"]
+	path = third_party/pyvut
+	url = https://github.com/yanglei18/pyvut.git
