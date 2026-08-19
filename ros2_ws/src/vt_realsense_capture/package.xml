@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>vt_realsense_capture</name>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <description>Three-camera RealSense Topic capture and MCAP control.</description>
   <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
   <license>Apache-2.0</license>

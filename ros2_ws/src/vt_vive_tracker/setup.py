@@ -7,7 +7,7 @@ PACKAGE_NAME = "vt_vive_tracker"
 
 setup(
     name=PACKAGE_NAME,
-    version="0.2.0",
+    version="0.3.0",
     packages=find_packages(exclude=["test"]),
     data_files=[
         (

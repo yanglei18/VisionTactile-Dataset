@@ -9,6 +9,7 @@ log/
 # Captured data and evidence
 artifacts/
 bags/
+calibration_results/
 *.bag
 *.db3
 *.mcap
@@ -22,6 +23,8 @@ rs-save-to-disk-output-*
 # Python and test caches
 __pycache__/
 .pytest_cache/
+.venv-calibration/
+*.egg-info/
 *.py[cod]
 
 # Local tools and worktrees

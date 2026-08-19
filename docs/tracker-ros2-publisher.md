@@ -63,9 +63,11 @@ explicitly:
 
 ```bash
 export VT_DATA_ROOT="${HOME}/visiontactile-data"
-export VT_CAPTURE="${VT_DATA_ROOT}/private/vut/01_cold_reconnect.pcapng"
-export VT_BUNDLE="${VT_DATA_ROOT}/private/vut/live-bootstrap.json"
+: "${VT_CAPTURE:?export VT_CAPTURE as the approved capture absolute path}"
+: "${VT_BUNDLE:?export VT_BUNDLE as the approved bundle absolute path}"
 : "${VT_CAPTURE_SHA256:?set VT_CAPTURE_SHA256 to the approved capture digest}"
+test -r "${VT_CAPTURE}"
+test -r "${VT_BUNDLE}"
 source "${VT_WS}/install/setup.bash"
 ```
 

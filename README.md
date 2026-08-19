@@ -18,6 +18,9 @@ and owns one uncompressed rosbag Recorder process per session.
   synchronization or recorded-data quality.
 - Camera capture and a separate read-only three-Tracker ROS 2 publisher are
   available; Tracker streams are not yet part of the default camera bag.
+- A separate offline Tracker-to-RealSense hand-eye calibration tool is
+  available; dedicated calibration bags and device extrinsics remain outside
+  the default nine-topic bag.
 - The camera and Tracker source trees are reproducible from a clean public
   clone with submodules. Tracker hardware startup additionally requires the
   operator's private bootstrap capture, bundle, and role map; those private
@@ -88,14 +91,18 @@ ros2 launch vt_realsense_capture triple_realsense.launch.py \
 - [Hardware reference](docs/hardware-reference.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [VIVE Tracker ROS 2 publisher](docs/tracker-ros2-publisher.md)
+- [Offline Tracker-to-RealSense extrinsic calibration](docs/tracker-camera-calibration.md)
+- [Single-entry Tracker-to-RealSense calibration operations manual](tools/tracker_camera_calibration/README.md)
 - [Maintainer release checklist](docs/release-checklist.md)
 
 ## Scope and limitations
 
 This release does not claim cross-camera hardware exposure synchronization or
-implement offline cross-camera alignment, spatial calibration, point-cloud
-generation, tactile capture, camera/Tracker spatial calibration, or combined
-camera/Tracker recording. The Tracker publisher emits native `vive_map`
+implement offline cross-camera alignment, point-cloud generation, tactile
+capture, online extrinsic TF publication, or combined production
+camera/Tracker recording. Offline camera/Tracker hand-eye calibration software
+is included, but the three physical transforms still require per-rig hardware
+calibration and acceptance. The Tracker publisher emits native `vive_map`
 coordinates without TF. `CameraFrameTiming` describes software grouping within
 one camera; inspect recorded data separately for fitness for a particular
 experiment.

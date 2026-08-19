@@ -45,14 +45,17 @@ Do not perform that operation as part of a routine release command.
 
 - The English and Chinese READMEs describe the same product scope.
 - The [end-user manual](user-manual.md) can be followed from a fresh clone.
+- The [single-entry calibration operations manual](../tools/tracker_camera_calibration/README.md)
+  independently covers the offline-calibration boundary, installation, input
+  gates, recording, solving, three-run repeatability, recovery, and acceptance.
 - Every public launch argument, command, topic, QoS profile, output path, and
   lifecycle state matches the implementation and
   [interface reference](interface-reference.md).
 - Commands use repository-relative paths or documented environment variables;
   no developer worktree path remains.
-- Limitations are explicit: no hardware exposure synchronization, no
-  camera/Tracker transform, no TF from Tracker, and no Tracker topics in the
-  default camera bag.
+- Limitations are explicit: no hardware exposure synchronization, no shipped
+  device-specific camera/Tracker transform, no online extrinsic TF, and no
+  Tracker topics in the default camera bag.
 - Private prerequisites are labeled as such and are not implied to ship in the
   public repository.
 - All relative Markdown links resolve and screenshots contain no private data.
@@ -70,6 +73,9 @@ source install/setup.bash
 colcon test --event-handlers console_direct+
 colcon test-result --all --verbose
 cd ..
+PYTHONPATH=tools/tracker_camera_calibration/src \
+  python3 -m unittest discover \
+  -s tools/tracker_camera_calibration/tests -v
 python3 tools/test_check_public_tree.py
 python3 tools/check_public_tree.py
 python3 third_party/pyvut/tools/check_public_tree.py
@@ -91,6 +97,7 @@ commit.
 | Storage | Target filesystem has adequate measured margin for the intended session; result is recorded as environment evidence, not a Recorder gate. |
 | Tracker startup | Approved manual bootstrap completes and the read-only publisher owns the Dongle alone. |
 | Tracker ROS output | `vt-vive-validate-topics` reports `status=PASS roles=3 identity_swaps=0 dropped=0`. |
+| Tracker-camera calibration | Each final rigid pair exports `status: VALID`, holdout closure is at most 10 mm and 1 degree, and three independent runs meet the repeatability requirement. |
 | Visualization | All roles transition to fresh/green when moved; closing the GUI or RViz does not affect the publisher. |
 | Long run | Project-specific 300-second camera and Tracker evidence is reviewed for drops, gaps, reconnects, and thermal/storage behavior. |
 
@@ -102,7 +109,7 @@ includes both Recorder lifecycle evidence and an independent data review.
 - Push the reviewed commit and signed or annotated version tag.
 - Create release notes containing compatibility, migrations, limitations, and
   links to the manual and changelog.
-- Clone the public URL into a new directory and repeat the
+- Clone the public URL into a new directory with submodules and repeat the
   repository contract plus a source build.
 - Verify issue and private security-reporting entry points.
 - Keep the previous supported tag and its rollback instructions available.

@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.0] - 2026-08-19
+
+### Added
+- An independent offline Tracker-to-RealSense hand-eye calibration package
+  with ChArUco generation/detection, rosbag2 host-time correlation, multiple
+  OpenCV solvers, holdout validation, and immutable YAML/JSON/CSV/SVG outputs.
+- Identity-bound configuration generation for the three reference cameras and
+  three physical Tracker roles, plus three-run repeatability comparison.
+- A single-entry product calibration manual covering dedicated bag recording,
+  solving, recovery, acceptance, and final result archiving.
+- Synthetic known-transform tests and CI coverage for the calibration package.
+
+### Changed
+- Public-tree validation now enforces calibration source, documentation,
+  private-startup separation, dependency bounds, and relative links.
+- Product documentation now distinguishes offline device extrinsics from the
+  unchanged nine-topic production camera bag and online TF publication.
+
 ## [0.2.0] - 2026-08-17
 
 ### Added

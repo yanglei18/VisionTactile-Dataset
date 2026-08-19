@@ -31,10 +31,34 @@ class AlternateIndexTests(unittest.TestCase):
             "docs/interface-reference.md",
             "docs/release-checklist.md",
             "docs/tracker-linux-validation.md",
+            "docs/tracker-camera-calibration.md",
             "docs/tracker-ros2-publisher.md",
             "docs/troubleshooting.md",
             "docs/user-manual.md",
             "ros2_ws/src/vt_vive_tracker_gui/README.md",
+            "tools/tracker_camera_calibration/README.md",
+            "tools/tracker_camera_calibration/config/calibration.example.yaml",
+            "tools/tracker_camera_calibration/pyproject.toml",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/__init__.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/bag_reader.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/charuco.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/cli.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/config.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/config_writer.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/export.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/handeye.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/model.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/pairing.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/repeatability.py",
+            "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/transforms.py",
+            "tools/tracker_camera_calibration/tests/test_charuco.py",
+            "tools/tracker_camera_calibration/tests/test_config_and_bag_helpers.py",
+            "tools/tracker_camera_calibration/tests/test_config_writer.py",
+            "tools/tracker_camera_calibration/tests/test_export.py",
+            "tools/tracker_camera_calibration/tests/test_handeye.py",
+            "tools/tracker_camera_calibration/tests/test_pairing.py",
+            "tools/tracker_camera_calibration/tests/test_repeatability.py",
+            "tools/tracker_camera_calibration/tests/test_transforms.py",
         ):
             worktree_file = ROOT / path
             if worktree_file.is_file():
@@ -124,6 +148,46 @@ class AlternateIndexTests(unittest.TestCase):
             result.stderr,
         )
 
+    def test_tracker_camera_calibration_runbook_is_required(self) -> None:
+        self.git(
+            "update-index",
+            "--force-remove",
+            "--",
+            "docs/tracker-camera-calibration.md",
+        )
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(
+            "missing tracked file: docs/tracker-camera-calibration.md",
+            result.stderr,
+        )
+
+    def test_product_calibration_manual_keeps_repeatability_command(self) -> None:
+        path = "tools/tracker_camera_calibration/README.md"
+        runbook = (ROOT / path).read_text(encoding="utf-8")
+        token = "vt-tracker-camera-calibrate compare"
+        self.assertIn(token, runbook)
+        self.add_index_blob(path, runbook.replace(token, "removed-command"))
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"{path} is missing required text: {token}", result.stderr)
+
+    def test_product_calibration_manual_excludes_private_startup(self) -> None:
+        path = "tools/tracker_camera_calibration/README.md"
+        runbook = (ROOT / path).read_text(encoding="utf-8")
+        token = "live_windows_bootstrap.py"
+        self.assertNotIn(token, runbook)
+        self.add_index_blob(path, runbook + f"\n{token}\n")
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"{path} contains forbidden text: {token}", result.stderr)
+
     def test_tracker_ros2_runbook_keeps_acceptance_command(self) -> None:
         path = "docs/tracker-ros2-publisher.md"
         runbook = (ROOT / path).read_text(encoding="utf-8")
@@ -170,6 +234,7 @@ class AlternateIndexTests(unittest.TestCase):
             ".superpowers/internal.md",
             ".idea/workspace.xml",
             ".vscode/settings.json",
+            ".venv-calibration/bin/python",
             "docs/superpowers/internal.md",
         )
 
@@ -412,6 +477,14 @@ class WorkflowContractTests(unittest.TestCase):
             "PYTHONPATH=tools/vut_validation/src "
             "python3 -m unittest discover "
             "-s tools/vut_validation/tests -v",
+            self.workflow,
+        )
+
+    def test_repository_contract_runs_calibration_tests(self) -> None:
+        self.assertIn(
+            "PYTHONPATH=tools/tracker_camera_calibration/src "
+            "python3 -m unittest discover "
+            "-s tools/tracker_camera_calibration/tests -v",
             self.workflow,
         )
 

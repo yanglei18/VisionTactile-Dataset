@@ -54,6 +54,10 @@ Recorder applies keep-last depth 30 QoS overrides.
 Calibration, TF, raw RealSense metadata, and all `/capture/*` topics may be
 visible live but are not recorded by the default contract.
 
+The separate calibration workflow records its own dedicated bag and does not
+alter this allowlist. See
+[Tracker–camera offline calibration](tracker-camera-calibration.md).
+
 ### Capture control topics
 
 | Topic | Type | QoS | Direction and purpose |
@@ -149,6 +153,10 @@ changes pairing or mapping, starts the publisher, nor records data.
 | `ros2 run vt_vive_tracker vt-vive-write-role-map` | Create a private role map from an approved bundle. | `--bundle`, `--output`, `--host`, `--client0`, `--client1` |
 | `ros2 run vt_vive_tracker vt-vive-validate-topics` | Measure the three published ROS role streams and write a private JSON report. | `--duration` (default `30`), required `--output` |
 | `vt-vut-validate` | Validate direct-USB or Dongle input through the separately installed validation package. | `preflight` or `run`, `--mode`, `--duration`, `--expected-trackers`, `--output` |
+| `vt-tracker-camera-calibrate configure` | Create an immutable, identity-bound calibration configuration for one reference camera and one physical Tracker role. | `--camera`, `--tracker-role`, `--square-length-mm`, `--marker-length-mm`, `--output` |
+| `vt-tracker-camera-calibrate board` | Render the configured printable ChArUco board with DPI metadata. | `--config`, `--output`, optional `--dpi` |
+| `vt-tracker-camera-calibrate calibrate` | Read a dedicated bag, solve Tracker-to-color-optical external calibration, validate it, and export immutable artifacts. | `--bag`, `--config`, `--output` |
+| `vt-tracker-camera-calibrate compare` | Verify identity consistency and pairwise repeatability across at least three valid calibration runs, then identify the run closest to their consensus. | `--inputs`, `--output`, optional repeatability thresholds |
 
 Use `--help` on the installed command as the final authority for CLI syntax in
 the checked-out version.

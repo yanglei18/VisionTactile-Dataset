@@ -31,6 +31,7 @@ REQUIRED_FILES = {
     "docs/interface-reference.md",
     "docs/release-checklist.md",
     "docs/tracker-linux-validation.md",
+    "docs/tracker-camera-calibration.md",
     "docs/tracker-ros2-publisher.md",
     "docs/tracker-windows-map.md",
     "docs/troubleshooting.md",
@@ -42,6 +43,29 @@ REQUIRED_FILES = {
     "ros2_ws/src/vt_vive_tracker_gui/README.md",
     "ros2_ws/src/vt_vive_tracker_gui/package.xml",
     "tools/check_public_tree.py",
+    "tools/tracker_camera_calibration/README.md",
+    "tools/tracker_camera_calibration/config/calibration.example.yaml",
+    "tools/tracker_camera_calibration/pyproject.toml",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/__init__.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/bag_reader.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/charuco.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/cli.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/config.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/config_writer.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/export.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/handeye.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/model.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/pairing.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/repeatability.py",
+    "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/transforms.py",
+    "tools/tracker_camera_calibration/tests/test_charuco.py",
+    "tools/tracker_camera_calibration/tests/test_config_and_bag_helpers.py",
+    "tools/tracker_camera_calibration/tests/test_config_writer.py",
+    "tools/tracker_camera_calibration/tests/test_export.py",
+    "tools/tracker_camera_calibration/tests/test_handeye.py",
+    "tools/tracker_camera_calibration/tests/test_pairing.py",
+    "tools/tracker_camera_calibration/tests/test_repeatability.py",
+    "tools/tracker_camera_calibration/tests/test_transforms.py",
     "tools/vut_validation/config/70-vive-ultimate-tracker.rules",
     "tools/vut_validation/config/roles.example.json",
     "tools/vut_validation/pyproject.toml",
@@ -56,6 +80,7 @@ FORBIDDEN_DIRECTORY_COMPONENTS = {
     ".pytest_cache",
     ".superpowers",
     ".vscode",
+    ".venv-calibration",
     ".worktrees",
     "__pycache__",
     "artifacts",
@@ -102,6 +127,7 @@ DOCUMENT_TOKENS = {
         "ROS 2 Jazzy",
         "RealSense ROS 4.58.1",
         "Apache-2.0",
+        "tools/tracker_camera_calibration/README.md",
     ),
     "README.zh-CN.md": (
         "README.md",
@@ -109,6 +135,7 @@ DOCUMENT_TOKENS = {
         "ROS 2 Jazzy",
         "RealSense ROS 4.58.1",
         "Apache-2.0",
+        "tools/tracker_camera_calibration/README.md",
     ),
     "THIRD_PARTY_NOTICES.md": (
         "PyVUT",
@@ -162,6 +189,13 @@ DOCUMENT_TOKENS = {
         "Pinned PyVUT submodule",
         "not proven device time",
     ),
+    "docs/tracker-camera-calibration.md": (
+        "tools/tracker_camera_calibration/",
+        "^tracker T_camera",
+        "group_host_realtime_ns",
+        "纯离线",
+        "compare",
+    ),
     "docs/tracker-ros2-publisher.md": (
         "Windows mapping is mandatory",
         "vt-vive-write-role-map",
@@ -174,6 +208,24 @@ DOCUMENT_TOKENS = {
         "最终用户手册",
         "交付验收矩阵",
         "数据与开源边界",
+    ),
+    "tools/tracker_camera_calibration/README.md": (
+        "vt-tracker-camera-calibrate configure",
+        "vt-tracker-camera-calibrate calibrate",
+        "vt-tracker-camera-calibrate compare",
+        "不需要也不读取抓包",
+        "录制前输入门禁",
+        "故障排查",
+        "最终检查表",
+    ),
+}
+DOCUMENT_FORBIDDEN_TOKENS = {
+    "tools/tracker_camera_calibration/README.md": (
+        "live_windows_bootstrap.py",
+        "VT_CAPTURE_SHA256",
+        "--execute-feature-writes",
+        "private/vut/01_cold_reconnect.pcapng",
+        "private/vut/live-bootstrap.json",
     ),
 }
 OBSOLETE_DOCUMENT_TOKENS = (
@@ -193,6 +245,7 @@ PUBLIC_DOCUMENT_PATHS = (
     "docs/release-checklist.md",
     "docs/troubleshooting.md",
     "docs/tracker-linux-validation.md",
+    "docs/tracker-camera-calibration.md",
     "docs/tracker-ros2-publisher.md",
     "docs/tracker-windows-map.md",
     "docs/user-manual.md",
@@ -200,6 +253,7 @@ PUBLIC_DOCUMENT_PATHS = (
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "THIRD_PARTY_NOTICES.md",
+    "tools/tracker_camera_calibration/README.md",
 )
 _MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
@@ -315,6 +369,15 @@ def validation_errors() -> list[str]:
         for token in tokens:
             if token not in text:
                 errors.append(f"{path} is missing required text: {token}")
+
+    for path, tokens in DOCUMENT_FORBIDDEN_TOKENS.items():
+        entry = tracked.get(path)
+        if entry is None or entry[0] not in REGULAR_FILE_MODES:
+            continue
+        text = git("cat-file", "blob", entry[1])
+        for token in tokens:
+            if token in text:
+                errors.append(f"{path} contains forbidden text: {token}")
 
     for path in PUBLIC_DOCUMENT_PATHS:
         entry = tracked.get(path)

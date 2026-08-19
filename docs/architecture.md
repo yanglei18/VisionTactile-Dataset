@@ -17,6 +17,8 @@ frame-drop, or recorded-data validation gates.
 | --- | --- |
 | `vt_camera_msgs` | Defines command, status, event, session, compatibility status fields, and `CameraFrameTiming` interfaces. |
 | `vt_realsense_capture` | Loads the fixed topology, launches the official RealSense nodes, groups per-camera timing metadata, starts and stops the Recorder, and publishes lifecycle status. |
+| `vt_vive_tracker` | Publishes three read-only Tracker role streams in the native `vive_map` frame. |
+| `tools/tracker_camera_calibration` | Independently reads a dedicated completed bag, solves `tracker_from_camera`, validates fixed-board closure, and exports immutable external-calibration artifacts. It is not a ROS runtime package. |
 
 ## Data and control flow
 
@@ -30,6 +32,18 @@ official realsense2_camera rs_launch.py x3
 The camera nodes also expose camera information, raw RealSense metadata,
 extrinsics, TF, and `device_info` services to the live ROS graph. Those
 supporting interfaces are not Recorder inputs.
+
+The optional calibration flow is deliberately separate:
+
+```text
+live color + CameraInfo + CameraFrameTiming + read-only TrackerSample
+  -> manually recorded dedicated calibration bag
+  -> offline ChArUco PnP and hand-eye solver
+  -> extrinsics.yaml + JSON/CSV/SVG quality evidence
+```
+
+No calibration code executes in the production Recorder process, and a
+missing or rejected external calibration cannot block raw camera recording.
 
 ## Exact 9 topics
 

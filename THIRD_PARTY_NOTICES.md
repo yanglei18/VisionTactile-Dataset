@@ -27,6 +27,14 @@ third-party works under their respective upstream licenses. They are runtime
 dependencies and are not relicensed by this project. Consult the installed
 package metadata and upstream source repositories before redistribution.
 
+## Offline calibration dependencies
+
+The optional offline Tracker-camera calibration tool uses NumPy, OpenCV,
+PyYAML, and Pillow under their respective upstream licenses. They are declared
+runtime dependencies and are not copied into or relicensed by this repository.
+Redistributors must retain the notices required by the exact dependency
+versions they package.
+
 ## VIVE hardware and software
 
 VIVE, VIVE Ultimate Tracker, VIVE Hub, SteamVR, Windows, Intel, RealSense, and

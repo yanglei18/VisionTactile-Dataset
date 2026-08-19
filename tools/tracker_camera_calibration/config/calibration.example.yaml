@@ -1,0 +1,48 @@
+schema_version: 1
+
+camera:
+  name: d405_1
+  model: D405
+  serial: "260322278433"
+  frame_id: d405_1_color_optical_frame
+  image_topic: /d405_1/color/image_raw
+  camera_info_topic: /d405_1/color/camera_info
+  timing_topic: /d405_1/frame_timing
+
+tracker:
+  # Replace this provisional role after confirming the physical pairing.
+  # The reference role map assigns protocol Host to the physical role torso.
+  role: torso
+  frame_id: vive_tracker_torso
+  sample_topic: /vive/torso/sample
+
+frames:
+  world: vive_map
+  board: charuco_board
+
+board:
+  squares_x: 9
+  squares_y: 6
+  # Replace both lengths with post-printing measurements.
+  square_length_m: 0.040
+  marker_length_m: 0.030
+  dictionary: DICT_5X5_1000
+  min_corners: 12
+  max_reprojection_rms_px: 2.0
+
+pairing:
+  max_interpolation_gap_ms: 50.0
+  stability_window_ms: 100.0
+  max_static_translation_m: 0.003
+  max_static_rotation_deg: 0.5
+  min_time_separation_s: 0.5
+  min_pose_translation_m: 0.020
+  min_pose_rotation_deg: 5.0
+
+acceptance:
+  min_pairs: 40
+  holdout_fraction: 0.20
+  target_translation_rms_m: 0.005
+  target_rotation_rms_deg: 0.5
+  maximum_translation_rms_m: 0.010
+  maximum_rotation_rms_deg: 1.0
