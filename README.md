@@ -50,6 +50,7 @@ project makes those boundaries explicit:
 | Unified 15-Topic MCAP recording | Available | `capture_controller` |
 | Tracker-to-camera hand-eye calibration | Available offline | `tools/tracker_camera_calibration/` |
 | Three-camera/three-Tracker alignment | Available offline | `tools/multisensor_alignment/` |
+| Indexed Python access to aligned frames | Available offline | `AlignedDataset` |
 | Future glove or auxiliary streams | Configurable generic adapter | `recording.additional_streams` |
 | Cross-camera hardware exposure sync | Not claimed | — |
 | Online extrinsic TF or point-cloud fusion | Not implemented | — |
@@ -71,6 +72,8 @@ flowchart LR
     E[Three VALID tracker_from_camera files] --> A[Offline alignment]
     B --> A
     A --> O[Aligned index + manifest + quality evidence]
+    O --> S[AlignedDataset Python SDK]
+    B --> S
 ```
 
 The online path only acquires and records data. Tracker-to-camera calibration
@@ -297,6 +300,38 @@ index, timing residuals, quality report, diagnostic plot, and integrity hashes.
 Follow the [single-entry alignment manual](tools/multisensor_alignment/README.md)
 for configuration, acceptance thresholds, output semantics, and recovery.
 
+### 8. Read aligned frames in Python
+
+The same package provides an integrity-checked reader. It keeps images in the
+original MCAP bag and resolves only the frame payloads requested by the caller:
+
+```python
+import os
+from vt_multisensor_alignment import AlignedDataset
+
+with AlignedDataset.open(
+    os.environ["ALIGN_OUTPUT"],
+    os.environ["BAG"],
+) as dataset:
+    frame = dataset.frame(
+        0,
+        cameras=("d405_1", "d436"),
+        image_kinds=("color", "depth"),
+        include_timing=False,
+        additional_streams=(),
+    )
+    rgb = frame.cameras["d405_1"].color.array
+    depth = frame.cameras["d405_1"].depth.array
+    torso_matrix = frame.trackers["torso"].world_from_tracker.as_matrix()
+```
+
+The reader validates the alignment export and source-bag identity by default,
+preserves missing aligned values as `None`, returns read-only NumPy images, and
+supports optimized forward iteration with `dataset.iter_frames()`. See the
+[Python SDK chapter](tools/multisensor_alignment/README.md#10-使用-python-sdk-读取对齐数据)
+for CameraInfo, extension streams, cache behavior, errors, depth units, and
+multi-worker usage.
+
 ## Time and transform semantics
 
 The project does not treat every timestamp as interchangeable.
@@ -351,7 +386,7 @@ VisionTactile-Dataset/
 │   └── vt_vive_tracker_gui/     # Standalone Tracker visualization
 ├── tools/
 │   ├── tracker_camera_calibration/ # Offline hand-eye calibration
-│   ├── multisensor_alignment/      # Offline unified-bag alignment
+│   ├── multisensor_alignment/      # Offline alignment + indexed Python SDK
 │   ├── vut_validation/             # Tracker validation utilities
 │   └── check_public_tree.py        # Public-release repository gate
 ├── docs/                        # Architecture, operations, and troubleshooting
@@ -386,6 +421,7 @@ files and must not be committed.
 - [Tracker-to-camera calibration overview](docs/tracker-camera-calibration.md)
 - [Complete calibration operations manual](tools/tracker_camera_calibration/README.md)
 - [Complete unified-bag alignment manual](tools/multisensor_alignment/README.md)
+- [Aligned-data Python SDK](tools/multisensor_alignment/README.md#10-使用-python-sdk-读取对齐数据)
 - [Architecture and data flow](docs/architecture.md)
 
 ### Develop and release
@@ -399,8 +435,9 @@ files and must not be committed.
 ## Verification
 
 The repository CI builds all five ROS 2 packages and runs the public-tree,
-Tracker validation, calibration, and alignment test suites. The alignment tests
-include an MCAP round trip using real ROS message serialization.
+Tracker validation, calibration, and alignment/SDK test suites. The alignment
+tests include MCAP round trips using real ROS message serialization and verify
+random versus sequential SDK reads.
 
 Useful local checks are:
 
