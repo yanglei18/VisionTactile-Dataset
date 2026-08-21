@@ -167,13 +167,14 @@ changes pairing or mapping, starts the publisher, nor records data.
 | `vt-multisensor-align inspect` | Check one unified bag's required topics, types, identities, frames, and valid input counts without writing output. | `--bag`, `--config` |
 | `vt-multisensor-align align` | Match three cameras, interpolate three Tracker streams, apply three external calibrations, and atomically export an alignment index. | `--bag`, `--config`, `--extrinsics`, `--output` |
 | `vt-multisensor-align validate` | Recompute output integrity hashes and verify row count and quality verdict. | `--output` |
+| `vt-multisensor-view` | Play a read-only three-camera/three-Tracker aligned dashboard or export one headless PNG frame. | `--alignment`, `--bag`, optional `--start`, `--speed`, `--export-frame` |
 
 Use `--help` on the installed command as the final authority for CLI syntax in
 the checked-out version.
 
 ## Aligned-data Python SDK
 
-`vt-multisensor-alignment 0.2.0` exports a read-only SDK from the package root:
+`vt-multisensor-alignment 0.3.0` exports a read-only SDK from the package root:
 
 ```python
 from vt_multisensor_alignment import AlignedDataset
@@ -201,6 +202,7 @@ extension payload is first requested.
 | `dataset.record(index)` | No | Immutable `FrameRecord` containing references and aligned transforms |
 | `dataset.manifest` | No | Immutable manifest mapping |
 | `dataset.quality_report` | No | Immutable quality mapping |
+| `dataset.reference_times_ns` | No | Strictly increasing reference timeline used by realtime playback |
 | `dataset.camera_info` | Yes, first access only | Camera-name mapping of `CameraInfoData` |
 | `dataset.frame(index, ...)` | Yes, selected references | Immutable `AlignedFrame` |
 | `dataset.iter_frames(start=0, stop=None, step=1, ...)` | Yes, forward cursor | Iterator of `AlignedFrame` |
@@ -261,6 +263,41 @@ All reader failures inherit `DatasetError`:
 file hash recomputation but never disables JSON structure or source-bag identity
 checks. The complete runnable workflow is in the
 [alignment and SDK manual](../tools/multisensor_alignment/README.md#10-使用-python-sdk-读取对齐数据).
+
+## Aligned-data Viewer
+
+Install the package with its visualization extra and ensure Ubuntu Tk support
+is present:
+
+```bash
+sudo apt-get install python3-tk
+python -m pip install "${VT_REPO}/tools/multisensor_alignment[viewer]"
+```
+
+Interactive mode opens a `1600×900` Pillow/Tk dashboard by default:
+
+```bash
+vt-multisensor-view --alignment "${ALIGN_OUTPUT}" --bag "${BAG}"
+```
+
+| Argument | Default | Contract |
+| --- | --- | --- |
+| `--start` | `0` | Initial frame index; negative values use Python sequence semantics |
+| `--speed` | `1.0` | Positive playback multiplier over `reference_time_ns` |
+| `--width`, `--height` | `1600`, `900` | Dashboard dimensions; minimum `800×480` |
+| `--depth-min-m`, `--depth-max-m` | `0.2`, `3.0` | Fixed depth-color range in metres |
+| `--tracker-range-m` | `2.0` | Fixed symmetric XY/XZ plot range around world origin |
+| `--allow-rejected` | off | Diagnostic-only opt-in to a `REJECTED` alignment |
+| `--skip-integrity` | off | Skip output SHA-256 recomputation, not schema or bag identity checks |
+| `--export-frame` | unset | Write one new PNG and exit without Tk or a display server |
+
+Interactive playback requests only color, depth, and aligned Tracker values.
+It does not deserialize timing or extension messages. When rendering is late,
+the player advances to the frame corresponding to current data time rather
+than accumulating latency; all source rows remain available while paused.
+Controls are Space, Left/Right, Home/End, `+`/`-`, and Q/Escape. The product
+workflow is in the
+[Viewer manual](../tools/multisensor_alignment/README.md#11-离线可视化).
 
 ## Compatibility and change control
 

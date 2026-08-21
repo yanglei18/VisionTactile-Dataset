@@ -18,7 +18,7 @@ from .extrinsics import ExtrinsicBinding
 from .model import BagDataset
 
 
-TOOL_VERSION = "0.2.0"
+TOOL_VERSION = "0.3.0"
 OUTPUT_FILES = frozenset(
     {
         "manifest.json",

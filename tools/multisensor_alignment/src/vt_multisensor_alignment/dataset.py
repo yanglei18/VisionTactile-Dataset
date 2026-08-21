@@ -143,6 +143,7 @@ class AlignedDataset:
         quality_report: dict[str, object],
         frame_stream: BinaryIO,
         frame_offsets: tuple[int, ...],
+        reference_times_ns: tuple[int, ...],
         camera_names: tuple[str, ...],
         tracker_roles: tuple[str, ...],
         additional_stream_names: tuple[str, ...],
@@ -162,6 +163,7 @@ class AlignedDataset:
         self._quality_report = _freeze(quality_report)
         self._frame_stream = frame_stream
         self._frame_offsets = frame_offsets
+        self._reference_times_ns = reference_times_ns
         self._camera_names = camera_names
         self._tracker_roles = tracker_roles
         self._additional_stream_names = additional_stream_names
@@ -382,6 +384,7 @@ class AlignedDataset:
         try:
             frame_stream = frame_path.open("rb")
             offsets: list[int] = []
+            reference_times_ns: list[int] = []
             previous_time: int | None = None
             while True:
                 offset = frame_stream.tell()
@@ -419,6 +422,7 @@ class AlignedDataset:
                     )
                 previous_time = record.reference_time_ns
                 offsets.append(offset)
+                reference_times_ns.append(record.reference_time_ns)
             expected_count = manifest.get("aligned_frame_count")
             if type(expected_count) is not int or expected_count != len(offsets):
                 raise DatasetFormatError(
@@ -432,6 +436,7 @@ class AlignedDataset:
                 quality_report=quality,
                 frame_stream=frame_stream,
                 frame_offsets=tuple(offsets),
+                reference_times_ns=tuple(reference_times_ns),
                 camera_names=camera_names,
                 tracker_roles=tracker_roles,
                 additional_stream_names=additional_stream_names,
@@ -481,6 +486,11 @@ class AlignedDataset:
     def tracker_roles(self) -> tuple[str, ...]:
         self._require_open()
         return self._tracker_roles
+
+    @property
+    def reference_times_ns(self) -> tuple[int, ...]:
+        self._require_open()
+        return self._reference_times_ns
 
     @property
     def additional_stream_names(self) -> tuple[str, ...]:

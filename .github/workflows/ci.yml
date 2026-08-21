@@ -28,7 +28,7 @@ jobs:
       - name: Install offline tools
         run: >-
           python -m pip install -e tools/tracker_camera_calibration
-          -e tools/multisensor_alignment
+          -e "tools/multisensor_alignment[test]"
       - name: Test public tree checker
         run: python3 tools/test_check_public_tree.py
       - name: Test VIVE tracker validator

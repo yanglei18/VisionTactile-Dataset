@@ -21,6 +21,8 @@ rosbag Recorder 进程。
   统一 bag 的离线工具；专用标定 bag 和设备外参不进入正式 bag。
 - 已提供 `AlignedDataset` Python SDK，可在校验对齐产物与原 bag 身份后按帧读取
   三相机图像、CameraInfo、三 Tracker 对齐位姿和手套等扩展消息，不复制图像。
+- 已提供 `vt-multisensor-view` 离线可视化器，可同屏回放三相机 RGB/Depth 与三
+  Tracker 位姿，或在无窗口环境导出单帧 PNG 快照。
 - 相机与 Tracker 源码可从带 submodule 的公开仓库复现；Tracker 真机启动仍需要
   操作者在 Git 之外保存的私有 bootstrap bundle 和角色映射。
 
@@ -90,6 +92,7 @@ ros2 launch vt_realsense_capture triple_realsense.launch.py \
 - [Tracker–RealSense 外参标定一本式产品操作手册](tools/tracker_camera_calibration/README.md)
 - [统一 bag 离线对齐一本式产品操作手册](tools/multisensor_alignment/README.md)
 - [对齐数据 Python SDK 使用章节](tools/multisensor_alignment/README.md#10-使用-python-sdk-读取对齐数据)
+- [对齐数据离线可视化章节](tools/multisensor_alignment/README.md#11-离线可视化)
 - [维护者发布检查表](docs/release-checklist.md)
 
 ## 范围与限制

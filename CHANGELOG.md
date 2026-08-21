@@ -6,7 +6,7 @@ All notable changes to this project are documented here.
 
 ### Added
 
-- `vt-multisensor-alignment 0.2.0` now includes the `AlignedDataset` Python
+- `vt-multisensor-alignment 0.3.0` now includes the `AlignedDataset` Python
   SDK for integrity-checked random and sequential access to aligned RGB,
   depth, CameraInfo, Tracker transforms, timing messages, and configured
   extension streams directly from the original MCAP bag.
@@ -15,12 +15,17 @@ All notable changes to this project are documented here.
   conversion.
 - Typed reader errors, immutable/read-only returned values, source-bag identity
   binding, bounded frame caching, and real ROS serialization integration tests.
+- `vt-multisensor-view` provides read-only three-camera RGB/depth playback,
+  three-Tracker XY/XZ pose views, reference-time catch-up, keyboard navigation,
+  fixed metric display ranges, and headless PNG snapshot export.
 
 ### Changed
 
 - Product documentation now includes a complete aligned-data SDK workflow,
   payload-selection controls, lifecycle rules, multi-worker guidance, and
   extension-stream examples.
+- The SDK now exposes its immutable `reference_times_ns` timeline for efficient
+  downstream playback without reparsing JSONL records.
 
 ## [0.3.0] - 2026-08-19
 

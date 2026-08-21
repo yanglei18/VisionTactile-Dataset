@@ -13,7 +13,7 @@ class CliTests(unittest.TestCase):
         with redirect_stdout(output):
             status = main(["--version"])
         self.assertEqual(status, 0)
-        self.assertEqual(output.getvalue().strip(), "vt-multisensor-alignment 0.2.0")
+        self.assertEqual(output.getvalue().strip(), "vt-multisensor-alignment 0.3.0")
 
     def test_validate_reports_missing_output_as_usage_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

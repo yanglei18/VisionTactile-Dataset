@@ -338,6 +338,7 @@ class DatasetTests(unittest.TestCase):
                 self.assertEqual(len(dataset), 2)
                 self.assertEqual(dataset.camera_names, CAMERAS)
                 self.assertEqual(dataset.tracker_roles, ROLES)
+                self.assertEqual(dataset.reference_times_ns, (1_000, 1_100))
                 self.assertEqual(dataset.additional_stream_names, ("left_glove",))
                 self.assertEqual(dataset.record(-1).frame_index, 1)
                 self.assertEqual(factory.calls, [])

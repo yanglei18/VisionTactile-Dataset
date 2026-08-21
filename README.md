@@ -51,6 +51,7 @@ project makes those boundaries explicit:
 | Tracker-to-camera hand-eye calibration | Available offline | `tools/tracker_camera_calibration/` |
 | Three-camera/three-Tracker alignment | Available offline | `tools/multisensor_alignment/` |
 | Indexed Python access to aligned frames | Available offline | `AlignedDataset` |
+| Aligned RGB/Depth/Tracker dashboard | Available offline | `vt-multisensor-view` |
 | Future glove or auxiliary streams | Configurable generic adapter | `recording.additional_streams` |
 | Cross-camera hardware exposure sync | Not claimed | — |
 | Online extrinsic TF or point-cloud fusion | Not implemented | — |
@@ -74,6 +75,8 @@ flowchart LR
     A --> O[Aligned index + manifest + quality evidence]
     O --> S[AlignedDataset Python SDK]
     B --> S
+    O --> V[Offline aligned-data Viewer]
+    B --> V
 ```
 
 The online path only acquires and records data. Tracker-to-camera calibration
@@ -267,9 +270,11 @@ source /opt/ros/jazzy/setup.bash
 source "${VT_WS}/install/setup.bash"
 python3 -m venv --system-site-packages "${HOME}/.venvs/vt-alignment"
 source "${HOME}/.venvs/vt-alignment/bin/activate"
-python -m pip install "${VT_REPO}/tools/multisensor_alignment"
+sudo apt-get install python3-tk
+python -m pip install "${VT_REPO}/tools/multisensor_alignment[viewer]"
 
 vt-multisensor-align --version
+vt-multisensor-view --version
 ```
 
 Copy the example configuration outside Git, bind it to the real hardware and
@@ -332,6 +337,34 @@ supports optimized forward iteration with `dataset.iter_frames()`. See the
 for CameraInfo, extension streams, cache behavior, errors, depth units, and
 multi-worker usage.
 
+### 9. Visualize the aligned dataset offline
+
+The same package provides a read-only dashboard for all three RGB/depth pairs
+and the three aligned Tracker poses:
+
+```bash
+vt-multisensor-view \
+  --alignment "${ALIGN_OUTPUT}" \
+  --bag "${BAG}"
+```
+
+Playback follows alignment reference time and skips only intermediate display
+updates when rendering falls behind, so latency does not accumulate. Pausing
+still allows exact frame-by-frame inspection. A desktop is not required to
+export a deterministic audit snapshot:
+
+```bash
+vt-multisensor-view \
+  --alignment "${ALIGN_OUTPUT}" \
+  --bag "${BAG}" \
+  --start 100 \
+  --export-frame "${VT_DATA_ROOT}/<session-id>/frame-000100.png"
+```
+
+The full controls, fixed depth/Tracker scales, integrity behavior, and recovery
+steps are in the
+[offline Viewer chapter](tools/multisensor_alignment/README.md#11-离线可视化).
+
 ## Time and transform semantics
 
 The project does not treat every timestamp as interchangeable.
@@ -386,7 +419,7 @@ VisionTactile-Dataset/
 │   └── vt_vive_tracker_gui/     # Standalone Tracker visualization
 ├── tools/
 │   ├── tracker_camera_calibration/ # Offline hand-eye calibration
-│   ├── multisensor_alignment/      # Offline alignment + indexed Python SDK
+│   ├── multisensor_alignment/      # Alignment + Python SDK + offline Viewer
 │   ├── vut_validation/             # Tracker validation utilities
 │   └── check_public_tree.py        # Public-release repository gate
 ├── docs/                        # Architecture, operations, and troubleshooting
@@ -422,6 +455,7 @@ files and must not be committed.
 - [Complete calibration operations manual](tools/tracker_camera_calibration/README.md)
 - [Complete unified-bag alignment manual](tools/multisensor_alignment/README.md)
 - [Aligned-data Python SDK](tools/multisensor_alignment/README.md#10-使用-python-sdk-读取对齐数据)
+- [Aligned-data offline Viewer](tools/multisensor_alignment/README.md#11-离线可视化)
 - [Architecture and data flow](docs/architecture.md)
 
 ### Develop and release

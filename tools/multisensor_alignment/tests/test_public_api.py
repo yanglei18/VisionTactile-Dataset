@@ -36,14 +36,22 @@ class PublicApiTests(unittest.TestCase):
         for name in expected:
             self.assertIsNotNone(getattr(sdk, name))
 
-    def test_package_cli_and_project_versions_are_0_2_0(self) -> None:
+    def test_package_cli_and_project_versions_are_0_3_0(self) -> None:
         project = tomllib.loads(
             (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         )
 
-        self.assertEqual(sdk.__version__, "0.2.0")
-        self.assertEqual(export.TOOL_VERSION, "0.2.0")
-        self.assertEqual(project["project"]["version"], "0.2.0")
+        self.assertEqual(sdk.__version__, "0.3.0")
+        self.assertEqual(export.TOOL_VERSION, "0.3.0")
+        self.assertEqual(project["project"]["version"], "0.3.0")
+        self.assertEqual(
+            project["project"]["scripts"]["vt-multisensor-view"],
+            "vt_multisensor_alignment.viewer_cli:entrypoint",
+        )
+        self.assertEqual(
+            project["project"]["optional-dependencies"]["viewer"],
+            ["Pillow>=10,<12"],
+        )
 
 
 if __name__ == "__main__":

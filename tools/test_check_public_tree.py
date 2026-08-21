@@ -62,7 +62,12 @@ class AlternateIndexTests(unittest.TestCase):
         ) + tuple(
             str(path.relative_to(ROOT))
             for path in sorted((ROOT / "tools/multisensor_alignment").rglob("*"))
-            if path.is_file() and "__pycache__" not in path.parts
+            if path.is_file()
+            and not {
+                ".pytest_cache",
+                "__pycache__",
+                "build",
+            }.intersection(path.parts)
         )
         for path in required_worktree_files:
             worktree_file = ROOT / path
@@ -196,6 +201,30 @@ class AlternateIndexTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn(f"missing tracked file: {path}", result.stderr)
+
+    def test_aligned_dataset_viewer_source_is_required(self) -> None:
+        path = (
+            "tools/multisensor_alignment/src/"
+            "vt_multisensor_alignment/viewer_app.py"
+        )
+        self.git("update-index", "--force-remove", "--", path)
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"missing tracked file: {path}", result.stderr)
+
+    def test_alignment_manual_keeps_viewer_command(self) -> None:
+        path = "tools/multisensor_alignment/README.md"
+        manual = (ROOT / path).read_text(encoding="utf-8")
+        token = "vt-multisensor-view"
+        self.assertIn(token, manual)
+        self.add_index_blob(path, manual.replace(token, "removed-viewer"))
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"{path} is missing required text: {token}", result.stderr)
 
     def test_alignment_manual_keeps_validation_command(self) -> None:
         path = "tools/multisensor_alignment/README.md"
@@ -545,6 +574,12 @@ class WorkflowContractTests(unittest.TestCase):
             "PYTHONPATH=tools/multisensor_alignment/src "
             "python3 -m unittest discover "
             "-s tools/multisensor_alignment/tests -v",
+            self.workflow,
+        )
+
+    def test_repository_contract_installs_alignment_test_dependencies(self) -> None:
+        self.assertIn(
+            '-e "tools/multisensor_alignment[test]"',
             self.workflow,
         )
 
