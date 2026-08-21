@@ -185,6 +185,18 @@ class AlternateIndexTests(unittest.TestCase):
             result.stderr,
         )
 
+    def test_aligned_dataset_sdk_source_is_required(self) -> None:
+        path = (
+            "tools/multisensor_alignment/src/"
+            "vt_multisensor_alignment/dataset.py"
+        )
+        self.git("update-index", "--force-remove", "--", path)
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"missing tracked file: {path}", result.stderr)
+
     def test_alignment_manual_keeps_validation_command(self) -> None:
         path = "tools/multisensor_alignment/README.md"
         manual = (ROOT / path).read_text(encoding="utf-8")
