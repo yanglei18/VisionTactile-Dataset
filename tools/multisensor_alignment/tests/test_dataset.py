@@ -356,15 +356,36 @@ class DatasetTests(unittest.TestCase):
     def test_integrity_can_be_skipped_without_skipping_structure(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output, bag = write_fixture(Path(temporary))
-            (output / "diagnostics.svg").write_text("<svg>changed</svg>\n", encoding="utf-8")
+            (output / "diagnostics.svg").write_text("<abc/>\n", encoding="utf-8")
 
             with AlignedDataset.open(
                 output, bag, verify_integrity=False
             ) as dataset:
                 self.assertEqual(len(dataset), 2)
 
-            (output / "aligned_frames.jsonl").write_text("not-json\n", encoding="utf-8")
+            frame_path = output / "aligned_frames.jsonl"
+            original_size = frame_path.stat().st_size
+            frame_path.write_bytes(b"x" * (original_size - 1) + b"\n")
             with self.assertRaises(DatasetFormatError):
+                AlignedDataset.open(output, bag, verify_integrity=False)
+
+    def test_skipping_hashes_still_checks_inventory_and_file_sizes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output, bag = write_fixture(Path(temporary))
+            manifest_path = output / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"].pop("diagnostics.svg")
+            manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(DatasetFormatError, "inventory"):
+                AlignedDataset.open(output, bag, verify_integrity=False)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output, bag = write_fixture(Path(temporary))
+            with (output / "diagnostics.svg").open("a", encoding="utf-8") as stream:
+                stream.write("larger\n")
+
+            with self.assertRaisesRegex(IntegrityError, "size"):
                 AlignedDataset.open(output, bag, verify_integrity=False)
 
     def test_rejected_verdict_requires_explicit_opt_in(self) -> None:
@@ -512,6 +533,24 @@ class DatasetTests(unittest.TestCase):
                     list(dataset.iter_frames(step=0))
                 with self.assertRaises(ValueError):
                     list(dataset.iter_frames(step=-1))
+
+    def test_iter_frames_normalizes_generator_selections_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output, bag = write_fixture(Path(temporary))
+            with AlignedDataset.open(output, bag) as dataset:
+                frames = list(
+                    dataset.iter_frames(
+                        cameras=(name for name in ("d405_1",)),
+                        image_kinds=(),
+                        include_timing=False,
+                        additional_streams=(),
+                    )
+                )
+
+                self.assertEqual(
+                    [tuple(frame.cameras) for frame in frames],
+                    [("d405_1",), ("d405_1",)],
+                )
 
     def test_camera_info_is_lazy_and_cached(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

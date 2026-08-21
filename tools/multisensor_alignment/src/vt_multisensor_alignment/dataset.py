@@ -233,6 +233,38 @@ class AlignedDataset:
         )
         if manifest.get("schema_version") != 1:
             raise DatasetFormatError("unsupported alignment manifest schema")
+        inventory = _mapping(
+            manifest.get("files"), "manifest.files"
+        )
+        integrity_files = OUTPUT_FILES - {"manifest.json"}
+        if set(inventory) != integrity_files:
+            raise DatasetFormatError(
+                "alignment manifest file inventory is malformed: "
+                f"expected={sorted(integrity_files)} "
+                f"observed={sorted(inventory)}"
+            )
+        for name, raw_expected in inventory.items():
+            expected = _mapping(raw_expected, f"manifest.files.{name}")
+            size = expected.get("size_bytes")
+            digest = expected.get("sha256")
+            if type(size) is not int or size < 0:
+                raise DatasetFormatError(
+                    f"manifest.files.{name}.size_bytes is malformed"
+                )
+            if (
+                type(digest) is not str
+                or len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+            ):
+                raise DatasetFormatError(
+                    f"manifest.files.{name}.sha256 is malformed"
+                )
+            observed_size = (output / name).stat().st_size
+            if observed_size != size:
+                raise IntegrityError(
+                    f"alignment output size mismatch for {name}: "
+                    f"expected={size} observed={observed_size}"
+                )
         if catalog.get("schema_version") != 1:
             raise DatasetFormatError("unsupported alignment stream catalog schema")
         verdict = quality.get("verdict")
@@ -690,16 +722,29 @@ class AlignedDataset:
             raise ValueError("step must be a positive integer")
         if type(start) is not int or (stop is not None and type(stop) is not int):
             raise ValueError("start and stop must be integers or None")
+        selected_cameras = self._selection(
+            cameras, self._camera_names, "cameras"
+        )
+        selected_images = self._selection(
+            image_kinds, ("color", "depth"), "image_kinds"
+        )
+        if type(include_timing) is not bool:
+            raise ValueError("include_timing must be bool")
+        selected_streams = self._selection(
+            additional_streams,
+            self._additional_stream_names,
+            "additional_streams",
+        )
         begin, end, normalized_step = slice(start, stop, step).indices(
             len(self._frame_offsets)
         )
         for index in range(begin, end, normalized_step):
             yield self.frame(
                 index,
-                cameras=cameras,
-                image_kinds=image_kinds,
+                cameras=selected_cameras,
+                image_kinds=selected_images,
                 include_timing=include_timing,
-                additional_streams=additional_streams,
+                additional_streams=selected_streams,
             )
 
     def close(self) -> None:
