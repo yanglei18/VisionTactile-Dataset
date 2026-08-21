@@ -211,7 +211,8 @@ class AlignedDataset:
             path.name for path in output.iterdir() if path.is_file()
         }
         if observed_files != OUTPUT_FILES:
-            raise DatasetFormatError(
+            error_type = IntegrityError if verify_integrity else DatasetFormatError
+            raise error_type(
                 "alignment output file set mismatch: "
                 f"expected={sorted(OUTPUT_FILES)} "
                 f"observed={sorted(observed_files)}"

@@ -353,6 +353,14 @@ class DatasetTests(unittest.TestCase):
             with self.assertRaises(IntegrityError):
                 AlignedDataset.open(output, bag)
 
+    def test_default_integrity_check_classifies_missing_output_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output, bag = write_fixture(Path(temporary))
+            (output / "diagnostics.svg").unlink()
+
+            with self.assertRaisesRegex(IntegrityError, "file set"):
+                AlignedDataset.open(output, bag)
+
     def test_integrity_can_be_skipped_without_skipping_structure(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output, bag = write_fixture(Path(temporary))
