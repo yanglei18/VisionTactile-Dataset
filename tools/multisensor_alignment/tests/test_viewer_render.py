@@ -133,6 +133,56 @@ class DashboardRenderingTests(unittest.TestCase):
         self.assertEqual(rendered.size, (1_200, 600))
         self.assertGreater(np.asarray(rendered).var(), 0.0)
 
+    def test_out_of_range_tracker_cannot_draw_over_camera_panels(self) -> None:
+        common = {
+            "frame_index": 0,
+            "reference_camera": "d405_1",
+            "reference_time_ns": 1_000,
+            "cameras": {"d405_1": None, "d405_2": None, "d436": None},
+            "additional_streams": {},
+            "quality_flags": (),
+        }
+        without_tracker = AlignedFrame(
+            trackers={"left_wrist": None},
+            **common,
+        )
+        outside_range = AlignedFrame(
+            trackers={"left_wrist": tracker("left_wrist", (-10.0, 0.0, 0.0))},
+            **common,
+        )
+        config = ViewerConfig(
+            canvas_width=1_200,
+            canvas_height=600,
+            tracker_range_m=2.0,
+        )
+
+        baseline = np.asarray(
+            render_aligned_frame(
+                without_tracker,
+                camera_names=("d405_1", "d405_2", "d436"),
+                total_frames=1,
+                playing=False,
+                speed=1.0,
+                config=config,
+            )
+        )
+        rendered = np.asarray(
+            render_aligned_frame(
+                outside_range,
+                camera_names=("d405_1", "d405_2", "d436"),
+                total_frames=1,
+                playing=False,
+                speed=1.0,
+                config=config,
+            )
+        )
+
+        camera_area_right = 892
+        np.testing.assert_array_equal(
+            rendered[:, :camera_area_right],
+            baseline[:, :camera_area_right],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

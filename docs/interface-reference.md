@@ -289,7 +289,7 @@ vt-multisensor-view --alignment "${ALIGN_OUTPUT}" --bag "${BAG}"
 | `--tracker-range-m` | `2.0` | Fixed symmetric XY/XZ plot range around world origin |
 | `--allow-rejected` | off | Diagnostic-only opt-in to a `REJECTED` alignment |
 | `--skip-integrity` | off | Skip output SHA-256 recomputation, not schema or bag identity checks |
-| `--export-frame` | unset | Write one new PNG and exit without Tk or a display server |
+| `--export-frame` | unset | Exclusively write one private `0600` PNG and exit without Tk or a display server |
 
 Interactive playback requests only color, depth, and aligned Tracker values.
 It does not deserialize timing or extension messages. When rendering is late,
@@ -298,6 +298,8 @@ than accumulating latency; all source rows remain available while paused.
 Controls are Space, Left/Right, Home/End, `+`/`-`, and Q/Escape. The product
 workflow is in the
 [Viewer manual](../tools/multisensor_alignment/README.md#11-离线可视化).
+Late decode/render failures close the window and propagate to a nonzero CLI
+result; the Viewer never leaves a stale dashboard running as if it were live.
 
 ## Compatibility and change control
 

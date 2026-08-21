@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Callable
@@ -14,6 +15,16 @@ from .viewer_model import ViewerConfig
 
 DatasetOpener = Callable[..., AlignedDataset]
 InteractiveRunner = Callable[..., None]
+
+
+def _require_pillow() -> None:
+    try:
+        import PIL  # noqa: F401
+    except ImportError as error:
+        raise RuntimeError(
+            "Pillow is required; run: "
+            "pip install 'vt-multisensor-alignment[viewer]'"
+        ) from error
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -83,12 +94,42 @@ def _export_snapshot(
         speed=speed,
         config=config,
     )
-    image.save(target, format="PNG")
+    _save_png_exclusive(image, target)
     return {
         "output": str(target),
         "frame_index": frame.frame_index,
         "reference_time_ns": frame.reference_time_ns,
     }
+
+
+def _save_png_exclusive(image: object, target: Path) -> None:
+    try:
+        descriptor = os.open(
+            target,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+    except FileExistsError as error:
+        raise FileExistsError(
+            f"refusing to overwrite snapshot: {target}"
+        ) from error
+    created = os.fstat(descriptor)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            image.save(stream, format="PNG")
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        try:
+            observed = target.stat(follow_symlinks=False)
+            if (observed.st_dev, observed.st_ino) == (
+                created.st_dev,
+                created.st_ino,
+            ):
+                target.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def main(
@@ -110,6 +151,7 @@ def main(
             depth_max_m=parsed.depth_max_m,
             tracker_range_m=parsed.tracker_range_m,
         )
+        _require_pillow()
         target = (
             _snapshot_target(parsed.export_frame)
             if parsed.export_frame is not None

@@ -579,8 +579,9 @@ vt-multisensor-view \
   --export-frame "${RUN_ROOT}/results/frame-000100.png"
 ```
 
-目标必须是已存在目录中的新 `.png` 文件；命令拒绝覆盖已有快照。成功时输出
-JSON，包含绝对文件路径、`frame_index` 和 `reference_time_ns`。此模式需要
+目标必须是已存在目录中的新 `.png` 文件；命令以排他方式创建 `0600`
+私有文件，拒绝覆盖已有或并发创建的快照，并在编码失败时删除不完整文件。成功时
+输出 JSON，包含绝对文件路径、`frame_index` 和 `reference_time_ns`。此模式需要
 Pillow，但不需要 Tk 窗口或 `DISPLAY`。
 
 ### 11.3 可视化门禁与故障处理
@@ -592,6 +593,8 @@ Pillow，但不需要 Tk 窗口或 `DISPLAY`。
   无效；安装 Tk/进入桌面 session，或改用 `--export-frame`；
 - `UnsupportedEncodingError` 表示输入编码不在 SDK 支持表中，不能通过静默颜色
   转换绕过；
+- 任一后续帧解码或绘制失败时窗口会立即关闭，CLI 返回非零错误，不会保留一张
+  已停止更新但看似仍在运行的旧画面；
 - 窗口刷新不足时先降为 `--width 1280 --height 720`，并确认原 bag 所在磁盘
   能持续读取六路图像。Viewer 的自动追帧用于维持时间进度，不是数据质量补偿。
 

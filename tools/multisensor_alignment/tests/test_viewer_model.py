@@ -67,6 +67,19 @@ class PlaybackControllerTests(unittest.TestCase):
         self.assertEqual(controller.tick(now_ns=5_149_000_000), 1)
         self.assertEqual(controller.tick(now_ns=5_150_000_000), 2)
 
+    def test_speed_change_preserves_fractional_timeline_progress(self) -> None:
+        controller = PlaybackController(
+            (1_000_000_000, 1_100_000_000, 1_200_000_000),
+            start_index=0,
+            speed=1.0,
+        )
+        controller.play(now_ns=5_000_000_000)
+        self.assertEqual(controller.tick(now_ns=5_050_000_000), 0)
+
+        controller.set_speed(2.0, now_ns=5_050_000_000)
+
+        self.assertEqual(controller.tick(now_ns=5_075_000_000), 1)
+
     def test_rejects_non_increasing_timeline(self) -> None:
         with self.assertRaisesRegex(ValueError, "strictly increasing"):
             PlaybackController((10, 10), start_index=0, speed=1.0)

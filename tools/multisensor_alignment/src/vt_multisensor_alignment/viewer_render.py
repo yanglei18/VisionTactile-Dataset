@@ -203,7 +203,7 @@ def _project(
 
 
 def _draw_tracker_plot(
-    draw: ImageDraw.ImageDraw,
+    canvas: Image.Image,
     box: tuple[int, int, int, int],
     *,
     title: str,
@@ -213,9 +213,19 @@ def _draw_tracker_plot(
     tracker_range_m: float,
 ) -> None:
     left, top, right, bottom = box
-    draw.rounded_rectangle(box, radius=8, fill=_PANEL, outline=_BORDER, width=1)
-    draw.text((left + 9, top + 6), title, fill=_TEXT, font=_font(13))
-    plot_box = (left + 8, top + 25, right - 8, bottom - 8)
+    width = right - left
+    height = bottom - top
+    panel = Image.new("RGB", (width, height), color=_PANEL)
+    draw = ImageDraw.Draw(panel)
+    draw.rounded_rectangle(
+        (0, 0, width - 1, height - 1),
+        radius=8,
+        fill=_PANEL,
+        outline=_BORDER,
+        width=1,
+    )
+    draw.text((9, 6), title, fill=_TEXT, font=_font(13))
+    plot_box = (8, 25, width - 8, height - 8)
     center = _project(0.0, 0.0, plot_box, tracker_range_m)
     draw.line((plot_box[0], center[1], plot_box[2], center[1]), fill=_BORDER)
     draw.line((center[0], plot_box[1], center[0], plot_box[3]), fill=_BORDER)
@@ -235,16 +245,44 @@ def _draw_tracker_plot(
         position = transform.translation
         matrix = transform.as_matrix()
         direction = matrix[:3, 0]
+        horizontal = float(position[horizontal_axis])
+        vertical = float(position[vertical_axis])
+        outside = (
+            abs(horizontal) > tracker_range_m
+            or abs(vertical) > tracker_range_m
+        )
+        clipped_horizontal = min(
+            max(horizontal, -tracker_range_m), tracker_range_m
+        )
+        clipped_vertical = min(
+            max(vertical, -tracker_range_m), tracker_range_m
+        )
         start = _project(
-            float(position[horizontal_axis]),
-            float(position[vertical_axis]),
+            clipped_horizontal,
+            clipped_vertical,
             plot_box,
             tracker_range_m,
         )
         arrow_scale = tracker_range_m * 0.14
+        end_horizontal = min(
+            max(
+                clipped_horizontal
+                + float(direction[horizontal_axis]) * arrow_scale,
+                -tracker_range_m,
+            ),
+            tracker_range_m,
+        )
+        end_vertical = min(
+            max(
+                clipped_vertical
+                + float(direction[vertical_axis]) * arrow_scale,
+                -tracker_range_m,
+            ),
+            tracker_range_m,
+        )
         end = _project(
-            float(position[horizontal_axis] + direction[horizontal_axis] * arrow_scale),
-            float(position[vertical_axis] + direction[vertical_axis] * arrow_scale),
+            end_horizontal,
+            end_vertical,
             plot_box,
             tracker_range_m,
         )
@@ -256,7 +294,21 @@ def _draw_tracker_plot(
             fill=color,
             outline=(255, 255, 255),
         )
-        draw.text((start[0] + 7, start[1] - 8), role, fill=color, font=_font(10))
+        if outside:
+            draw.ellipse(
+                (
+                    start[0] - radius - 3,
+                    start[1] - radius - 3,
+                    start[0] + radius + 3,
+                    start[1] + radius + 3,
+                ),
+                outline=_WARNING,
+                width=2,
+            )
+        label_x = min(max(start[0] + 7, plot_box[0] + 2), plot_box[2] - 78)
+        label_y = min(max(start[1] - 8, plot_box[1] + 2), plot_box[3] - 13)
+        draw.text((label_x, label_y), role, fill=color, font=_font(10))
+    canvas.paste(panel, (left, top))
 
 
 def render_aligned_frame(
@@ -330,7 +382,7 @@ def render_aligned_frame(
     tracker_items = tuple(frame.trackers.items())
     tracker_row_height = (content_height - gutter * 3) // 2
     _draw_tracker_plot(
-        draw,
+        canvas,
         (
             tracker_left,
             header_height + gutter,
@@ -345,7 +397,7 @@ def render_aligned_frame(
     )
     second_top = header_height + gutter * 2 + tracker_row_height
     _draw_tracker_plot(
-        draw,
+        canvas,
         (tracker_left, second_top, tracker_right, second_top + tracker_row_height),
         title=f"TRACKERS SIDE  XZ  range +/-{config.tracker_range_m:g} m",
         horizontal_axis=0,

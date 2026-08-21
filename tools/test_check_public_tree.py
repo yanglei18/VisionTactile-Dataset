@@ -214,6 +214,15 @@ class AlternateIndexTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn(f"missing tracked file: {path}", result.stderr)
 
+    def test_aligned_dataset_viewer_app_regression_test_is_required(self) -> None:
+        path = "tools/multisensor_alignment/tests/test_viewer_app.py"
+        self.git("update-index", "--force-remove", "--", path)
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"missing tracked file: {path}", result.stderr)
+
     def test_alignment_manual_keeps_viewer_command(self) -> None:
         path = "tools/multisensor_alignment/README.md"
         manual = (ROOT / path).read_text(encoding="utf-8")
@@ -608,6 +617,20 @@ class WorkflowContractTests(unittest.TestCase):
             "package-name: "
             "vt_camera_msgs vt_realsense_capture vt_tracker_msgs "
             "vt_vive_tracker",
+            self.workflow,
+        )
+
+    def test_ros_ci_runs_real_mcap_alignment_tests_in_sourced_workspace(self) -> None:
+        self.assertIn("id: ros_ci", self.workflow)
+        self.assertIn(
+            "${{ steps.ros_ci.outputs.ros-workspace-directory-name }}",
+            self.workflow,
+        )
+        self.assertIn("source \"${ROS_WORKSPACE}/install/setup.bash\"", self.workflow)
+        self.assertIn("test_*synthetic_mcap.py", self.workflow)
+        self.assertIn(
+            'PYTHONPATH="${REPOSITORY_ROOT}/tools/multisensor_alignment/src:'
+            '${PYTHONPATH}"',
             self.workflow,
         )
 

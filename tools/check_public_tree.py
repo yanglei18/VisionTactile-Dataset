@@ -104,6 +104,7 @@ REQUIRED_FILES = {
     "tools/multisensor_alignment/tests/test_sdk_model.py",
     "tools/multisensor_alignment/tests/test_sdk_synthetic_mcap.py",
     "tools/multisensor_alignment/tests/test_synthetic_mcap.py",
+    "tools/multisensor_alignment/tests/test_viewer_app.py",
     "tools/multisensor_alignment/tests/test_viewer_cli.py",
     "tools/multisensor_alignment/tests/test_viewer_model.py",
     "tools/multisensor_alignment/tests/test_viewer_render.py",

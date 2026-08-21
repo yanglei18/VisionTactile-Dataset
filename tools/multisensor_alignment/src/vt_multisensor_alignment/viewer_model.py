@@ -93,11 +93,14 @@ class PlaybackController:
         else:
             self.play(now_ns=now_ns)
 
+    def _data_time_ns(self, now_ns: int) -> int:
+        elapsed_ns = max(0, now_ns - self._anchor_wall_ns)
+        return self._anchor_data_ns + int(elapsed_ns * self._speed)
+
     def tick(self, *, now_ns: int) -> int:
         if not self._playing:
             return self._index
-        elapsed_ns = max(0, now_ns - self._anchor_wall_ns)
-        target_ns = self._anchor_data_ns + int(elapsed_ns * self._speed)
+        target_ns = self._data_time_ns(now_ns)
         target_index = bisect_right(self._frame_times_ns, target_ns) - 1
         self._index = max(self._index, target_index)
         if self._index >= len(self._frame_times_ns) - 1:
@@ -119,8 +122,9 @@ class PlaybackController:
     def set_speed(self, speed: float, *, now_ns: int) -> None:
         self._validate_speed(speed)
         if self._playing:
+            data_time_ns = self._data_time_ns(now_ns)
             self.tick(now_ns=now_ns)
             if self._playing:
                 self._anchor_wall_ns = now_ns
-                self._anchor_data_ns = self._frame_times_ns[self._index]
+                self._anchor_data_ns = data_time_ns
         self._speed = float(speed)

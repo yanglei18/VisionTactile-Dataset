@@ -41,6 +41,7 @@ class _ViewerWindow:
         self._last_rendered_index = -1
         self._dirty = True
         self._closed = False
+        self._error: Exception | None = None
         root.title("VisionTactile Aligned Dataset Viewer")
         root.resizable(False, False)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -73,10 +74,19 @@ class _ViewerWindow:
     def _refresh(self) -> None:
         if self._closed:
             return
-        index = self._controller.tick(now_ns=time.monotonic_ns())
-        if index != self._last_rendered_index or self._dirty:
-            self._render()
+        try:
+            index = self._controller.tick(now_ns=time.monotonic_ns())
+            if index != self._last_rendered_index or self._dirty:
+                self._render()
+        except Exception as error:
+            self._error = error
+            self.close()
+            return
         self._root.after(10, self._refresh)
+
+    @property
+    def error(self) -> Exception | None:
+        return self._error
 
     def _change_speed(self, direction: int, now_ns: int) -> None:
         current = self._controller.speed
@@ -144,11 +154,14 @@ def run_interactive(
         raise RuntimeError(
             "Tk viewer is unavailable; install python3-tk or use --export-frame"
         ) from error
-    _ViewerWindow(
+    window = _ViewerWindow(
         root,
         dataset,
         start_index=start_index,
         speed=speed,
         config=config,
     )
-    root.mainloop()
+    if window.error is None:
+        root.mainloop()
+    if window.error is not None:
+        raise window.error

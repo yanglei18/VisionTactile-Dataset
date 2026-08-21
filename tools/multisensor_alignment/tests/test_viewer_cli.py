@@ -1,8 +1,11 @@
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+import stat
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 from PIL import Image
@@ -126,6 +129,7 @@ class ViewerCliTests(unittest.TestCase):
             with Image.open(target) as exported:
                 self.assertEqual(exported.size, (800, 480))
                 self.assertEqual(exported.format, "PNG")
+            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
         self.assertEqual(
             opener.dataset.frame_calls,
             [
@@ -195,6 +199,58 @@ class ViewerCliTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("refusing to overwrite", output.getvalue())
         self.assertEqual(opener.dataset.frame_calls, [])
+
+    def test_concurrent_snapshot_creator_is_not_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "snapshot.png"
+
+            class RacingOpener(DatasetOpener):
+                def __call__(self, alignment, bag, **kwargs):
+                    target.write_bytes(b"concurrent-owner")
+                    return super().__call__(alignment, bag, **kwargs)
+
+            opener = RacingOpener()
+            output = StringIO()
+            with redirect_stdout(output):
+                status = main(
+                    [
+                        "--alignment",
+                        "/data/aligned",
+                        "--bag",
+                        "/data/source_bag",
+                        "--export-frame",
+                        str(target),
+                    ],
+                    _dataset_opener=opener,
+                )
+
+            self.assertEqual(status, 1)
+            self.assertIn("refusing to overwrite", output.getvalue())
+            self.assertEqual(target.read_bytes(), b"concurrent-owner")
+
+    def test_missing_pillow_reports_viewer_extra_before_opening_dataset(self) -> None:
+        opener = DatasetOpener()
+        output = StringIO()
+
+        with mock.patch.dict(sys.modules, {"PIL": None}):
+            with redirect_stdout(output):
+                status = main(
+                    [
+                        "--alignment",
+                        "/data/aligned",
+                        "--bag",
+                        "/data/source_bag",
+                    ],
+                    _dataset_opener=opener,
+                    _interactive_runner=lambda *args, **kwargs: None,
+                )
+
+        self.assertEqual(status, 1)
+        self.assertIn(
+            "pip install 'vt-multisensor-alignment[viewer]'",
+            output.getvalue(),
+        )
+        self.assertEqual(opener.calls, [])
 
 
 if __name__ == "__main__":
