@@ -62,7 +62,12 @@ class AlternateIndexTests(unittest.TestCase):
         ) + tuple(
             str(path.relative_to(ROOT))
             for path in sorted((ROOT / "tools/multisensor_alignment").rglob("*"))
-            if path.is_file() and "__pycache__" not in path.parts
+            if path.is_file()
+            and not {
+                ".pytest_cache",
+                "__pycache__",
+                "build",
+            }.intersection(path.parts)
         )
         for path in required_worktree_files:
             worktree_file = ROOT / path
@@ -184,6 +189,51 @@ class AlternateIndexTests(unittest.TestCase):
             "missing tracked file: tools/multisensor_alignment/README.md",
             result.stderr,
         )
+
+    def test_aligned_dataset_sdk_source_is_required(self) -> None:
+        path = (
+            "tools/multisensor_alignment/src/"
+            "vt_multisensor_alignment/dataset.py"
+        )
+        self.git("update-index", "--force-remove", "--", path)
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"missing tracked file: {path}", result.stderr)
+
+    def test_aligned_dataset_viewer_source_is_required(self) -> None:
+        path = (
+            "tools/multisensor_alignment/src/"
+            "vt_multisensor_alignment/viewer_app.py"
+        )
+        self.git("update-index", "--force-remove", "--", path)
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"missing tracked file: {path}", result.stderr)
+
+    def test_aligned_dataset_viewer_app_regression_test_is_required(self) -> None:
+        path = "tools/multisensor_alignment/tests/test_viewer_app.py"
+        self.git("update-index", "--force-remove", "--", path)
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"missing tracked file: {path}", result.stderr)
+
+    def test_alignment_manual_keeps_viewer_command(self) -> None:
+        path = "tools/multisensor_alignment/README.md"
+        manual = (ROOT / path).read_text(encoding="utf-8")
+        token = "vt-multisensor-view"
+        self.assertIn(token, manual)
+        self.add_index_blob(path, manual.replace(token, "removed-viewer"))
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"{path} is missing required text: {token}", result.stderr)
 
     def test_alignment_manual_keeps_validation_command(self) -> None:
         path = "tools/multisensor_alignment/README.md"
@@ -536,6 +586,12 @@ class WorkflowContractTests(unittest.TestCase):
             self.workflow,
         )
 
+    def test_repository_contract_installs_alignment_test_dependencies(self) -> None:
+        self.assertIn(
+            '-e "tools/multisensor_alignment[test]"',
+            self.workflow,
+        )
+
     def test_whitespace_check_compares_full_tip_to_empty_tree(self) -> None:
         self.assertIn(
             'EMPTY_TREE="$(git hash-object -w -t tree /dev/null)"',
@@ -561,6 +617,20 @@ class WorkflowContractTests(unittest.TestCase):
             "package-name: "
             "vt_camera_msgs vt_realsense_capture vt_tracker_msgs "
             "vt_vive_tracker",
+            self.workflow,
+        )
+
+    def test_ros_ci_runs_real_mcap_alignment_tests_in_sourced_workspace(self) -> None:
+        self.assertIn("id: ros_ci", self.workflow)
+        self.assertIn(
+            "${{ steps.ros_ci.outputs.ros-workspace-directory-name }}",
+            self.workflow,
+        )
+        self.assertIn("source \"${ROS_WORKSPACE}/install/setup.bash\"", self.workflow)
+        self.assertIn("test_*synthetic_mcap.py", self.workflow)
+        self.assertIn(
+            'PYTHONPATH="${REPOSITORY_ROOT}/tools/multisensor_alignment/src:'
+            '${PYTHONPATH}"',
             self.workflow,
         )
 

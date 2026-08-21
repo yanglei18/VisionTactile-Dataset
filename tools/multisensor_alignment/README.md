@@ -1,6 +1,6 @@
 # 三相机、三 Tracker 离线数据对齐工具
 
-本文是 `vt-multisensor-alignment 0.1.0` 的唯一操作入口。按照本文可以完成：
+本文是 `vt-multisensor-alignment 0.3.0` 的唯一操作入口。按照本文可以完成：
 
 ```text
 一个统一 MCAP bag
@@ -28,6 +28,10 @@
 - 使用三份有效外参计算每帧的 `vive_map_from_camera`；
 - 为未来动捕手套等 Topic 提供配置式 `nearest` / `previous` 通用适配；
 - 原子、拒绝覆盖地输出 JSON/JSONL/CSV/SVG，并支持哈希复验。
+- 通过 Python SDK 按帧读取原 bag 中的 RGB、Depth、CameraInfo、对齐后的
+  Tracker 位姿、时序消息和扩展流，不复制图像数据。
+- 使用独立离线 Viewer 同屏回放三相机 RGB/Depth、三 Tracker 顶视/侧视位姿，
+  或在无图形桌面环境导出单帧 PNG 快照。
 
 ### 1.2 当前版本不提供
 
@@ -122,7 +126,8 @@ source install/setup.bash
 python3 -m venv --system-site-packages "${VT_REPO}/.venv-alignment"
 source "${VT_REPO}/.venv-alignment/bin/activate"
 python -m pip install --upgrade pip
-python -m pip install "${VT_REPO}/tools/multisensor_alignment"
+sudo apt-get install python3-tk
+python -m pip install "${VT_REPO}/tools/multisensor_alignment[viewer]"
 ```
 
 验证：
@@ -130,11 +135,14 @@ python -m pip install "${VT_REPO}/tools/multisensor_alignment"
 ```bash
 vt-multisensor-align --version
 vt-multisensor-align --help
+vt-multisensor-view --version
+vt-multisensor-view --help
 python -c 'import rosbag2_py,rclpy,numpy,yaml; print("alignment_dependencies=OK")'
 python -c 'from vt_camera_msgs.msg import CameraFrameTiming; from vt_tracker_msgs.msg import TrackerSample; print("workspace_messages=OK")'
 ```
 
-预期版本为 `vt-multisensor-alignment 0.1.0`。
+两个命令的预期版本均为 `0.3.0`。仅使用对齐命令和 Python SDK、完全不需要
+可视化时，可以省略 `python3-tk` 并安装不带 `[viewer]` 的基础包。
 
 ## 6. 录制一个统一 bag
 
@@ -290,7 +298,7 @@ vt-multisensor-align validate --output "${ALIGN_OUTPUT}"
 {
   "verdict": "ACCEPTED",
   "aligned_frame_count": 12345,
-  "tool_version": "0.1.0"
+  "tool_version": "0.3.0"
 }
 ```
 
@@ -320,7 +328,277 @@ vive_map_from_camera
 
 平移单位为米，四元数顺序为 `x,y,z,w`。
 
-## 10. 阈值与门禁
+## 10. 使用 Python SDK 读取对齐数据
+
+SDK 将 `aligned_frames.jsonl` 作为索引，将原始 MCAP bag 作为像素和扩展消息的
+唯一数据源。它不会生成第二份图像，也不会修改 bag。打开时默认复验对齐目录哈希、
+JSONL 行号、质量 verdict，以及原 bag 目录名、存储格式和 `metadata.yaml` 哈希。
+
+### 10.1 环境和快速验证
+
+SDK 与对齐命令安装在同一个 Python 包中。读取 ROS 消息前必须同时 source ROS 2
+和本仓库工作空间：
+
+```bash
+test -z "${CONDA_PREFIX:-}"
+source /opt/ros/jazzy/setup.bash
+source "${VT_WS}/install/setup.bash"
+source "${VT_REPO}/.venv-alignment/bin/activate"
+
+python - <<'PY'
+from vt_multisensor_alignment import AlignedDataset
+print("aligned_dataset_sdk=OK", AlignedDataset)
+PY
+```
+
+设置两个已有目录：
+
+```bash
+export BAG="${VT_DATA_ROOT}/<session-id>/bag"
+export ALIGN_OUTPUT="${RUN_ROOT}/results/aligned-v01"
+test -f "${BAG}/metadata.yaml"
+test -f "${ALIGN_OUTPUT}/manifest.json"
+```
+
+### 10.2 读取一个完整对齐帧
+
+```python
+import os
+from vt_multisensor_alignment import AlignedDataset
+
+with AlignedDataset.open(
+    os.environ["ALIGN_OUTPUT"],
+    os.environ["BAG"],
+) as dataset:
+    print("frames:", len(dataset))
+    print("cameras:", dataset.camera_names)
+    print("trackers:", dataset.tracker_roles)
+    print("extensions:", dataset.additional_stream_names)
+
+    frame = dataset.frame(100)
+    d436 = frame.cameras["d436"]
+    if d436 is not None:
+        rgb = d436.color.array       # shape: H x W x 3, uint8
+        depth = d436.depth.array     # shape: H x W, uint16
+        camera_pose = d436.world_from_camera.as_matrix()
+
+    torso = frame.trackers["torso"]
+    if torso is not None:
+        tracker_pose = torso.world_from_tracker.as_matrix()
+```
+
+所有 SDK NumPy 数组均为只读。`Transform.as_matrix()` 返回 parent-from-child 的
+`4×4` 齐次矩阵；平移单位是米。Tracker 位姿直接使用对齐结果中已经完成的插值，
+读取时不会再次插值。
+
+Depth 保持 bag 内的原始 `uint16` 数值。SDK 没有可信的逐设备 depth scale 时不会
+擅自换算为米，也不会做彩色/深度配准。
+
+### 10.3 只读元数据，不解码图像
+
+`record()` 只读取 JSONL 索引，不打开 rosbag：
+
+```python
+with AlignedDataset.open(ALIGN_OUTPUT, BAG) as dataset:
+    record = dataset.record(0)
+    print(record.reference_time_ns)
+    print(record.cameras["d405_1"].color)
+    print(dataset.manifest["verdict"])
+    print(dataset.quality_report["rejection_reasons"])
+    print(dataset.reference_times_ns[:3])
+```
+
+`record.cameras[*].color/depth/timing` 是 `MessageRef`，包含 Topic、Topic 内
+sequence、rosbag 写入时间和消息源时间。sequence 只作为审计证据，随机访问由
+Topic、bag 时间和源时间三重核对完成。
+`reference_times_ns` 是打开目录时已经校验为严格递增的完整 host realtime 时间轴；
+Viewer 等下游可直接据此调度，无需逐行重新解析 JSONL。
+
+### 10.4 只读取需要的相机和模态
+
+```python
+with AlignedDataset.open(ALIGN_OUTPUT, BAG, cache_size=4) as dataset:
+    frame = dataset.frame(
+        100,
+        cameras=("d405_1", "d436"),
+        image_kinds=("color",),
+        include_timing=False,
+        additional_streams=(),
+    )
+```
+
+- `cameras=None` 表示三台相机；显式元组只加载指定相机；
+- `image_kinds` 支持 `color`、`depth` 或空元组；
+- `include_timing=False` 不反序列化 `CameraFrameTiming`；
+- `additional_streams=None` 表示所有已配置扩展流，空元组表示跳过；
+- `cache_size` 是已解码 `AlignedFrame` 的 LRU 数量，默认 8，设为 0 可关闭；
+- 负帧号遵循 Python 语义，例如 `dataset.frame(-1)` 是最后一帧。
+
+相机、Tracker 或扩展流在对齐行中明确为 `null` 时，SDK 保留 `None`，不会丢弃
+整行。非空引用在原 bag 中找不到则抛出异常，因为这表示 bag/索引损坏或选错。
+
+### 10.5 连续遍历
+
+```python
+with AlignedDataset.open(ALIGN_OUTPUT, BAG, cache_size=2) as dataset:
+    for frame in dataset.iter_frames(
+        start=0,
+        stop=300,
+        step=1,
+        cameras=("d405_1",),
+        image_kinds=("color", "depth"),
+        include_timing=False,
+        additional_streams=(),
+    ):
+        consume(frame)
+```
+
+正向遍历复用一个 rosbag 游标，比逐帧重新打开 bag 更高效。`step` 必须为正整数。
+随机向后访问会执行 seek。一个 `AlignedDataset` 实例不是线程安全对象；多进程训练
+或 DataLoader worker 必须让每个 worker 分别调用 `AlignedDataset.open()`。
+
+### 10.6 CameraInfo 和扩展流
+
+```python
+with AlignedDataset.open(ALIGN_OUTPUT, BAG) as dataset:
+    intrinsics = dataset.camera_info["d405_1"]
+    print(intrinsics.width, intrinsics.height)
+    print(intrinsics.k)  # 3 x 3, read-only
+
+    frame = dataset.frame(0, additional_streams=("left_glove",))
+    glove = frame.additional_streams["left_glove"]
+    if glove is not None:
+        ros_message = glove.message
+        print(glove.timestamp_ns, glove.delta_ns)
+```
+
+CameraInfo 按 manifest 中的 color optical frame 绑定到相机，并使用本 session 的
+第一条有效消息。扩展流返回实际 ROS 消息类型，因此必须 source 定义该消息的工作
+空间。通用扩展流只选择整条消息；SDK 不推测手套关节数组的插值规则。
+
+### 10.7 支持的图像编码
+
+| ROS encoding | dtype | 数组 shape |
+| --- | --- | --- |
+| `rgb8`、`bgr8` | `uint8` | `(height, width, 3)` |
+| `mono8` | `uint8` | `(height, width)` |
+| `mono16`、`16UC1` | native `uint16` | `(height, width)` |
+| `32FC1` | native `float32` | `(height, width)` |
+
+解码器遵循 `step`、行填充和 `is_bigendian`，但不会把 BGR 静默换成 RGB。其他
+encoding 会抛出 `UnsupportedEncodingError`。
+
+### 10.8 错误、拒绝结果和资源释放
+
+| 异常 | 含义 |
+| --- | --- |
+| `IntegrityError` | 对齐目录文件集合、大小或 SHA-256 不一致 |
+| `RejectedDatasetError` | 质量 verdict 为 `REJECTED` |
+| `SourceBagMismatchError` | 传入的 bag 不是 manifest 绑定的原 bag |
+| `DatasetFormatError` | JSON、消息字段、Topic 类型或 CameraInfo 合同错误 |
+| `MissingMessageError` | JSONL 中的非空消息引用无法从 bag 精确解析 |
+| `UnsupportedEncodingError` | Image encoding 不受支持 |
+| `DatasetClosedError` | 关闭后继续访问 dataset |
+
+默认不要绕过 `REJECTED`。仅用于诊断失败数据时才显式开启：
+
+```python
+dataset = AlignedDataset.open(
+    ALIGN_OUTPUT,
+    BAG,
+    allow_rejected=True,
+)
+```
+
+`verify_integrity=False` 只跳过五个输出文件的 SHA-256 重算；JSONL 结构和 source
+bag 身份仍强制检查。正式分析和首次打开一个结果时保持默认 `True`。
+
+优先使用 `with`。手工管理时必须调用 `close()`；它可重复调用，关闭后未解析的
+ROS 数据不能再访问。
+
+## 11. 离线可视化
+
+Viewer 是 `AlignedDataset` 的只读客户端。它不启动 ROS 节点、不打开相机或
+Dongle、不修改原 bag 和对齐目录，也不重新做时间匹配。默认仍执行对齐产物哈希、
+质量 verdict 和 source bag 身份校验。
+
+### 11.1 交互回放
+
+在有 Linux 图形桌面的终端执行：
+
+```bash
+vt-multisensor-view \
+  --alignment "${ALIGN_OUTPUT}" \
+  --bag "${BAG}"
+```
+
+默认窗口为 `1600×900`，深度色条固定为 `0.2–3.0 m`，Tracker 顶视 XY 和侧视
+XZ 的显示范围固定为原点正负 `2.0 m`。固定范围保证不同帧之间颜色和空间尺度不会
+自动跳变。三相机 color/depth 为上、下两行，右侧同时显示三 Tracker 的位置与
+局部 +X 朝向。
+
+| 按键 | 行为 |
+| --- | --- |
+| `Space` | 播放/暂停 |
+| `Left` / `Right` | 暂停并前后移动一帧 |
+| `Home` / `End` | 暂停并跳到首帧/末帧 |
+| `+` / `-` | 在 `0.25×、0.5×、1×、2×、4×` 之间调速 |
+| `Q` / `Esc` | 关闭窗口 |
+
+可在启动时覆盖显示参数：
+
+```bash
+vt-multisensor-view \
+  --alignment "${ALIGN_OUTPUT}" \
+  --bag "${BAG}" \
+  --start 300 \
+  --speed 0.5 \
+  --width 1280 \
+  --height 720 \
+  --depth-min-m 0.15 \
+  --depth-max-m 2.0 \
+  --tracker-range-m 1.5
+```
+
+`--start -1` 表示最后一帧。实时回放由 `reference_time_ns` 驱动；如果 bag 解码或
+绘制速度低于数据帧率，Viewer 会跳过中间的“显示帧”追赶当前数据时间，不会累积
+延迟。它不会删除、改写或漏读对齐索引；暂停后仍可逐帧检查任意原始帧。为降低
+I/O，Viewer 只请求 RGB、Depth 和已插值 Tracker，不反序列化 timing 与扩展流。
+
+### 11.2 无窗口 PNG 快照
+
+SSH、CI 或没有桌面显示服务时，可以渲染指定帧并退出：
+
+```bash
+vt-multisensor-view \
+  --alignment "${ALIGN_OUTPUT}" \
+  --bag "${BAG}" \
+  --start 100 \
+  --width 1600 \
+  --height 900 \
+  --export-frame "${RUN_ROOT}/results/frame-000100.png"
+```
+
+目标必须是已存在目录中的新 `.png` 文件；命令以排他方式创建 `0600`
+私有文件，拒绝覆盖已有或并发创建的快照，并在编码失败时删除不完整文件。成功时
+输出 JSON，包含绝对文件路径、`frame_index` 和 `reference_time_ns`。此模式需要
+Pillow，但不需要 Tk 窗口或 `DISPLAY`。
+
+### 11.3 可视化门禁与故障处理
+
+- 正式数据保持默认完整性校验；`--skip-integrity` 只用于已知产物的临时诊断；
+- `REJECTED` 结果默认不打开；仅调查失败原因时使用 `--allow-rejected`，窗口中的
+  质量标记不能被视为验收通过；
+- `Tk viewer is unavailable` 表示没有 `python3-tk`、没有图形桌面或 `DISPLAY`
+  无效；安装 Tk/进入桌面 session，或改用 `--export-frame`；
+- `UnsupportedEncodingError` 表示输入编码不在 SDK 支持表中，不能通过静默颜色
+  转换绕过；
+- 任一后续帧解码或绘制失败时窗口会立即关闭，CLI 返回非零错误，不会保留一张
+  已停止更新但看似仍在运行的旧画面；
+- 窗口刷新不足时先降为 `--width 1280 --height 720`，并确认原 bag 所在磁盘
+  能持续读取六路图像。Viewer 的自动追帧用于维持时间进度，不是数据质量补偿。
+
+## 12. 阈值与门禁
 
 默认值：
 
@@ -336,9 +614,9 @@ vive_map_from_camera
 不能为了让失败数据变绿而事后放宽阈值。需要不同阈值时，应在采集前形成新配置、
 记录理由并单独验收。
 
-## 11. 新增动捕手套等 Topic
+## 13. 新增动捕手套等 Topic
 
-### 11.1 加入统一 Recorder allowlist
+### 13.1 加入统一 Recorder allowlist
 
 参考硬件应复制 `ros2_ws/src/vt_realsense_capture/config/cameras.yaml` 到仓库外；
 其他硬件使用 `cameras.example.yaml` 后必须同时填写全部真实身份。然后在
@@ -358,7 +636,7 @@ recording:
 
 使用 `config_path:=<私有配置绝对路径>` 启动相机 launch。
 
-### 11.2 加入离线对齐配置
+### 13.2 加入离线对齐配置
 
 在 `alignment.yaml` 中配置：
 
@@ -384,7 +662,7 @@ additional_streams:
 当真实手套消息定义确定后，如需对每个关节角、位置或四元数插值，应新增并测试
 专用 typed adapter；不能假设所有手套消息都可以用同一种插值规则。
 
-## 12. 故障排查
+## 14. 故障排查
 
 ### `required topic is absent from bag`
 
@@ -424,7 +702,7 @@ NTP/手动校时、系统休眠/恢复或虚拟化迁移。应重新采集；dev
 
 每次结果使用新目录，例如 `aligned-v02`。保留旧结果以维持审计链，不要覆盖。
 
-## 13. 最终检查表
+## 15. 最终检查表
 
 - [ ] 原始数据和结果位于 Git 仓库外，目录权限为 `0700`、文件为 `0600`。
 - [ ] `ros2 bag info` 显示一个 bag 内至少包含全部 15 个核心 Topic。
@@ -436,5 +714,8 @@ NTP/手动校时、系统休眠/恢复或虚拟化迁移。应重新采集；dev
 - [ ] 所有 clock audit 为 valid，无 host realtime 跳变。
 - [ ] 人工查看 `diagnostics.svg` 和最大时间残差，没有异常尖峰。
 - [ ] 下游使用前记录 Git commit、工具版本、配置/外参哈希和 source bag 名称。
+- [ ] Python SDK 使用 manifest 绑定的原 bag 打开成功，并抽查随机帧与连续遍历结果。
+- [ ] `vt-multisensor-view` 能打开三相机/三 Tracker 仪表板，并成功导出一张不覆盖
+      既有文件的 PNG 抽查快照。
 
 上述检查全部通过，才可把该目录作为离线对齐产品交付。

@@ -66,6 +66,36 @@ class Transform:
         )
         return Transform(translation, quaternion)
 
+    def as_matrix(self) -> np.ndarray:
+        """Return this parent-from-child transform as a read-only 4x4 matrix."""
+        x, y, z, w = self.quaternion_xyzw
+        matrix = np.array(
+            [
+                [
+                    1.0 - 2.0 * (y * y + z * z),
+                    2.0 * (x * y - z * w),
+                    2.0 * (x * z + y * w),
+                    self.translation[0],
+                ],
+                [
+                    2.0 * (x * y + z * w),
+                    1.0 - 2.0 * (x * x + z * z),
+                    2.0 * (y * z - x * w),
+                    self.translation[1],
+                ],
+                [
+                    2.0 * (x * z - y * w),
+                    2.0 * (y * z + x * w),
+                    1.0 - 2.0 * (x * x + y * y),
+                    self.translation[2],
+                ],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
+        matrix.setflags(write=False)
+        return matrix
+
     def as_document(self) -> dict[str, list[float]]:
         return {
             "translation_m": [float(value) for value in self.translation],

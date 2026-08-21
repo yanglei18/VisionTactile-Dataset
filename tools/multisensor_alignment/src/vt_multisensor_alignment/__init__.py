@@ -1,6 +1,45 @@
-"""Offline alignment of one unified camera, Tracker, and extensible sensor bag."""
+"""Offline alignment and indexed reading of one unified multisensor bag."""
 
-from .model import Transform
+from .dataset import AlignedDataset
+from .errors import (
+    DatasetClosedError,
+    DatasetError,
+    DatasetFormatError,
+    IntegrityError,
+    MissingMessageError,
+    RejectedDatasetError,
+    SourceBagMismatchError,
+    UnsupportedEncodingError,
+)
+from .model import MessageRef, Transform
+from .sdk_model import (
+    AdditionalSample,
+    AlignedFrame,
+    CameraInfoData,
+    CameraSample,
+    ImageData,
+    RegionOfInterestData,
+    TrackerPose,
+)
 
-__all__ = ["Transform"]
-__version__ = "0.1.0"
+__all__ = [
+    "AdditionalSample",
+    "AlignedDataset",
+    "AlignedFrame",
+    "CameraInfoData",
+    "CameraSample",
+    "DatasetClosedError",
+    "DatasetError",
+    "DatasetFormatError",
+    "ImageData",
+    "IntegrityError",
+    "MessageRef",
+    "MissingMessageError",
+    "RegionOfInterestData",
+    "RejectedDatasetError",
+    "SourceBagMismatchError",
+    "TrackerPose",
+    "Transform",
+    "UnsupportedEncodingError",
+]
+__version__ = "0.3.0"
