@@ -54,8 +54,8 @@ Do not perform that operation as part of a routine release command.
 - Commands use repository-relative paths or documented environment variables;
   no developer worktree path remains.
 - Limitations are explicit: no hardware exposure synchronization, no shipped
-  device-specific camera/Tracker transform, no online extrinsic TF, and no
-  Tracker topics in the default camera bag.
+  device-specific camera/Tracker transform, no online extrinsic TF, and only
+  the three Tracker sample streams in the unified bag.
 - Private prerequisites are labeled as such and are not implied to ship in the
   public repository.
 - All relative Markdown links resolve and screenshots contain no private data.
@@ -76,6 +76,9 @@ cd ..
 PYTHONPATH=tools/tracker_camera_calibration/src \
   python3 -m unittest discover \
   -s tools/tracker_camera_calibration/tests -v
+PYTHONPATH=tools/multisensor_alignment/src \
+  python3 -m unittest discover \
+  -s tools/multisensor_alignment/tests -v
 python3 tools/test_check_public_tree.py
 python3 tools/check_public_tree.py
 python3 third_party/pyvut/tools/check_public_tree.py
@@ -92,12 +95,13 @@ commit.
 
 | Gate | Minimum evidence |
 | --- | --- |
-| Camera discovery | Three serial-bound nodes and all nine contract topics are visible. |
+| Unified stream discovery | Three serial-bound cameras, three Tracker roles, and all 15 core contract topics are visible. |
 | Camera recording | START reaches `RECORDING`; planned or manual STOP reaches `COMPLETE`; `ros2 bag info` shows the exact topic allowlist. |
 | Storage | Target filesystem has adequate measured margin for the intended session; result is recorded as environment evidence, not a Recorder gate. |
 | Tracker startup | Approved manual bootstrap completes and the read-only publisher owns the Dongle alone. |
 | Tracker ROS output | `vt-vive-validate-topics` reports `status=PASS roles=3 identity_swaps=0 dropped=0`. |
 | Tracker-camera calibration | Each final rigid pair exports `status: VALID`, holdout closure is at most 10 mm and 1 degree, and three independent runs meet the repeatability requirement. |
+| Unified offline alignment | `inspect`, `align`, and `validate` succeed; verdict is `ACCEPTED`; camera and Tracker coverage meet configured thresholds; all clock audits pass. |
 | Visualization | All roles transition to fresh/green when moved; closing the GUI or RViz does not affect the publisher. |
 | Long run | Project-specific 300-second camera and Tracker evidence is reviewed for drops, gaps, reconnects, and thermal/storage behavior. |
 

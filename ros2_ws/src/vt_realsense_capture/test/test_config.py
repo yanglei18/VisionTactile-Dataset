@@ -163,6 +163,7 @@ def test_stream_and_recording_constraints_are_exact():
     assert cfg.max_bag_duration_seconds == 300
     assert cfg.max_bag_size_bytes == 137438953472
     assert cfg.max_cache_size_bytes == 1073741824
+    assert cfg.additional_streams == ()
     assert tuple(field.name for field in fields(cfg)) == (
         "cameras",
         "width",
@@ -175,6 +176,7 @@ def test_stream_and_recording_constraints_are_exact():
         "max_bag_duration_seconds",
         "max_bag_size_bytes",
         "max_cache_size_bytes",
+        "additional_streams",
     )
 
 
@@ -185,6 +187,36 @@ def test_configuration_dataclasses_are_frozen():
         cfg.fps = 29
     with pytest.raises(FrozenInstanceError):
         cfg.cameras[0].serial = "different"
+
+
+def test_additional_glove_streams_are_validated_and_sorted(tmp_path):
+    document = yaml.safe_load(CONFIG.read_text())
+    document["recording"]["additional_streams"] = [
+        {"topic": "/gloves/right/state", "type": "glove_msgs/msg/GloveState"},
+        {"topic": "/gloves/left/state", "type": "glove_msgs/msg/GloveState"},
+    ]
+    cfg = load_config(_write_document(tmp_path, document))
+    assert [stream.topic for stream in cfg.additional_streams] == [
+        "/gloves/left/state",
+        "/gloves/right/state",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("topic", "type_name"),
+    [
+        ("gloves/left/state", "glove_msgs/msg/GloveState"),
+        ("/gloves/*", "glove_msgs/msg/GloveState"),
+        ("/gloves/left/state", "GloveState"),
+    ],
+)
+def test_invalid_additional_stream_is_rejected(tmp_path, topic, type_name):
+    document = yaml.safe_load(CONFIG.read_text())
+    document["recording"]["additional_streams"] = [
+        {"topic": topic, "type": type_name}
+    ]
+    with pytest.raises(ValueError, match="absolute ROS topic|ROS message type"):
+        load_config(_write_document(tmp_path, document))
 
 
 def test_duplicate_serial_is_rejected(tmp_path):

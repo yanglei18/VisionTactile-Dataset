@@ -22,7 +22,7 @@ class AlternateIndexTests(unittest.TestCase):
             Path(self.temp_dir.name) / "alternate-index"
         )
         self.git("read-tree", "HEAD")
-        for path in (
+        required_worktree_files = (
             "README.md",
             "README.zh-CN.md",
             "THIRD_PARTY_NOTICES.md",
@@ -59,7 +59,12 @@ class AlternateIndexTests(unittest.TestCase):
             "tools/tracker_camera_calibration/tests/test_pairing.py",
             "tools/tracker_camera_calibration/tests/test_repeatability.py",
             "tools/tracker_camera_calibration/tests/test_transforms.py",
-        ):
+        ) + tuple(
+            str(path.relative_to(ROOT))
+            for path in sorted((ROOT / "tools/multisensor_alignment").rglob("*"))
+            if path.is_file() and "__pycache__" not in path.parts
+        )
+        for path in required_worktree_files:
             worktree_file = ROOT / path
             if worktree_file.is_file():
                 self.add_index_blob(
@@ -163,6 +168,34 @@ class AlternateIndexTests(unittest.TestCase):
             "missing tracked file: docs/tracker-camera-calibration.md",
             result.stderr,
         )
+
+    def test_multisensor_alignment_manual_is_required(self) -> None:
+        self.git(
+            "update-index",
+            "--force-remove",
+            "--",
+            "tools/multisensor_alignment/README.md",
+        )
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(
+            "missing tracked file: tools/multisensor_alignment/README.md",
+            result.stderr,
+        )
+
+    def test_alignment_manual_keeps_validation_command(self) -> None:
+        path = "tools/multisensor_alignment/README.md"
+        manual = (ROOT / path).read_text(encoding="utf-8")
+        token = "vt-multisensor-align validate"
+        self.assertIn(token, manual)
+        self.add_index_blob(path, manual.replace(token, "removed-command"))
+
+        result = self.run_checker()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"{path} is missing required text: {token}", result.stderr)
 
     def test_product_calibration_manual_keeps_repeatability_command(self) -> None:
         path = "tools/tracker_camera_calibration/README.md"
@@ -492,6 +525,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("submodules: recursive", self.workflow)
         self.assertIn(
             "python3 third_party/pyvut/tools/check_public_tree.py",
+            self.workflow,
+        )
+
+    def test_repository_contract_runs_multisensor_alignment_tests(self) -> None:
+        self.assertIn(
+            "PYTHONPATH=tools/multisensor_alignment/src "
+            "python3 -m unittest discover "
+            "-s tools/multisensor_alignment/tests -v",
             self.workflow,
         )
 

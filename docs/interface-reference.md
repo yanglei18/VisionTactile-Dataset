@@ -40,22 +40,28 @@ The supported stream contract is RGB8 color plus Z16 depth at
 bag duration, 128 GiB maximum bag size, and 1 GiB rosbag cache. These values
 are configuration-contract values, not runtime quality guarantees.
 
-### Recorded camera topics
+### Recorded unified topics
 
-The allowlist contains exactly these nine best-effort, volatile topics. The
+The core allowlist contains exactly these 15 best-effort, volatile topics. The
 Recorder applies keep-last depth 30 QoS overrides.
 
-| Camera | Color | Depth | Timing |
-| --- | --- | --- | --- |
-| `d405_1` | `/d405_1/color/image_raw` | `/d405_1/depth/image_rect_raw` | `/d405_1/frame_timing` |
-| `d405_2` | `/d405_2/color/image_raw` | `/d405_2/depth/image_rect_raw` | `/d405_2/frame_timing` |
-| `d436` | `/d436/color/image_raw` | `/d436/depth/image_rect_raw` | `/d436/frame_timing` |
+| Camera | Color | Depth | Color intrinsics | Timing |
+| --- | --- | --- | --- | --- |
+| `d405_1` | `/d405_1/color/image_raw` | `/d405_1/depth/image_rect_raw` | `/d405_1/color/camera_info` | `/d405_1/frame_timing` |
+| `d405_2` | `/d405_2/color/image_raw` | `/d405_2/depth/image_rect_raw` | `/d405_2/color/camera_info` | `/d405_2/frame_timing` |
+| `d436` | `/d436/color/image_raw` | `/d436/depth/image_rect_raw` | `/d436/color/camera_info` | `/d436/frame_timing` |
 
-Calibration, TF, raw RealSense metadata, and all `/capture/*` topics may be
-visible live but are not recorded by the default contract.
+| Tracker role | Recorded Topic | Type |
+| --- | --- | --- |
+| `left_wrist` | `/vive/left_wrist/sample` | `vt_tracker_msgs/msg/TrackerSample` |
+| `right_wrist` | `/vive/right_wrist/sample` | `vt_tracker_msgs/msg/TrackerSample` |
+| `torso` | `/vive/torso/sample` | `vt_tracker_msgs/msg/TrackerSample` |
 
-The separate calibration workflow records its own dedicated bag and does not
-alter this allowlist. See
+Calibration results, TF, raw RealSense metadata, Tracker `/pose` and `/status`,
+and all `/capture/*` topics may be visible live but are not recorded. Explicit
+`recording.additional_streams` entries are sorted after the 15-topic core.
+
+The separate calibration workflow records its own dedicated bag. See
 [Tracker–camera offline calibration](tracker-camera-calibration.md).
 
 ### Capture control topics
@@ -131,7 +137,8 @@ Each role is one of `left_wrist`, `right_wrist`, or `torso`.
 | `/vive/<role>/status` | `vt_tracker_msgs/msg/TrackerStatus` | reliable, transient-local, depth 1 | Connection/tracking state and cumulative counters. |
 
 The publisher emits no TF and does not align `vive_map` with any RealSense
-frame. Tracker topics are not part of the default camera bag.
+frame. Only the three `/sample` topics enter the unified bag; convenience pose
+and status streams remain live-only.
 
 ## Visualization launch arguments
 
@@ -157,6 +164,9 @@ changes pairing or mapping, starts the publisher, nor records data.
 | `vt-tracker-camera-calibrate board` | Render the configured printable ChArUco board with DPI metadata. | `--config`, `--output`, optional `--dpi` |
 | `vt-tracker-camera-calibrate calibrate` | Read a dedicated bag, solve Tracker-to-color-optical external calibration, validate it, and export immutable artifacts. | `--bag`, `--config`, `--output` |
 | `vt-tracker-camera-calibrate compare` | Verify identity consistency and pairwise repeatability across at least three valid calibration runs, then identify the run closest to their consensus. | `--inputs`, `--output`, optional repeatability thresholds |
+| `vt-multisensor-align inspect` | Check one unified bag's required topics, types, identities, frames, and valid input counts without writing output. | `--bag`, `--config` |
+| `vt-multisensor-align align` | Match three cameras, interpolate three Tracker streams, apply three external calibrations, and atomically export an alignment index. | `--bag`, `--config`, `--extrinsics`, `--output` |
+| `vt-multisensor-align validate` | Recompute output integrity hashes and verify row count and quality verdict. | `--output` |
 
 Use `--help` on the installed command as the final authority for CLI syntax in
 the checked-out version.

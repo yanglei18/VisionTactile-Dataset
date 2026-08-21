@@ -5,6 +5,10 @@ All notable changes to this project are documented here.
 ## [0.3.0] - 2026-08-19
 
 ### Added
+- A standalone unified-bag offline alignment package with strict topic/type and
+  identity gates, host-clock audit, ordered three-camera matching, bounded
+  three-Tracker interpolation, external-calibration composition, generic future
+  stream adapters, and atomic JSON/JSONL/CSV/SVG output validation.
 - An independent offline Tracker-to-RealSense hand-eye calibration package
   with ChArUco generation/detection, rosbag2 host-time correlation, multiple
   OpenCV solvers, holdout validation, and immutable YAML/JSON/CSV/SVG outputs.
@@ -37,8 +41,9 @@ All notable changes to this project are documented here.
   bootstrap, fixed-role pose streaming, CI, and a sanitized one-commit history.
 
 ### Changed
-- **Breaking:** the default MCAP contract is now exactly six image topics and
-  three `CameraFrameTiming` topics, written without real-time compression.
+- **Breaking:** the default MCAP contract is now one unified bag containing six
+  image, three `CameraInfo`, three `CameraFrameTiming`, and three
+  `TrackerSample` topics, plus only explicitly configured extensions.
 - **Breaking:** `COMPLETE` now reports only that the Recorder process
   lifecycle finished; it makes no recorded-data quality claim.
 - Capture control now follows the direct

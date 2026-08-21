@@ -32,8 +32,14 @@ _STREAM_KEYS = frozenset(
     }
 )
 _RECORDING_KEYS = frozenset(
-    {"max_bag_duration_seconds", "max_bag_size_bytes", "max_cache_size_bytes"}
+    {
+        "max_bag_duration_seconds",
+        "max_bag_size_bytes",
+        "max_cache_size_bytes",
+        "additional_streams",
+    }
 )
+_ADDITIONAL_STREAM_KEYS = frozenset({"topic", "type"})
 _T = TypeVar("_T")
 
 
@@ -45,6 +51,12 @@ class CameraConfig:
     firmware: str
     asic_serial: str
     color_module: ColorModule
+
+
+@dataclass(frozen=True)
+class AdditionalStreamConfig:
+    topic: str
+    type_name: str
 
 
 @dataclass(frozen=True)
@@ -60,9 +72,14 @@ class CaptureConfig:
     max_bag_duration_seconds: int
     max_bag_size_bytes: int
     max_cache_size_bytes: int
+    additional_streams: tuple[AdditionalStreamConfig, ...]
 
 
 _CAMERA_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_ABSOLUTE_TOPIC_PATTERN = re.compile(r"(?:/[A-Za-z_][A-Za-z0-9_]*)+")
+_ROS_TYPE_PATTERN = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*/msg/[A-Za-z_][A-Za-z0-9_]*"
+)
 _EXPECTED_CAMERA_TOPOLOGY = (
     ("D405", "depth_module"),
     ("D405", "depth_module"),
@@ -148,6 +165,33 @@ def _reject_duplicates(cameras: tuple[CameraConfig, ...]) -> None:
             raise ValueError(f"duplicate {field} in camera configuration")
 
 
+def _load_additional_stream(value: object, index: int) -> AdditionalStreamConfig:
+    context = f"recording.additional_streams[{index}]"
+    stream = _mapping(value, context)
+    _reject_unexpected_keys(stream, _ADDITIONAL_STREAM_KEYS, context)
+    topic = _required_nonempty_string(stream, "topic", context)
+    type_name = _required_nonempty_string(stream, "type", context)
+    if _ABSOLUTE_TOPIC_PATTERN.fullmatch(topic) is None:
+        raise ValueError(f"{context}.topic must be an absolute ROS topic")
+    if _ROS_TYPE_PATTERN.fullmatch(type_name) is None:
+        raise ValueError(f"{context}.type must be a ROS message type")
+    return AdditionalStreamConfig(topic=topic, type_name=type_name)
+
+
+def _load_additional_streams(recording: Mapping[str, object]) -> tuple[AdditionalStreamConfig, ...]:
+    values = recording.get("additional_streams")
+    if not isinstance(values, list):
+        raise ValueError("recording.additional_streams must be a list")
+    streams = tuple(
+        _load_additional_stream(value, index)
+        for index, value in enumerate(values)
+    )
+    topics = [stream.topic for stream in streams]
+    if len(topics) != len(set(topics)):
+        raise ValueError("duplicate topic in recording.additional_streams")
+    return tuple(sorted(streams, key=lambda stream: stream.topic))
+
+
 def _validate_capture_contract(config: CaptureConfig) -> None:
     if len(config.cameras) != 3:
         raise ValueError("capture configuration requires exactly three cameras")
@@ -180,6 +224,16 @@ def _validate_capture_contract(config: CaptureConfig) -> None:
         raise ValueError(
             "recording configuration does not match fixed capture contract"
         )
+    from .bag_contract import expected_topics
+
+    core_topics = set(
+        expected_topics(tuple(camera.name for camera in config.cameras))
+    )
+    for stream in config.additional_streams:
+        if stream.topic in core_topics:
+            raise ValueError(
+                f"additional stream duplicates core topic: {stream.topic}"
+            )
 
 
 def load_config(path: Path) -> CaptureConfig:
@@ -227,6 +281,7 @@ def load_config(path: Path) -> CaptureConfig:
         max_cache_size_bytes=_required(
             recording, "max_cache_size_bytes", int, "recording"
         ),
+        additional_streams=_load_additional_streams(recording),
     )
     _validate_capture_contract(config)
     return config

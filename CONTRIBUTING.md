@@ -31,6 +31,13 @@ Before opening a pull request:
    source install/setup.bash
    colcon test --event-handlers console_direct+
    colcon test-result --all --verbose
+   cd ..
+   PYTHONPATH=tools/tracker_camera_calibration/src \
+     python3 -m unittest discover \
+     -s tools/tracker_camera_calibration/tests -v
+   PYTHONPATH=tools/multisensor_alignment/src \
+     python3 -m unittest discover \
+     -s tools/multisensor_alignment/tests -v
    ```
 
    Do not use a symlinked install for this workflow.

@@ -12,7 +12,12 @@ from typing import IO, Callable, Protocol
 
 import yaml
 
-from .bag_contract import expected_topic_type, expected_topics
+from .bag_contract import (
+    CAMERA_TOPIC_SUFFIXES,
+    camera_topics,
+    expected_topics,
+    tracker_topics,
+)
 
 _CAMERA_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _ABSOLUTE_TOPIC_PATTERN = re.compile(
@@ -50,7 +55,10 @@ class RecorderStopResult:
         return self.valid
 
 
-def required_topics(camera_names: Sequence[str]) -> tuple[str, ...]:
+def required_topics(
+    camera_names: Sequence[str],
+    additional_topics: Sequence[str] = (),
+) -> tuple[str, ...]:
     """Return the explicit recorder allowlist for *camera_names*."""
 
     if isinstance(camera_names, (str, bytes)):
@@ -66,12 +74,35 @@ def required_topics(camera_names: Sequence[str]) -> tuple[str, ...]:
     if len(names) != len(set(names)):
         raise ValueError("camera names must be unique")
 
-    return tuple(expected_topics(names))
+    extras = _validated_additional_topics(additional_topics)
+    core = set(expected_topics(names))
+    overlap = core.intersection(extras)
+    if overlap:
+        raise ValueError(
+            f"additional topics duplicate core stream: {sorted(overlap)[0]}"
+        )
+    return tuple(expected_topics(names, extras))
 
 
 def _qos_profile(topic: str) -> dict[str, object]:
-    expected_topic_type(topic)
+    if _ABSOLUTE_TOPIC_PATTERN.fullmatch(topic) is None:
+        raise ValueError(f"unsupported recorder topic: {topic}")
     return dict(_BEST_EFFORT_PROFILE)
+
+
+def _validated_additional_topics(topics: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(topics, (str, bytes)):
+        raise ValueError("additional topics must be an explicit sequence")
+    values = tuple(topics)
+    if any(
+        not isinstance(topic, str)
+        or _ABSOLUTE_TOPIC_PATTERN.fullmatch(topic) is None
+        for topic in values
+    ):
+        raise ValueError("additional topics must be absolute ROS names")
+    if len(values) != len(set(values)):
+        raise ValueError("additional topics must not contain duplicates")
+    return tuple(sorted(values))
 
 
 def _validated_topics(topics: Sequence[str]) -> tuple[str, ...]:
@@ -89,28 +120,39 @@ def _validated_topics(topics: Sequence[str]) -> tuple[str, ...]:
     if len(values) != len(set(values)):
         raise ValueError("topic list must not contain duplicates")
 
-    for topic in values:
-        try:
-            expected_topic_type(topic)
-        except ValueError as exc:
-            raise ValueError(f"unsupported recorder topic: {topic}") from exc
     return values
 
 
 def _validated_record_topics(topics: Sequence[str]) -> tuple[str, ...]:
     values = _validated_topics(topics)
-    camera_names = {
-        topic.split("/", 2)[1]
-        for topic in values
-    }
-    if (
-        len(camera_names) != 3
-        or values != tuple(expected_topics(tuple(camera_names)))
-    ):
+    camera_topic_count = 3 * len(CAMERA_TOPIC_SUFFIXES)
+    core_topic_count = camera_topic_count + len(tracker_topics())
+    if len(values) < core_topic_count:
         raise ValueError(
-            "record topics must match the exact three-camera "
-            "recorder-only contract"
+            "record topics must contain the exact three-camera unified dataset core"
         )
+    camera_names = tuple(
+        dict.fromkeys(
+            topic.split("/", 2)[1]
+            for topic in values[:camera_topic_count]
+            if any(
+                topic.endswith(f"/{suffix}")
+                for suffix in CAMERA_TOPIC_SUFFIXES
+            )
+        )
+    )
+    if len(camera_names) != 3:
+        raise ValueError(
+            "record topics must contain the exact three-camera unified dataset core"
+        )
+    core = (*camera_topics(camera_names), *tracker_topics())
+    if values[:core_topic_count] != core:
+        raise ValueError(
+            "record topics must contain the canonical unified dataset core"
+        )
+    extras = values[core_topic_count:]
+    if tuple(sorted(extras)) != extras or set(core).intersection(extras):
+        raise ValueError("additional record topics must be unique and sorted")
     return values
 
 

@@ -33,13 +33,19 @@ CAMERA_NAMES = ("d405_1", "d405_2", "d436")
 EXPECTED_TOPICS = (
     "/d405_1/color/image_raw",
     "/d405_1/depth/image_rect_raw",
+    "/d405_1/color/camera_info",
     "/d405_1/frame_timing",
     "/d405_2/color/image_raw",
     "/d405_2/depth/image_rect_raw",
+    "/d405_2/color/camera_info",
     "/d405_2/frame_timing",
     "/d436/color/image_raw",
     "/d436/depth/image_rect_raw",
+    "/d436/color/camera_info",
     "/d436/frame_timing",
+    "/vive/left_wrist/sample",
+    "/vive/right_wrist/sample",
+    "/vive/torso/sample",
 )
 PACKAGE_ROOT = Path(__file__).parents[1]
 MCAP_WRITER_OPTIONS = PACKAGE_ROOT / "config" / "mcap_writer_options.yaml"
@@ -47,20 +53,21 @@ STORAGE_BENCH_SCRIPT = PACKAGE_ROOT / "scripts" / "storage_bench.py"
 REPOSITORY_ROOT = PACKAGE_ROOT.parents[2]
 
 
-def test_bag_contract_constants_are_exact_recorder_only_schema() -> None:
+def test_bag_contract_constants_are_exact_unified_dataset_schema() -> None:
     assert CAMERA_TOPIC_SUFFIXES == (
         "color/image_raw",
         "depth/image_rect_raw",
+        "color/camera_info",
         "frame_timing",
     )
     assert SYSTEM_TOPICS == ()
-    assert SCHEMA_VERSION == "recorder-only-v1"
+    assert SCHEMA_VERSION == "unified-dataset-v1"
 
 
-def test_required_topics_are_exact_recorder_only_contract() -> None:
+def test_required_topics_are_exact_unified_dataset_contract() -> None:
     assert required_topics(CAMERA_NAMES) == EXPECTED_TOPICS
     assert tuple(expected_topic_types(CAMERA_NAMES)) == EXPECTED_TOPICS
-    assert len(set(EXPECTED_TOPICS)) == 9
+    assert len(set(EXPECTED_TOPICS)) == 15
 
 
 @pytest.mark.parametrize(
@@ -81,6 +88,16 @@ def test_required_topics_are_exact_recorder_only_contract() -> None:
             "vt_camera_msgs/msg/CameraFrameTiming",
             id="frame-timing",
         ),
+        pytest.param(
+            "/camera/color/camera_info",
+            "sensor_msgs/msg/CameraInfo",
+            id="camera-info",
+        ),
+        pytest.param(
+            "/vive/left_wrist/sample",
+            "vt_tracker_msgs/msg/TrackerSample",
+            id="tracker-sample",
+        ),
     ],
 )
 def test_expected_topic_type_accepts_exact_structural_contract(
@@ -98,7 +115,6 @@ def test_expected_topic_type_accepts_exact_structural_contract(
         pytest.param(
             "/d405_1/depth/frame_timing", id="legacy-depth-timing"
         ),
-        pytest.param("/camera/color/camera_info", id="camera-info"),
         pytest.param("/camera/color/metadata", id="metadata"),
         pytest.param("/camera/extrinsics/depth_to_color", id="extrinsics"),
         pytest.param("/tf_static", id="system-topic"),
@@ -113,10 +129,10 @@ def test_expected_topic_type_accepts_exact_structural_contract(
         pytest.param(1, id="non-string"),
     ],
 )
-def test_expected_topic_type_rejects_topics_outside_recorder_only_structure(
+def test_expected_topic_type_rejects_topics_outside_unified_dataset_structure(
     topic: object,
 ) -> None:
-    with pytest.raises(ValueError, match="unsupported recorder-only-v1 topic"):
+    with pytest.raises(ValueError, match="unsupported unified-dataset-v1 topic"):
         expected_topic_type(topic)  # type: ignore[arg-type]
 
 
@@ -179,7 +195,6 @@ def test_qos_overrides_are_best_effort_depth_30(tmp_path: Path) -> None:
         pytest.param(("camera/frame_timing",), id="relative"),
         pytest.param(("/capture/*",), id="wildcard"),
         pytest.param(("/capture/{name}",), id="substitution"),
-        pytest.param(("/other/topic",), id="unsupported"),
         pytest.param((1,), id="non-string"),
     ],
 )
@@ -476,10 +491,6 @@ def test_record_command_requires_explicit_valid_topics(
             required_topics(CAMERA_NAMES)[:-1], id="missing-camera-topic"
         ),
         pytest.param(
-            required_topics(CAMERA_NAMES) + ("/other/color/image_raw",),
-            id="extra-fourth-camera-topic",
-        ),
-        pytest.param(
             (
                 "/other/color/image_raw",
                 *required_topics(CAMERA_NAMES)[1:],
@@ -503,9 +514,49 @@ def test_record_command_rejects_noncanonical_contract_selections(
     arguments["topics"] = topics
 
     with pytest.raises(
-        ValueError, match="exact three-camera recorder-only contract"
+        ValueError, match="three-camera unified dataset core|canonical unified dataset core"
     ):
         build_record_command(**arguments)  # type: ignore[arg-type]
+
+
+def test_additional_glove_topics_extend_contract_deterministically(
+    tmp_path: Path,
+) -> None:
+    topics = required_topics(
+        CAMERA_NAMES,
+        ("/gloves/right/state", "/gloves/left/state"),
+    )
+    assert topics[-2:] == ("/gloves/left/state", "/gloves/right/state")
+    storage = tmp_path / "mcap_writer_options.yaml"
+    storage.write_text(MCAP_WRITER_OPTIONS.read_text())
+    qos = tmp_path / "qos.yaml"
+    write_qos_overrides(qos, topics)
+    command = build_record_command(
+        output_path=tmp_path / "bag",
+        storage_config_path=storage,
+        qos_overrides_path=qos,
+        topics=topics,
+    )
+    assert command[-2:] == ["/gloves/left/state", "/gloves/right/state"]
+
+
+def test_additional_topic_may_share_a_core_suffix_without_becoming_a_camera(
+    tmp_path: Path,
+) -> None:
+    topics = required_topics(CAMERA_NAMES, ("/glove/color/image_raw",))
+    storage = tmp_path / "mcap_writer_options.yaml"
+    storage.write_text(MCAP_WRITER_OPTIONS.read_text())
+    qos = tmp_path / "qos.yaml"
+    write_qos_overrides(qos, topics)
+
+    command = build_record_command(
+        output_path=tmp_path / "bag",
+        storage_config_path=storage,
+        qos_overrides_path=qos,
+        topics=topics,
+    )
+
+    assert command[-1] == "/glove/color/image_raw"
 
 
 class FakeProcess:

@@ -28,8 +28,12 @@ TARGET_DATA_TOPICS = frozenset(
     for topic in (
         f'/{camera_name}/color/image_raw',
         f'/{camera_name}/depth/image_rect_raw',
+        f'/{camera_name}/color/camera_info',
         f'/{camera_name}/frame_timing',
     )
+) | frozenset(
+    f'/vive/{role}/sample'
+    for role in ('left_wrist', 'right_wrist', 'torso')
 )
 ROS_INFRASTRUCTURE_TOPICS = frozenset({'/parameter_events', '/rosout'})
 

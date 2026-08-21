@@ -15,21 +15,21 @@ rosbag Recorder 进程。
 - 软件目标环境：Ubuntu 24.04、ROS 2 Jazzy、RealSense ROS 4.58.1。
 - 运行时录制使用 ROS 2 Jazzy 的 `ros2bag` CLI。
 - 参考配置不代表硬件曝光同步，也不代表已录数据的质量。
-- 已提供相机采集和独立的三 Tracker 只读 ROS 2 发布节点；Tracker 尚未加入默认
-  相机 bag。
-- 已提供独立离线 Tracker–RealSense 手眼标定工具；专用标定 bag 和设备外参不在
-  默认九 Topic bag 中。
-- 相机与 Tracker 源码均可通过带 submodule 的公开仓库复现；Tracker 真机启动还
-  需要操作者在 Git 之外保存的私有启动抓包、bundle 和角色映射，这些私有输入
-  永远不写入仓库。
+- 已提供相机采集和三 Tracker 只读 ROS 2 发布节点；选定的数据流写入同一个统一
+  正式 bag。
+- 已提供独立离线 Tracker–RealSense 手眼标定工具，以及使用三组身份绑定外参对齐
+  统一 bag 的离线工具；专用标定 bag 和设备外参不进入正式 bag。
+- 相机与 Tracker 源码可从带 submodule 的公开仓库复现；Tracker 真机启动仍需要
+  操作者在 Git 之外保存的私有 bootstrap bundle 和角色映射。
 
 ## 默认 bag 契约
 
-默认 bag = **6 Image + 3 CameraFrameTiming = 9 topics**。每台
-`d405_1`、`d405_2` 和 `d436` 分别贡献彩色图像、深度图像和成组时序
-三个 topic；allowlist 是明确且不含通配符的。
+默认 bag = **6 Image + 3 CameraInfo + 3 CameraFrameTiming + 3
+TrackerSample = 15 topics**。每台相机贡献彩色、深度、彩色内参和成组时序，
+三个物理 Tracker role 各贡献一路 sample；allowlist 明确且不含通配符。后续数据
+流必须通过配置显式加入。
 
-全部九个录制 topic 均使用 **keep-last depth 30、best-effort、volatile**
+全部 15 个录制 topic 均使用 **keep-last depth 30、best-effort、volatile**
 QoS overrides。
 
 `COMPLETE = Recorder process lifecycle complete; it is not a data-quality claim.`
@@ -37,8 +37,8 @@ QoS overrides。
 
 Recorder 以 MCAP 写入，no real-time rosbag or MCAP compression.
 
-标定信息、TF、RealSense 原始 metadata 和 session 描述不在 bag 中；如需这些
-信息，应从录制 allowlist 之外的来源另行获取。
+标定结果、TF、RealSense 原始 metadata、Tracker status/pose 便利 Topic 和
+session 描述不在 bag 中。
 
 ## 参考硬件
 
@@ -79,22 +79,23 @@ ros2 launch vt_realsense_capture triple_realsense.launch.py \
 
 - [最终用户手册（开源发布版）](docs/user-manual.md)
 - [启动参数、Topic、QoS 与命令行接口参考](docs/interface-reference.md)
-- [架构与九 topic 契约](docs/architecture.md)
+- [架构与统一 15 topic 契约](docs/architecture.md)
 - [采集指南](docs/capture-guide.md)
 - [硬件参考](docs/hardware-reference.md)
 - [故障排查](docs/troubleshooting.md)
 - [VIVE Tracker ROS 2 发布与验收](docs/tracker-ros2-publisher.md)
 - [Tracker 与 RealSense 离线外参标定](docs/tracker-camera-calibration.md)
 - [Tracker–RealSense 外参标定一本式产品操作手册](tools/tracker_camera_calibration/README.md)
+- [统一 bag 离线对齐一本式产品操作手册](tools/multisensor_alignment/README.md)
 - [维护者发布检查表](docs/release-checklist.md)
 
 ## 范围与限制
 
-本版本不宣称跨相机硬件曝光同步，也未实现离线跨相机对齐、点云生成、触觉采集、
-在线外参 TF 发布或相机与 Tracker 联合正式录制。已提供相机/Tracker 离线手眼
-标定软件，但三组真实外参仍需使用最终刚性硬件逐组标定和验收。Tracker 节点只
-发布原生 `vive_map` 坐标且不发布 TF。`CameraFrameTiming` 只描述单台相机内部的
-软件分组；实验适用性需要对已录数据另行检查。
+本版本不宣称跨相机硬件曝光同步，也未实现点云生成、动捕手套专用关节插值或在线
+外参 TF 发布。已提供相机/Tracker 离线手眼标定与统一 bag 离线对齐，但三组真实
+外参仍需使用最终刚性硬件逐组标定和验收。Tracker 节点只发布原生 `vive_map`
+坐标且不发布 TF。`CameraFrameTiming` 只描述单台相机内部的软件分组；离线工具
+基于 host time 匹配并报告覆盖率，不等同于同时曝光。
 
 ## 贡献
 

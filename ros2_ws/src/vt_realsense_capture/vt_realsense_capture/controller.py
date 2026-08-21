@@ -194,7 +194,8 @@ class CaptureController:
         self._request_cache_size = request_cache_size
         self._machine = CaptureStateMachine(request_cache_size=request_cache_size)
         self._topics = required_topics(
-            tuple(camera.name for camera in config.cameras)
+            tuple(camera.name for camera in config.cameras),
+            tuple(stream.topic for stream in config.additional_streams),
         )
         self._commands: OrderedDict[
             str, tuple[CommandKind, CommandReceipt]

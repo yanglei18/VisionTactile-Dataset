@@ -29,3 +29,4 @@ recording:
   max_bag_duration_seconds: 300
   max_bag_size_bytes: 137438953472
   max_cache_size_bytes: 1073741824
+  additional_streams: []

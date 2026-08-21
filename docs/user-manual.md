@@ -17,28 +17,34 @@
 
 - Ubuntu 24.04、ROS 2 Jazzy 下的两台 D405 与一台 D436 采集；
 - 每台相机的软件时序分组信息；
-- 手动 START/STOP 控制的九 topic、无压缩 MCAP 录制；
+- 手动 START/STOP 控制的 15 个核心 topic、单一无压缩 MCAP 统一录制；
 - 三只已配对、已建图 VIVE Ultimate Tracker 的 Linux 只读 ROS 2 发布；
 - Tracker 的 RViz2 与独立桌面监视器；
 - Tracker 与 RealSense 彩色光学坐标系的独立离线手眼标定工具；
+- 三相机、三 Tracker 与配置式新增数据流的独立离线对齐工具；
 - 软件测试、真机验收命令和公开仓库检查工具。
 
 当前版本不提供：
 
-- 三相机硬件曝光同步或帧级跨相机对齐；
+- 三相机硬件曝光同步；
 - 三组设备专属外参成品、在线外参 TF 发布或自动标定数据录制；
 - Tracker 配对、建图、固件更新或自动恢复写操作；
-- 相机与 Tracker 的联合录制；
+- 点云融合、动捕手套专用关节插值或在线外参 TF 发布；
 - 对录制数据质量、无丢帧或实验适用性的自动保证。
 
 系统模块与数据流见[架构说明](architecture.md)，所有公开参数与 topic 见
 [接口参考](interface-reference.md)。
 
-离线外参标定不改变默认九 Topic Recorder。安装最终刚性支架后，使用单独的
+离线外参标定仍使用单独的
 calibration bag 逐组生成外参；现场操作人员可直接从头到尾执行
 [Tracker–RealSense 外参标定一本式产品操作手册](../tools/tracker_camera_calibration/README.md)，
 无需再拼接其他标定文档。该手册以相机和 Tracker ROS Topic 已经稳定发布为明确
 输入边界，不负责 Tracker 配对、建图或私有 bootstrap。
+
+正式实验将 12 个相机 Topic 与 3 个 TrackerSample Topic 写入同一个 bag。完成
+三组外参后，按
+[统一 bag 离线对齐一本式产品操作手册](../tools/multisensor_alignment/README.md)
+生成可审计的对齐索引；该工具不修改原始 bag。
 
 ## 2. 参考环境与硬件
 
@@ -192,9 +198,10 @@ timeout 10 ros2 topic hz /d436/frame_timing
 输出、没有持续 USB 重连。`Incomplete timing group` 是软件时序诊断，不会阻止
 录制；频繁出现时仍需先处理带宽、QoS 或源流缺失问题。
 
-## 6. 相机录制
+## 6. 三相机与三 Tracker 统一录制
 
-保持第 5 节终端 A 运行，在终端 B 观察状态：
+先按第 7 节启动并验收三 Tracker Publisher，再保持第 5 节终端 A 运行，在
+终端 B 确认全部 15 个核心 Topic 存在并观察状态：
 
 ```bash
 ros2 topic echo /capture/status
@@ -229,9 +236,15 @@ RECORDING -> FINALIZING -> COMPLETE
 ros2 bag info "${VT_DATA_ROOT}/<session-id>/bag"
 ```
 
-默认 bag 必须只有 6 个 `sensor_msgs/msg/Image` 和 3 个
-`vt_camera_msgs/msg/CameraFrameTiming`。完整操作细节见
+默认 bag 必须包含 6 个 `sensor_msgs/msg/Image`、3 个
+`sensor_msgs/msg/CameraInfo`、3 个
+`vt_camera_msgs/msg/CameraFrameTiming` 和 3 个
+`vt_tracker_msgs/msg/TrackerSample`。完整操作细节见
 [相机采集指南](capture-guide.md)。
+
+录制后必须按[离线对齐手册](../tools/multisensor_alignment/README.md)依次执行
+`inspect`、`align` 和 `validate`。Recorder 的 `COMPLETE` 与离线质量
+`ACCEPTED` 是两个独立结论。
 
 ## 7. 三 Tracker 运行
 
@@ -316,13 +329,14 @@ status=PASS roles=3 identity_swaps=0 dropped=0
 | 对象 | 最小通过条件 | 不代表 |
 | --- | --- | --- |
 | 软件构建 | `colcon test-result` 零失败 | 真机可用 |
-| 相机发现 | 三节点、九个契约 topic 持续可见 | 帧完整或跨相机同步 |
+| 相机与 Tracker 发现 | 三相机节点、三个 Tracker role 和 15 个核心契约 Topic 持续可见 | 帧完整或跨相机同步 |
 | Recorder | START 后进入 `RECORDING`，最终进入 `COMPLETE` | 数据质量合格 |
-| Bag 内容 | `ros2 bag info` 仅含准确九 topic，时长和计数经人工复核 | 实验语义正确 |
+| Bag 内容 | `ros2 bag info` 包含准确 15 个核心 Topic 及已声明扩展 Topic，时长和计数经人工复核 | 实验语义正确 |
 | Tracker Publisher | 三角色身份稳定、持续发布 | 与相机坐标已对齐 |
 | Tracker 30 秒 | 验收工具输出 PASS | 300 秒长期稳定 |
 | 可视化 | 三角色移动对应且健康状态正确 | GUI FPS 等于 Tracker 数据 Hz |
 | Tracker–相机外参 | 留出验证不超过 10 mm、1 度，身份绑定正确 | 在线动态定位始终达到同等误差 |
+| 离线对齐 | `align` 与 `validate` 均退出 0，质量为 `ACCEPTED`，三相机/Tracker 覆盖率达阈值 | 硬件同时曝光 |
 | 发布仓库 | 公开树检查、CI、链接和敏感文件检查通过 | 私有 bundle 已随仓库提供 |
 
 交付某次数据时，至少记录 Git commit、配置摘要、OS/ROS/驱动/固件版本、USB
@@ -372,8 +386,11 @@ session，并单独检查旧 bag 是否可读。
 - `vive_map` 是 Windows 建图产生的原生坐标，Publisher 不发布 TF；
 - `/frame_timing` 是单相机 color/depth 软件分组，不是三相机曝光同步；
 - D436 的设备时间可能重置，壁钟关联应使用明确的 host realtime 字段；
-- Tracker 不在默认相机 bag 中；外参标定使用独立专用 bag，联合正式采集仍需
-  单独设计和验收；
+- 三路 TrackerSample 已进入统一正式 bag；外参标定仍使用独立专用 bag；
+- 离线对齐采用 host realtime，并分别用相机 `CLOCK_MONOTONIC_RAW` 和 Tracker
+  `CLOCK_MONOTONIC` 审计 realtime 跳变，不直接比较两种 monotonic 值；
+- 通用扩展流当前支持整条消息的 nearest/previous 引用选择；真实动捕手套的关节
+  插值需在消息合同确定后新增 typed adapter；
 - 离线工具已通过合成真值测试，但三组真实设备外参仍需完成真机标定与重复性
   验收；
 - 当前兼容矩阵仅覆盖本手册列出的参考环境，其他组合按“未验证”处理。

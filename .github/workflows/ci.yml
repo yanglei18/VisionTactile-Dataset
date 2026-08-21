@@ -22,15 +22,21 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: tools/tracker_camera_calibration/pyproject.toml
-      - name: Install offline calibration tool
-        run: python -m pip install -e tools/tracker_camera_calibration
+          cache-dependency-path: |
+            tools/tracker_camera_calibration/pyproject.toml
+            tools/multisensor_alignment/pyproject.toml
+      - name: Install offline tools
+        run: >-
+          python -m pip install -e tools/tracker_camera_calibration
+          -e tools/multisensor_alignment
       - name: Test public tree checker
         run: python3 tools/test_check_public_tree.py
       - name: Test VIVE tracker validator
         run: PYTHONPATH=tools/vut_validation/src python3 -m unittest discover -s tools/vut_validation/tests -v
       - name: Test offline Tracker-camera calibration
         run: PYTHONPATH=tools/tracker_camera_calibration/src python3 -m unittest discover -s tools/tracker_camera_calibration/tests -v
+      - name: Test offline multisensor alignment
+        run: PYTHONPATH=tools/multisensor_alignment/src python3 -m unittest discover -s tools/multisensor_alignment/tests -v
       - name: Validate public tree
         run: python3 tools/check_public_tree.py
       - name: Validate pinned PyVUT tree

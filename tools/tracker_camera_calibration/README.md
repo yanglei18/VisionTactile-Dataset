@@ -44,7 +44,7 @@ p_T = ^T T_C * p_C
 
 - 打开相机、Dongle 或 Tracker；
 - 执行 Tracker 配对、Windows 建图、bootstrap、固件更新或任何设备写入；
-- 启动、停止或修改正式九 Topic Recorder；
+- 启动、停止或修改正式统一 Recorder；
 - 发布静态 TF，或在运行时自动加载标定结果；
 - 估计相机与 Tracker 的动态时间偏移；
 - 生成三组真实硬件的现成外参。
@@ -429,7 +429,7 @@ ros2 bag record \
   "/vive/${ROLE}/sample"
 ```
 
-录制期间不要启动正式九 Topic Recorder，也不要同时录制其他相机。动作完成后按
+录制期间不要启动正式统一 Recorder，也不要同时录制其他相机。动作完成后按
 一次 `Ctrl-C`，等待 rosbag2 正常退出并写出 `metadata.yaml`。
 
 ```bash
@@ -674,8 +674,9 @@ final YAML / SHA-256：
 - [ ] bag、图像、Tracker ID、角色映射和外参均位于 Git 仓库外。
 - [ ] 标定后支架未拆卸、松动、撞击或改变线缆受力。
 
-完成以上全部项目后，三组离线外参标定才算产品验收完成。在线加载 YAML、发布
-静态 TF 和相机–Tracker 联合正式录制属于后续独立功能。
+完成以上全部项目后，三组离线外参标定才算产品验收完成。统一正式录制与离线
+对齐由 `tools/multisensor_alignment/` 负责；在线加载 YAML 和发布静态 TF 不在
+本标定工具范围内。
 
 ## 17. 软件自检
 

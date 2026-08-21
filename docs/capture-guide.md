@@ -1,8 +1,9 @@
-# Capture guide
+# Unified capture guide
 
-This guide runs the Recorder-only workflow. Commands assume Ubuntu 24.04,
-ROS 2 Jazzy, RealSense ROS 4.58.1, and an output directory outside the source
-repository.
+This guide records the three cameras and three Tracker sample streams in one
+explicit unified bag. Commands assume Ubuntu 24.04, ROS 2 Jazzy, RealSense ROS
+4.58.1, a working read-only Tracker Publisher, and an output directory outside
+the source repository.
 
 Define reusable paths once from the repository root:
 
@@ -100,7 +101,24 @@ ros2 run vt_realsense_capture storage_bench \
   --output-root "${VT_DATA_ROOT}"
 ```
 
-## 4. Launch
+## 4. Launch the Tracker Publisher
+
+Complete the approved manual bootstrap, then launch the read-only Publisher in
+its own terminal as described in the
+[Tracker runbook](tracker-ros2-publisher.md):
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source "${VT_WS}/install/setup.bash"
+ros2 launch vt_vive_tracker triple_tracker.launch.py \
+  bundle_path:="${VT_BUNDLE}" \
+  role_map_path:="${VT_ROLE_MAP}"
+```
+
+The Recorder never starts or configures the Tracker hardware. For a formal
+unified run, all three `/vive/<role>/sample` streams must be valid before START.
+
+## 5. Launch the cameras and controller
 
 Keep the launch process in the foreground:
 
@@ -115,7 +133,7 @@ The launch starts three serial-bound RealSense nodes, `timing_normalizer`, and
 `capture_controller`. It does not begin recording until a `START` command
 is accepted.
 
-## 5. Check the live graph
+## 6. Check the live graph
 
 In another shell with the same ROS environment and `ROS_DOMAIN_ID`, check the
 live graph:
@@ -124,21 +142,24 @@ live graph:
 ros2 topic list
 for topic in \
   /d405_1/color/image_raw /d405_1/depth/image_rect_raw \
+  /d405_1/color/camera_info /d405_1/frame_timing \
   /d405_2/color/image_raw /d405_2/depth/image_rect_raw \
+  /d405_2/color/camera_info /d405_2/frame_timing \
   /d436/color/image_raw /d436/depth/image_rect_raw \
-  /d405_1/frame_timing /d405_2/frame_timing /d436/frame_timing
+  /d436/color/camera_info /d436/frame_timing \
+  /vive/left_wrist/sample /vive/right_wrist/sample /vive/torso/sample
 do
   ros2 topic info -v "$topic"
 done
 ```
 
-The timing topics have type
-`vt_camera_msgs/msg/CameraFrameTiming`. Live camera calibration, TF, and raw
-RealSense metadata may also appear in the graph, but they are not in the bag.
-All nine recorded topics use keep-last depth 30, best-effort, volatile QoS
-overrides.
+The timing topics have type `vt_camera_msgs/msg/CameraFrameTiming`; Tracker
+sample topics have type `vt_tracker_msgs/msg/TrackerSample`. TF, raw RealSense
+metadata, Tracker pose/status convenience topics, and control topics may also
+appear live, but are not in the bag. All 15 core recorded topics use keep-last
+depth 30, best-effort, volatile QoS overrides.
 
-## 6. Send START
+## 7. Send START
 
 The following command requests a session with the configured 300-second planned
 duration:
@@ -152,7 +173,7 @@ Use a new nonempty `request_id` for each distinct command. Repeating the same
 request ID and command is idempotent; reusing it for the other command is a
 conflict.
 
-## 7. Observe status
+## 8. Observe status
 
 ```bash
 ros2 topic echo /capture/status
@@ -179,7 +200,7 @@ ros2 topic echo --once /capture/session_info \
 `/capture/status`, `/capture/event`, and `/capture/session_info` are
 control-plane topics and are not recorded.
 
-## 8. Send STOP
+## 9. Send STOP
 
 A session finalizes automatically at its planned duration. To stop it earlier,
 publish:
@@ -193,7 +214,7 @@ Wait for `COMPLETE` before stopping the foreground launch process. While
 `FINALIZING`, the controller is confirming that the Recorder process has
 terminated.
 
-## 9. Optional human inspection
+## 10. Inspect and align offline
 
 After `COMPLETE`, inspect the session manually if desired:
 
@@ -203,13 +224,24 @@ ros2 bag info "${VT_DATA_ROOT}/<session-id>/bag"
 
 `ros2 bag info` is optional human inspection. It never changes
 `COMPLETE`, and the controller does not parse its output. The default bag
-contains six `sensor_msgs/msg/Image` topics and three
-`vt_camera_msgs/msg/CameraFrameTiming` topics.
+contains six `sensor_msgs/msg/Image`, three `sensor_msgs/msg/CameraInfo`, three
+`vt_camera_msgs/msg/CameraFrameTiming`, and three
+`vt_tracker_msgs/msg/TrackerSample` topics.
 
 The bag intentionally excludes calibration, TF, raw RealSense metadata, session
 description, capture commands, status, and events. There is no real-time rosbag
 or MCAP compression; copy or compress a completed session only as a separate
 offline operation.
 
+Run the separate offline audit and alignment workflow before using the data:
+
+```bash
+vt-multisensor-align inspect --bag "${VT_DATA_ROOT}/<session-id>/bag" \
+  --config "${ALIGN_CONFIG}"
+```
+
+The complete install, external-calibration, alignment, output, and quality-gate
+procedure is in the
+[single-entry offline alignment manual](../tools/multisensor_alignment/README.md).
 All launch arguments, topic QoS, and timestamp semantics are collected in the
 [interface reference](interface-reference.md).

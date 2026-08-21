@@ -26,9 +26,10 @@ tools/tracker_camera_calibration（纯离线）
               +-- diagnostics.svg
 ```
 
-离线工具不会打开 Dongle、执行 Tracker 初始化、配对或建图，也不会修改现有九
-Topic 正式相机 Recorder。正式采集 bag 仍然只包含原有九路相机数据；标定数据
-必须单独录制。Tracker 私有启动属于在线输入系统，不复制到离线工具手册中。
+离线工具不会打开 Dongle、执行 Tracker 初始化、配对或建图，也不会修改正式统一
+Recorder。标定数据必须继续单独录制；正式实验的相机与 Tracker 数据进入一个
+统一 bag，并由[离线对齐工具](../tools/multisensor_alignment/README.md)消费。
+Tracker 私有启动属于在线输入系统，不复制到离线工具手册中。
 
 ## 坐标与时间语义
 
@@ -38,8 +39,9 @@ optical frame 是 child。程序使用 `CameraFrameTiming.shared_ros_timestamp_n
 `TrackerSample.host_realtime_ns`。相机设备时间、D436 可能重置的硬件时间和
 `CLOCK_MONOTONIC_RAW` 不会与 wall-clock 时间直接混用。
 
-第一版通过静止窗口降低 callback 延迟和曝光时刻差异的影响，不同时估计时间偏移
-与空间外参。后续动态在线融合仍需单独完成时间同步设计。
+标定工具通过静止窗口降低 callback 延迟和曝光时刻差异的影响，不同时估计时间
+偏移与空间外参。正式数据的离线动态匹配由独立对齐工具完成，仍不代表硬件同时
+曝光。
 
 ## 真机状态
 
