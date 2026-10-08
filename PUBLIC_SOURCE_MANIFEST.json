@@ -1,0 +1,3970 @@
+{
+  "schema_version": 1,
+  "history_included": false,
+  "submodule_sources_included": false,
+  "submodules": {
+    "pyvut": "fcfcd33f4c1f16b0d84f5f741dc1319abdc7942a"
+  },
+  "files": [
+    {
+      "path": ".editorconfig",
+      "bytes": 259,
+      "sha256": "f3d3cafbc5d515b959470627c74cb9c215ab7d080c59dd1e4442b87eb576bb52"
+    },
+    {
+      "path": ".gitattributes",
+      "bytes": 267,
+      "sha256": "bc7f2dc9259c7e144ed32ee0bd82509e49290ea54613360fb0671f6d9f6ccd61"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "bytes": 1874,
+      "sha256": "88b20f02ff1e990fbd987d98d121954a61cd35ec815ddb3ca66ec4f865bb4e82"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "bytes": 46,
+      "sha256": "8b09e7df09fc7534371988062769ee427af2954a02c04c763e8a8005be0f2be4"
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "bytes": 549,
+      "sha256": "7dc5aaa50d51ea40f9c164619965e6a9780157c2ad638d8361d9ee27b80de33b"
+    },
+    {
+      "path": ".github/workflows/capture-console.yml",
+      "bytes": 2502,
+      "sha256": "e46816e4aff9998ff4ad2602cc2ae1ef9b88eb29e783a013fe6da2dea87a4645"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "bytes": 5297,
+      "sha256": "27bca42046668eb5706e45e0042eb177d034cd9c135b8595631120d3eec7d804"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 1311,
+      "sha256": "cb1d2dea2c9a33e7724c2e28fa8f0cb610db979f234ae8f7c69541ed4f7c0ae9"
+    },
+    {
+      "path": ".gitmodules",
+      "bytes": 88,
+      "sha256": "c677ae08c71bf321da4f81f51f787687a0863a7f6b9272f2c0140ffd776088d9"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 4712,
+      "sha256": "6ce4bfd4d2d2bbcd008fcfceaeb2ef606b74e2072c03e502efd50bfd0084e50d"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "bytes": 6559,
+      "sha256": "8e95f6f2471b6586b10b9251e96c25c92a4aec361dcfbfb6e6921685695d296d"
+    },
+    {
+      "path": "Glove.py",
+      "bytes": 13819,
+      "sha256": "4054f0dfbc93b898ce45faae253cdca32fe4db723ab3d94236c740abf42d6765"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "Ploy_IMU.py",
+      "bytes": 27062,
+      "sha256": "ebfae437c2b177de0ebca3db725aa3f07a1e15479d333990eb853940e7466540"
+    },
+    {
+      "path": "README.md",
+      "bytes": 26542,
+      "sha256": "8e31707686822552038cfe0d5499a36d4d1f2b0bbf3770e3a6cf10a6b67c1e86"
+    },
+    {
+      "path": "README.zh-CN.md",
+      "bytes": 12663,
+      "sha256": "ee11e6cf79ef7a0dfe02887830078651a7f0a37acbed3c3dfd1ca0b9328e3c13"
+    },
+    {
+      "path": "SECURITY.md",
+      "bytes": 770,
+      "sha256": "007ce1481113e222c4dd172f943dade230b296cd17d127c7b063b88f68dfff4d"
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "bytes": 4321,
+      "sha256": "b707873876ca277dc3bf229018154ecee0689017101bb7612077df401dbfa993"
+    },
+    {
+      "path": "WINDOWS_USBPcap_CAPTURE_GUIDE.md",
+      "bytes": 6448,
+      "sha256": "918d560998854dbbabe57416e0aa3dee18c0bf90e2dccf2f83e6d64b9f91155a"
+    },
+    {
+      "path": "docs/architecture.md",
+      "bytes": 6599,
+      "sha256": "8fb2f466a847333f7b9e94d137ce11182687bdf8c7fbb01f4303ac81545d375a"
+    },
+    {
+      "path": "docs/capture-guide.md",
+      "bytes": 10140,
+      "sha256": "962de1b2d4514bc403974c07a114064da752d2f4186be1437c2e462c2a9e3b75"
+    },
+    {
+      "path": "docs/hardware-reference.md",
+      "bytes": 2937,
+      "sha256": "a9a5fb3138969ed3ebf4339acf44e34abc8352316161f2e3693cea614bf29a0c"
+    },
+    {
+      "path": "docs/interface-reference.md",
+      "bytes": 10529,
+      "sha256": "50d8d7a3eb1e2d13c37c6a0fa465f1bec754b847b54df389e912b07d1664cf6e"
+    },
+    {
+      "path": "docs/release-checklist.md",
+      "bytes": 6771,
+      "sha256": "aedc26cca5dde98fae017e2c92ff104b84d2fd16d436c84cba29f234da5cc9d7"
+    },
+    {
+      "path": "docs/runbooks/d405-debug.md",
+      "bytes": 286,
+      "sha256": "13d02aedb4e1f62fda86a88f6bfc22e58791fa702f9ca378ee55970160dba3a5"
+    },
+    {
+      "path": "docs/runbooks/vive-ultimate-tracker-windows-usbpcap-capture-2026-07-30.md",
+      "bytes": 7125,
+      "sha256": "1bb80f60e641544f642cdaad1f133de8a62ab16fee34f8b78f5c44cc69421547"
+    },
+    {
+      "path": "docs/tracker-camera-calibration.md",
+      "bytes": 2998,
+      "sha256": "44efd589582b112f11ed3396694bc852bf1906d5ce06d55d84524ec047549f32"
+    },
+    {
+      "path": "docs/tracker-linux-validation.md",
+      "bytes": 3674,
+      "sha256": "3b47a4d9a2b5d7c53de139b1f87a715fa644f108163b24436d4445186f331c28"
+    },
+    {
+      "path": "docs/tracker-ros2-publisher.md",
+      "bytes": 10726,
+      "sha256": "0e813c9d02712a945b5190318581a4782362cc2028d152ad4547da94c14e3dec"
+    },
+    {
+      "path": "docs/tracker-windows-map.md",
+      "bytes": 2102,
+      "sha256": "25f0b70e301853050a858233358e3278fc53298fe2d61ce04692160a228cc296"
+    },
+    {
+      "path": "docs/troubleshooting.md",
+      "bytes": 7110,
+      "sha256": "9870b8080caacd9083b97add766f36b379a62188e07fac42a14f7bcfb55919cc"
+    },
+    {
+      "path": "docs/user-manual.md",
+      "bytes": 18232,
+      "sha256": "772a06526351e3eeb8ca08373bf14ac6a00411c936c539ae5005515a24c9370a"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/CMakeLists.txt",
+      "bytes": 794,
+      "sha256": "0568b772fa1773e2c74cdc40e239fa098fcf393dab80f4c75af3af35e7d966c3"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/CameraDescriptor.msg",
+      "bytes": 135,
+      "sha256": "15b3385cc1565ab9e31b4df46612cb5364bb10ea5cb85111d77eb899b78726ac"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/CameraFrameTiming.msg",
+      "bytes": 1205,
+      "sha256": "648136602e8d8173d2b901f855dbf3118511ad613aaa3c9ba118cc7586ca45af"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/CameraGroupStatus.msg",
+      "bytes": 222,
+      "sha256": "11e4fd6385a43302a29c6672e6a8fa1d0c6970c64b7cfcec2bccc208f1f4f137"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/CaptureCommand.msg",
+      "bytes": 131,
+      "sha256": "f822b64db56da4f765e4a498b6130fd5aef4339c6e06e8c6b4bd3246f6d8474b"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/CaptureContext.msg",
+      "bytes": 407,
+      "sha256": "90add32459c1b2f9d55a2aa67baa9e280cb7b6bfe9dc5e070cc6f5efd5274026"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/CaptureEvent.msg",
+      "bytes": 181,
+      "sha256": "045a69965d129bd025398e148250eb09ae7e69983a0120c5d68ae910d7ebd532"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/CaptureStatus.msg",
+      "bytes": 333,
+      "sha256": "5a111f099d26482887557e0b13deee689913ad5e78e3c2f8972f1f9f064d111d"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/SessionInfo.msg",
+      "bytes": 283,
+      "sha256": "8368db5e5231b9c8c2912a62fdf893cd2641afea003098ca9e58e2b78928d15c"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/StreamProfile.msg",
+      "bytes": 138,
+      "sha256": "0e5a551372713098f1dd1bd58905ee27194de76414682c31ff663507b6ecb93d"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/msg/StreamStatus.msg",
+      "bytes": 156,
+      "sha256": "b077f632a4a7fda6fd76998a72e235dd908554b39cf435263911bb0f6b9bf4ca"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/package.xml",
+      "bytes": 671,
+      "sha256": "d625c9b76cd5f99d38d6e8f258fac6823b374f3e891bdab12205639c59c2b3d2"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/srv/GetCaptureSnapshot.srv",
+      "bytes": 42,
+      "sha256": "2263f691589f783c331ee17513502e67ca056f2f613af9dd0177f6edab9efc57"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/srv/ManagedCaptureCommand.srv",
+      "bytes": 287,
+      "sha256": "910c8580ba62c5472fd231e54a780198868a0cafb51341a485425b206d42c030"
+    },
+    {
+      "path": "ros2_ws/src/vt_camera_msgs/test/test_interface_schema.py",
+      "bytes": 3163,
+      "sha256": "82bbcbbbb61b75ab6bfa4a54da435dd2012a7edf2a2b74bbb3ced3daa5a2cc30"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/package.xml",
+      "bytes": 498,
+      "sha256": "5c72b978da1bacb109caa8c0d3d57fe28d8a68181ad7621a3887524f5c7508ec"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/pyproject.toml",
+      "bytes": 85,
+      "sha256": "30f4a45624656b7b8e55560bbc67789bcf59a33d5b589ce415c9a5ac32e1a64b"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/resource/vt_capture_core",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/setup.cfg",
+      "bytes": 128,
+      "sha256": "424eacf7ef7558b84c4b0bfd2a0bc20ea60f500e6b0c478b743ff96ed4dafb47"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/setup.py",
+      "bytes": 671,
+      "sha256": "b8d132e852d5870edbf41f96b71669f28791f15957d1826a4ad578e216aef0db"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/test/test_control_protocol.py",
+      "bytes": 7261,
+      "sha256": "d061741ef12730c1391a3b97f2370bb08a6ff457df0d587ca16c6a4866cd5115"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/test/test_detail_protocol.py",
+      "bytes": 5983,
+      "sha256": "d4144bc7d6966f0c77cf6f10e34ac7f3ff059017e1acc1e876dd7603a6fabcd3"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/test/test_device_protocol.py",
+      "bytes": 7503,
+      "sha256": "4fb248f48993969130a8ba64014151066ee1f72e26f40f0352bf1e203c3e02dd"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/test/test_package_contract.py",
+      "bytes": 1208,
+      "sha256": "a142061ff0bc8b5d113dd2b5f6eee29036d86de2bb321cf14ad339943f3b44d1"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/test/test_protocol.py",
+      "bytes": 8454,
+      "sha256": "83225ab852845f75913ac60174d5aa99f3a70c17c30e569aebc35d36fee1dd12"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/test/test_recipes.py",
+      "bytes": 4172,
+      "sha256": "ab24aaa2b9d468ccd9c2226484cfa68e76ce8bfcdeb4b515d8bc8edbe4cb23ff"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/test/test_timebase.py",
+      "bytes": 1947,
+      "sha256": "1834af74bf72e9a9a1c11a4feba0c9f4ad8bfcf22cdba9cc78707092a3d8f4f7"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/vt_capture_core/__init__.py",
+      "bytes": 1389,
+      "sha256": "3b829d8c1f6a4ac98306a7a07db37abc57adb122a3653311a28ec42644497ead"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/vt_capture_core/models.py",
+      "bytes": 6968,
+      "sha256": "9f70d8344a72f0915de34978c8cdb484d13842979ebbd25d1bfe66e93adac37c"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/vt_capture_core/protocol.py",
+      "bytes": 3069,
+      "sha256": "88b7836b39c4ed13e32f71199e583ff634b85ea631c363a526a31a8dbeb5f806"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/vt_capture_core/recipes.py",
+      "bytes": 5351,
+      "sha256": "93ee797e25d541f040738c3971efc4a5a1f3087264266bca51742da70e7780c3"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/vt_capture_core/timebase.py",
+      "bytes": 3137,
+      "sha256": "54ec33e5f699944e07525319ef9592fb6acac4b34448af4f83d6cb796c0ba7f9"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/vt_capture_core/validation.py",
+      "bytes": 21967,
+      "sha256": "be260de8ad15b39c11aef3ffa5a55b39f5352a38c5c5860d9d009aa08e8f92f7"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_core/vt_capture_core/workstation.py",
+      "bytes": 9128,
+      "sha256": "b9164835f936fd7ce72e79d4485b1f3b5778a41393d4c9cc6c4d3c265f15c6bc"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/config/workstation.devices.example.yaml",
+      "bytes": 1909,
+      "sha256": "fabf8ac030684ac420fd117a99c1d533dc61c4e99894957e58517bea23203d8a"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/config/workstation.example.yaml",
+      "bytes": 2288,
+      "sha256": "129a9f3b5f078f5a42143dc71732ab505131805bda6adcb4f30e471c50833d38"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/launch/manager.launch.py",
+      "bytes": 2107,
+      "sha256": "f42a333a50b2bb036734900eb17ad9d175fce33b60dd9e0a41626ea2eb5edbbc"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/package.xml",
+      "bytes": 926,
+      "sha256": "33bc6e967c5b55a8796d0d91b3ffd2c0ebf6f61191885d8e895588989999bc6a"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/resource/vt_capture_manager",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/setup.cfg",
+      "bytes": 105,
+      "sha256": "b162ea7bc4b2d16942f9b38ddbdc1635de7a6cc5856d8d13bf3ac7651a280031"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/setup.py",
+      "bytes": 853,
+      "sha256": "fb0b79160d8c1c25efd48f50f6e01c14b3f35848a1c8e6092382e8dbd04fc4b4"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_desktop_admission.py",
+      "bytes": 1424,
+      "sha256": "f9cfe57c7e5537b310c149025e9b2159996473f8e08994a1d12fdaa441a6a066"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_device_management.py",
+      "bytes": 5321,
+      "sha256": "b8f1fe27d329829a4369945b8636c0cc3ee08ac0d479ede852a25066f6648e1c"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_device_processes.py",
+      "bytes": 19622,
+      "sha256": "9b4def173e16066ff852958733067fe69a6a6089dfe53dc995c3b58fc58e7d25"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_image_preview.py",
+      "bytes": 2119,
+      "sha256": "fff8d8bc1af0920d5cb63d07d55f029bdb9c708854cae6141e281facf95cbd24"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_launch_profiles.py",
+      "bytes": 5620,
+      "sha256": "4c7a13cccb04dcfe3d5562bda26c280cccad49134930c4371c7351e3f92602fb"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_managed_ros.py",
+      "bytes": 5256,
+      "sha256": "edf832cf50ff61bd7016f3c2ad8ad8a80444c6ef346a70aa03cc8d16e4e74915"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_management.py",
+      "bytes": 18956,
+      "sha256": "52a96ae86b5d0f62a2ef958fd83b20fc889a349447c70e0e0a16ff9e6b56ca8d"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_model.py",
+      "bytes": 20407,
+      "sha256": "19acaf004c04e9f3766d62cec960125207ddef2b636706591541fb643e7c8525"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_quality_management.py",
+      "bytes": 16779,
+      "sha256": "ad749a0618bbfa4e181181d80a2cee92fba05bcb3d975faeda89553ef4c8ce94"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_quality_runner.py",
+      "bytes": 17951,
+      "sha256": "3833404890ab4ec8cae47173c0719a7c9cfe9b1d24ab8747d7ac9712d8d5f2af"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_ros_integration.py",
+      "bytes": 6409,
+      "sha256": "2affe0869dcd609bf766130db56e0b12f64270e1cdb861ab5662fd165324f401"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_serial_access.py",
+      "bytes": 10982,
+      "sha256": "5d99d796ad4ad830b121fa40a937e2600505f97e5cc5aec1877555c05ed7a578"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/test/test_server.py",
+      "bytes": 3770,
+      "sha256": "4a225fca9a801424f6260dc75a515fc0c9a13085ad2e22589a4e7bb32e97ee10"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/__init__.py",
+      "bytes": 83,
+      "sha256": "141a122730b520375fe5179372c22af525ba92d2fd2d2e51f5b3930a02dbc9a5"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/config.py",
+      "bytes": 5387,
+      "sha256": "018c4d04796aa8bec3020d9e44639968b8ee97aba763c8d3cf6b639977b43c88"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/desktop_admission.py",
+      "bytes": 1150,
+      "sha256": "ecef3bf3442d5b39bb2f4a73d40e136f9634583203c490a6d1951588d5c45701"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/device_processes.py",
+      "bytes": 35943,
+      "sha256": "6006e6addf4f2b1258dc7936b755dda6e7f91ed20e5c2c7dbb77efb43536561f"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/image_preview.py",
+      "bytes": 4587,
+      "sha256": "029ed60c68617417c7f441c4e85f9cd7fa4f26a48e36c5c35515ec4109b4f964"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/launch_profiles.py",
+      "bytes": 2712,
+      "sha256": "2d73356328ee285de9883c45c911ab0b9766a6635d8b338aa265b203f01cd7d1"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/management.py",
+      "bytes": 30435,
+      "sha256": "b807109997dde34e7ef622996e5935d11ffaafef472eb4010d3dc11339ebb2fb"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/metadata.py",
+      "bytes": 6815,
+      "sha256": "ce6b984e5d9dd75d8bdf89aaff03ca1ea9eb18677900e94d9f3ff9ace5658a80"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/model.py",
+      "bytes": 21248,
+      "sha256": "2909a74aa4b00710e653402075fd21a0ece16dfb5f6a0fbccd6f24995715120d"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/node.py",
+      "bytes": 6179,
+      "sha256": "b0d3ddb42801cd549692569d13acc63509cb75d5f7f16cb9618fbce7ae05868f"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/quality_runner.py",
+      "bytes": 24746,
+      "sha256": "ec4b51bd53f2d212e5b9e5d81b96b93c8a6881662aa2f434594ddf301c0ae044"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/quality_scheduler.py",
+      "bytes": 4699,
+      "sha256": "6bee3f9cf45552bc05b34a0168324c4f4bb32c1d3d6c518466dcebbe05d63424"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/recorder_adapter.py",
+      "bytes": 2956,
+      "sha256": "10d1dffb97377be8ad738590857b95691b8739062c316b44e6a9a42344feeba6"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/serial_access.py",
+      "bytes": 4363,
+      "sha256": "c078834b40382d2c10b8ce37f5693e61f5b1ee189b8421df4559faeba8c2a720"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/server.py",
+      "bytes": 8308,
+      "sha256": "4981716f7f1c7d4105ce3bb54e347f6dedb9ff6da9baba96e119d65b4b193b87"
+    },
+    {
+      "path": "ros2_ws/src/vt_capture_manager/vt_capture_manager/storage.py",
+      "bytes": 19414,
+      "sha256": "934f6a8da74b9d59d8aa9d0ae2883ea4c81869cc216fab4f3a83688e3b8aa3fc"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/README.md",
+      "bytes": 23090,
+      "sha256": "89de39e013f4714e503c3494a160342d26a1bf9a367de0b39c3b13771f92bbbd"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/config/hands.example.yaml",
+      "bytes": 1174,
+      "sha256": "b7ce8d2648d5dcb35a35e32347952327ba67db27b5d65b0f0192dc87d8667e0e"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/launch/glove.launch.py",
+      "bytes": 5546,
+      "sha256": "9244cb38bd542ea9f5e9a45169a7c05e5fc5c2a56bd75838bffd6c0a70644028"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/launch/hands.launch.py",
+      "bytes": 4715,
+      "sha256": "99680856cc336f861674df52081c0a268ee1c95b29346da01a2d85e84b835aba"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/package.xml",
+      "bytes": 728,
+      "sha256": "f5d9d97ec64dc2b6936dcc022280dd67217f4836d32b79c73dbd5710d178a17c"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/resource/vt_glove_bridge",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/setup.cfg",
+      "bytes": 128,
+      "sha256": "b75bd33a66adca9e25e7365a79b3747101d5cea0d7a2a362ad74027bbd5aeaac"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/setup.py",
+      "bytes": 887,
+      "sha256": "0b55d7c95d3a6ec46c556f33bb6082322c7751e0dff3b0ecd778441f5a1f5992"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/test/conftest.py",
+      "bytes": 98,
+      "sha256": "8659c4f6af34a32f61ecc29774fd873cf628e7e0828ce9ff04773418357a6cc6"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/test/test_hands.py",
+      "bytes": 10119,
+      "sha256": "4c01cfd551664cc3e7f8850866fc8b0f65f78f3cb6c9597006346bbbcc34e865"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/test/test_launch_support.py",
+      "bytes": 3858,
+      "sha256": "016fbe164c1650fc9b62b66722769d20cbbdaf5b91b519e7569f2f20ae3b2a58"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/test/test_protocol.py",
+      "bytes": 13360,
+      "sha256": "2949555210e76144ebb919cc7f4983b428b4b32f4085dcdd14530402558ed64d"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/test/test_ros_integration.py",
+      "bytes": 7975,
+      "sha256": "5c3ea069cbea709465d865930b441f7aec59bb9f7e777ea1a3fa8e06c8c94651"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/test/test_transport.py",
+      "bytes": 2507,
+      "sha256": "9e18d9557141448db694eb5a3853c44aaf3e7034827dee4d912924ed7c41cad1"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/vt_glove_bridge/__init__.py",
+      "bytes": 80,
+      "sha256": "808f784f1b1d97b401c23b8b5f263e49bbca6db0fd32b95ff5903ba106cb503e"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/vt_glove_bridge/hands.py",
+      "bytes": 8482,
+      "sha256": "6a80b7b5c4f3f0515474b63d5c91b317ebd34cf87d120f1e5c75f2def0a2de9b"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/vt_glove_bridge/launch_support.py",
+      "bytes": 5377,
+      "sha256": "8780c9eb77f48bc4e9300b488038fd8157d0f8861e8f7a592a0466ff08fc7631"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/vt_glove_bridge/node.py",
+      "bytes": 5384,
+      "sha256": "bef8ccec9d01e4facaa43c069e500b21ea17a0a63eb23f8ebf4e84199f2a812a"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/vt_glove_bridge/protocol.py",
+      "bytes": 11347,
+      "sha256": "b20b3024253b6cc31efcff962d5e28d2473460080cadec4eb54cba99fee5c358"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_bridge/vt_glove_bridge/transport.py",
+      "bytes": 4073,
+      "sha256": "6e53d7c51c8bd9578d2efd7e0f4392e7c80fb353d755d736538bbcca99641ead"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_msgs/CMakeLists.txt",
+      "bytes": 479,
+      "sha256": "18921ff9d0672fe82025c20a78b01467b385043a12bd3dbae3ee85d2a53336f1"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_msgs/msg/GloveState.msg",
+      "bytes": 2023,
+      "sha256": "d86c0542c125b3c1622e71420b69e9e52a33a1a241edbff8112db2b5d3e006c3"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_msgs/package.xml",
+      "bytes": 675,
+      "sha256": "f168316974df1fb68b92ff406540aa56a6248d0fd0c654ad2bdd70d1b723888d"
+    },
+    {
+      "path": "ros2_ws/src/vt_glove_msgs/test/test_interface_schema.py",
+      "bytes": 660,
+      "sha256": "4f2ba0c0afdd702ee95611bdb407b72949d7f6fa0f8699f17427ce2138b0ba13"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/CMakeLists.txt",
+      "bytes": 4815,
+      "sha256": "bef5dac4c039f89ef6526fe23c30f92223ee3a7f65945f0deb3600083ccd99b4"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.example.yaml",
+      "bytes": 743,
+      "sha256": "eadd34b80704ff34eec7fe3a25732631174b4292234bde0cf533ef32fc042916"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_both_gloves.yaml",
+      "bytes": 955,
+      "sha256": "82a4b5956d9d55446b0f3e68d0b54dcbd687ce4c4c8bc8543bf37c23a5eb09d0"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_both_gloves_tactile.yaml",
+      "bytes": 1142,
+      "sha256": "f5cc44ce1397e2d86a5b2582b0b1d900410bb7d9f809a165aa7981c917ae72db"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_both_tactile.yaml",
+      "bytes": 995,
+      "sha256": "6ad154cc283e22497aa40f6703cb135bf9210cacf5df0087711b3208ace7120b"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_left_glove.yaml",
+      "bytes": 881,
+      "sha256": "96f80990eaa93c57afcec5c8bb40f2ad9a3ea6816ffe076497d156fbd55c9611"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_left_glove_tactile.yaml",
+      "bytes": 974,
+      "sha256": "df4d658d42a917e26ae30b285a2780ff556a773dc94e211a4e6c1108c2dba3c2"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_left_tactile.yaml",
+      "bytes": 901,
+      "sha256": "9698405df673ca7efe6a139d3e63a8cf639ecc81b2ca3fca071d01b53dd3d004"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_right_glove.yaml",
+      "bytes": 1051,
+      "sha256": "121c9813f9d66757a83bdeb400bcc95dc0aecb69f6fd31dcbc2ce413eb1aba67"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_right_glove_tactile.yaml",
+      "bytes": 1153,
+      "sha256": "1a46ef262ded1baee5e80c42557763fbf023f7eb6786e302074a863f0a75d1a7"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.with_right_tactile.yaml",
+      "bytes": 902,
+      "sha256": "95f0344fd71b72c05e688a23c30f98d67fcc11be2ff98c4bcfac9f07d1ef3cf9"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/cameras.yaml",
+      "bytes": 946,
+      "sha256": "44532f9d3e16fbbb7862c98aeaee3728f526aab776b9b3648051667a769d64f8"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/mcap_writer_options.yaml",
+      "bytes": 164,
+      "sha256": "66d8a8d805b4861fadf7d09147ab4fb2af5ab136face79e1ec218cc2d99f4b0e"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/config/realsense_options.yaml",
+      "bytes": 78,
+      "sha256": "71540bdf2c128a84d25ef4e41c9d910c5b555f18611e9e4323b52cbded0b39b9"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/include/vt_realsense_capture/camera_frame_aggregator.hpp",
+      "bytes": 2353,
+      "sha256": "0c9ef8cde8c966d3bd518ca318e6dad10cd3c18c15afce9caae25b48115b501d"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/include/vt_realsense_capture/metadata_parser.hpp",
+      "bytes": 736,
+      "sha256": "58f3fcd5ea8876693511698664d8a46119b6a904414463d1c7d8abfbcdfa03a1"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/launch/camera_visualization.launch.py",
+      "bytes": 1206,
+      "sha256": "3c32b3440230eff2b26aab561fa3cd9e7dcaa3df897ebe545dc94af1bfdca5ab"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/launch/synthetic_capture.launch.py",
+      "bytes": 1076,
+      "sha256": "eb72645e4fcac1188c7bf2333e9f07aa102e21c3ca7f405ce5e42fe14fd99e33"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/launch/triple_realsense.launch.py",
+      "bytes": 3247,
+      "sha256": "5a519848d242867347e723e86489f53c54e0d01ac82d77f8a6d01a61dac4b98e"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/package.xml",
+      "bytes": 1183,
+      "sha256": "174eb7691e4cf6913946afa63f32db09165c570280bceff43691d70eaac7f9e8"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/rviz/head_camera.rviz",
+      "bytes": 5304,
+      "sha256": "1f8b7837123369cf0257cd3080cba9986c27521470beb57a88b039fa7860f5b1"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/scripts/storage_bench.py",
+      "bytes": 8049,
+      "sha256": "ccd88662240bf7d3e099624dcdecc098b3cdfa8c863583a9fc02a586a42d2ea0"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/src/camera_frame_aggregator.cpp",
+      "bytes": 8831,
+      "sha256": "7f36a5b4be775443115ffac2c8c5bd9e57d536fe225d06928c0ea75643af7c25"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/src/depth_scale_probe.cpp",
+      "bytes": 1962,
+      "sha256": "c72d098c1b4e13c9bbf1612b48ae06c8c8b568ef7421d5bf7a7e3ad259bd46e3"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/src/metadata_parser.cpp",
+      "bytes": 5347,
+      "sha256": "fdc6a7b54ea5578e4bb57f3b0918984376223aac0cb732c103b4e00413854539"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/src/timing_normalizer_node.cpp",
+      "bytes": 14412,
+      "sha256": "9a0e43af3029e37ad00b1929d6b1828c275ac89d7e9eef73c514d908800ce09b"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/fixtures/metadata_hardware_clock.json",
+      "bytes": 192,
+      "sha256": "b8938fae3a09ec6ad759892aa16e99c33e539f5a0560cbbaa29fe8c95a94e989"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/synthetic_capture_support.py",
+      "bytes": 6177,
+      "sha256": "fd491a92f0c49f8d33ad07df7423521822a462b118044166102d9448fb1f9e95"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_camera_frame_aggregator.cpp",
+      "bytes": 15065,
+      "sha256": "5274e5e51083b0ec3a991a2a1df645050d85af7b7c79b8f9d504885c6d37cac1"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_camera_visualization.py",
+      "bytes": 2760,
+      "sha256": "02ee8fbeb572d71e31d012748844040a5529b4a7943ee6e166ff36f41572defc"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_config.py",
+      "bytes": 13266,
+      "sha256": "5f4368b3f9db8bc6d0e8af6b39864b6dd7297e50cffb905ca3f2bc0b54cfcfd1"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_controller.py",
+      "bytes": 17465,
+      "sha256": "8754e54de4154bea906dbd4cd3b65aa2b54acae7b89745130addfc085ac15f21"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_controller_state.py",
+      "bytes": 8004,
+      "sha256": "416e8e17a9e3e2ed390fc225644fdc7b8a241598d39593dddf88e9f5414b0cfd"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_hands_profiles.py",
+      "bytes": 1273,
+      "sha256": "c60227d30ec020c41fe7b0de6fe2deeb19d1e580836dbf64ec405f314bc4e3ec"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_launch_arguments.py",
+      "bytes": 4538,
+      "sha256": "115db8fdc50ffeb4b09173c03de20957670c591c6a6cc6596f1c200c4ca07504"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_managed_capture.py",
+      "bytes": 13814,
+      "sha256": "0f62f09a5a614f2ad592cf07c44614c7452de058f85bac38e3703769d8a7c981"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_managed_capture_ros.py",
+      "bytes": 13595,
+      "sha256": "d85fb13251a259f730b21a2340a183a551bfafecfecd2c6b57f92f3b9daf3c9f"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_metadata_parser.cpp",
+      "bytes": 8651,
+      "sha256": "8c16dd3e3043ff6cb34a21da613ae02f4185271fa6e42fa386724941bff486e0"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_package_contract.py",
+      "bytes": 2748,
+      "sha256": "1957df18a2937677469ac27a79235c1da96dd533c88e21727bf299c91987f9c0"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_recorder.py",
+      "bytes": 53338,
+      "sha256": "ae8f36c8ad554852bcbc2882bb238f4804f7a891779033f31612d575e76b8d4a"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_recording_qos.py",
+      "bytes": 6281,
+      "sha256": "123add13c6392098f4afb446411c3e4dca1386e4f3d2d4bcac8ed4c269fdca84"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_session.py",
+      "bytes": 3905,
+      "sha256": "1f0cb05ef916cdd31b5a462dea15fae31c0442685ba1cb20cd07a501e16fe1de"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_storage.py",
+      "bytes": 2936,
+      "sha256": "1caefccd26e839a7210e23e538ce5cc63c4ee29a9fff5b9ccdc0f575580836ba"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/test/test_synthetic_capture.py",
+      "bytes": 18024,
+      "sha256": "da5fb5576659b7620bf254c8711d50b720129043612a7c35143e60017769c924"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/bag_contract.py",
+      "bytes": 2815,
+      "sha256": "0053f2fc07a5c2e1daade03984682e0b03f77074352da9607ed9e045bb3e16e5"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/config.py",
+      "bytes": 10419,
+      "sha256": "1424ecb1764fe621814b7bfcbb7ed7f41087433ce31ee1472d301011398285e9"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/controller.py",
+      "bytes": 29313,
+      "sha256": "bacb886d5edb6a7da3958c25a526d62b62feb7d846155ec5ecefe7a9b1a6f0a1"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/controller_node.py",
+      "bytes": 17222,
+      "sha256": "f8dd47b15775c0f9b2eee21e23fa56b1a5f1dbf177471ece35974fe6d84cc876"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/launch_arguments.py",
+      "bytes": 1108,
+      "sha256": "fafc2adfba26060a16f18e95b88c2ad880172b371076b0fe75652732cdd9b3d8"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/managed.py",
+      "bytes": 1842,
+      "sha256": "b001ad2f07ec0c7c643d0f3c669b25fb6b306e79d50f37d2a5c48cdf94caf8b3"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/recorder.py",
+      "bytes": 16494,
+      "sha256": "7144bde03048e9c15efb2b63e0d986d13d7dcdbc79657d651e41b3d8c81bdd91"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/recording_qos.py",
+      "bytes": 4724,
+      "sha256": "5800a597ba014e80afa72c464fd1e211bab3095b9317261a00dd1f0916ef6fa7"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/session.py",
+      "bytes": 8604,
+      "sha256": "25ec1c8a771058abe8554426c5a4efcef484f2b111d75448d19762a4789efe54"
+    },
+    {
+      "path": "ros2_ws/src/vt_realsense_capture/vt_realsense_capture/storage.py",
+      "bytes": 4276,
+      "sha256": "52ea5267cb0d9288f95db6d91738166f9e28e4e9a62d674111ab659584acbca4"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/README.md",
+      "bytes": 28094,
+      "sha256": "4e9641f8075da74d779d2fcaf21624a0a528d01f7d46bb2eebcbadfd72229411"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/config/left_tactile.yaml",
+      "bytes": 515,
+      "sha256": "2299ee21a9f12f0db87db9a64d6430e2a39d51d49b8e7d53bcea0419d29c11a1"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/config/right_tactile.yaml",
+      "bytes": 760,
+      "sha256": "f9fbc691ede3e41281fd8392d2c8d5ea44eff313e969c359186654f5aa5e7831"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/launch/replay.launch.py",
+      "bytes": 2628,
+      "sha256": "c313c9b521720e0328eafeeeef721a00f8fcf266c11a8cd05098b45cf93afcef"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/launch/tactile.launch.py",
+      "bytes": 3564,
+      "sha256": "6a1902cd80aa9b243a7692e5d2c65509d322b83178a1602b0658b1b24ebbface"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/launch/tactile_display_bridge.launch.py",
+      "bytes": 1405,
+      "sha256": "f6b7f068952c3a3aa57a49ce17830633e426b879cbf6e5318d1382e3cc9d2eec"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/package.xml",
+      "bytes": 903,
+      "sha256": "f128e601a971e79c5ba2aec22a2aa7d2123ed00170dd0707187b420f59f9d9af"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/resource/vt_tactile_capture",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/setup.cfg",
+      "bytes": 105,
+      "sha256": "232e3a3c3504633f60db77c67cf862668011ac4af203da18257735520642b415"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/setup.py",
+      "bytes": 1161,
+      "sha256": "830b85899f6521cc9f2be6de4d2c4d00d74377cf6609e90d987ec219c8714084"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_assembler.py",
+      "bytes": 12733,
+      "sha256": "3b25c174f4d371c546d948295998e581668cdf8d1b6c5b912b3adfb61bb85790"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_display_baseline.py",
+      "bytes": 12625,
+      "sha256": "7edc2b7722131dda6b9b5cd12a4cb403621b4aa3a2402e7914e82cd07c6211ca"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_display_bridge.py",
+      "bytes": 10084,
+      "sha256": "25734acdf0e3e30ace51a49fdc374cf9e6c0b258636c0a57108b33c21ca63fb2"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_display_transport.py",
+      "bytes": 18016,
+      "sha256": "06008ef2dabca6c090df5f813aae8348c33b628a9f558639b10dce9138cbf0e0"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_end_to_end.py",
+      "bytes": 6427,
+      "sha256": "b883a371867e75e2c7ddee20fec6ad859da1d4140fe75fbb468fbb6f909e9bca"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_grid.py",
+      "bytes": 2797,
+      "sha256": "855dd8198767b2939400131b839c9b49b188536d2518fa097701ed9e96346a24"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_hand_layout.py",
+      "bytes": 8988,
+      "sha256": "c793232a0b0b0a17dfeed0ab8ec5a9d1f295992deb2ae3de34f923ec6ea18b6d"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_launch_contract.py",
+      "bytes": 7230,
+      "sha256": "48d7506ddcb14d53bab253ea471f8975693f438d12c109fcc6a556896a3eea34"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_legacy_parity.py",
+      "bytes": 2344,
+      "sha256": "135590e4a0f8ae3b590c644fbde0c9814172b91d904293ae65c8091683c93a70"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_lifecycle.py",
+      "bytes": 3611,
+      "sha256": "c5a122ce08f61b58d58c9e9163748878a2c27e01316e79545333baf0403dabdf"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_node.py",
+      "bytes": 16720,
+      "sha256": "ff947748415c84c42bf37e299233d260efade012330e2c90324e8f220e3ae03f"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_presentation.py",
+      "bytes": 5259,
+      "sha256": "36d0acf54605a423aefbf9775ce9db8149c1e115393aea7c7be1f685f8c6be5c"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_protocol.py",
+      "bytes": 3263,
+      "sha256": "123a1a34406fdb80ee6a3a502703dbfa6412bc7dc7f880236b6b4b04042dd704"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_serial_source.py",
+      "bytes": 16782,
+      "sha256": "9c79ebf565297d86baeaa30d7415fdc7b9a5c762b3a7f1a5450b9751ef882eb4"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/test/test_viewer.py",
+      "bytes": 16412,
+      "sha256": "dbe163363d681c8cb9194e650f67030476faf1728d4ae151b19a696a1fb78b98"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/__init__.py",
+      "bytes": 103,
+      "sha256": "c884e700220b4a6efa9e2d73519ec3ba6537ba6bbd1fabf102a8ac5b78664276"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/assembler.py",
+      "bytes": 14078,
+      "sha256": "80217456cfd0f5579777fcd9b4a3cbe1acaa0208d1f4169fac5eaf328512161d"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/display_baseline.py",
+      "bytes": 12930,
+      "sha256": "9d46d992ad10333519969ccb16e2c764cdfc01693003a9f3998c71a8410e0b01"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/display_bridge.py",
+      "bytes": 4455,
+      "sha256": "1503d94ab588c0e599de68a31fa2fdfa6f2965204fe9c6240f8f13d61ed28007"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/display_transport.py",
+      "bytes": 18016,
+      "sha256": "54101b7ad3b64341dbe8ef0e46a1b1168c71c5daa109915462bfa353b86c5874"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/grid.py",
+      "bytes": 3124,
+      "sha256": "d3f86949d84ca5e2304d517c7a1966d6a82fdc0d9847257495aaf168621707d7"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/hand_layout.py",
+      "bytes": 10504,
+      "sha256": "cc1499fc03656db2eeb9f7fb5e4922d0825ff443f60bc53246ac08028f08198d"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/layouts/left_glove_unverified_candidate.json",
+      "bytes": 6119,
+      "sha256": "63092fd953c1060de693931bac5178add89464caa378feacab177a5f6f29a360"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/layouts/right_glove_candidate.json",
+      "bytes": 3154,
+      "sha256": "7a3b6d9d705191bb3b6ef6b1baf283c9a5687df99b23dee0bab69b5604866398"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/lifecycle.py",
+      "bytes": 636,
+      "sha256": "015ed1e2b326278d9947d3ba247eeae593f46bd7b39a5b389f6bf6825c4fbfc4"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/node.py",
+      "bytes": 10791,
+      "sha256": "03f8102921fc85f902d14126ebc34e223a1cdad8d8a0e0896003396d69d62f61"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/presentation.py",
+      "bytes": 6657,
+      "sha256": "614d34dd2a63b9b04bb2e06ca3bd0381ec76348be68fc9ac8914f7b2be9d966f"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/protocol.py",
+      "bytes": 3418,
+      "sha256": "9c37475fc2c909fc12a5f96ad9b87d4602a191bf0125e818826c801cb3c953b0"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/replay.py",
+      "bytes": 5654,
+      "sha256": "1f3a32ae7946ac341aaf7b394f12adff5d72c7139888edc911032419ef0c8886"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/ros_messages.py",
+      "bytes": 2850,
+      "sha256": "d7e5fc18f7037e43a6dd06943bc22677d90c6b9750f622339cdf6105de61f0ad"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/serial_source.py",
+      "bytes": 14029,
+      "sha256": "3abd2eb8816e5daafc6822af9062dddfb2debde558d5721d78fbff9e3fd64761"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/viewer.py",
+      "bytes": 46539,
+      "sha256": "60da2b785d6bf46bb3e058da7003b57cfbab00836f5aa92f5682787dbdbe7cb6"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_msgs/CMakeLists.txt",
+      "bytes": 392,
+      "sha256": "56f714beb0ebf3ff2b6d8695cc0b85f7be518a359d7dd96253c0e5ffd6af4994"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_msgs/msg/TactileBlock.msg",
+      "bytes": 296,
+      "sha256": "6ea3b40172ffbd2f1fe10618595a76b8b90a85e798889a0e1eeca933a6224366"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_msgs/msg/TactileSampleArray.msg",
+      "bytes": 1155,
+      "sha256": "86d719fcc4553a227e9fa1f248a727672b80738c9bdffe1c9499f5e069daf079"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_msgs/msg/TactileState.msg",
+      "bytes": 1248,
+      "sha256": "c242879bd82f005417a5353d282667dc3471a2b8846b1449c71f78ee7ea32ea9"
+    },
+    {
+      "path": "ros2_ws/src/vt_tactile_msgs/package.xml",
+      "bytes": 634,
+      "sha256": "c659444d3167a480f8c4db9aa7d5c432d080c7493795a691171eadef7b7389e3"
+    },
+    {
+      "path": "ros2_ws/src/vt_tracker_msgs/CMakeLists.txt",
+      "bytes": 565,
+      "sha256": "28b398ec977015f2ca015bed10b24feb079f3d0f1b2f5543fcf4d7a2f8e149a7"
+    },
+    {
+      "path": "ros2_ws/src/vt_tracker_msgs/msg/TrackerSample.msg",
+      "bytes": 283,
+      "sha256": "03abc80976921b319f4d75ebc81e7d3f121a77db29515b543c220d65c06bb18c"
+    },
+    {
+      "path": "ros2_ws/src/vt_tracker_msgs/msg/TrackerStatus.msg",
+      "bytes": 326,
+      "sha256": "2b9fde2272b3dffadb383dad09b96587cf325707d0fd76dbc10ac106658a0145"
+    },
+    {
+      "path": "ros2_ws/src/vt_tracker_msgs/package.xml",
+      "bytes": 713,
+      "sha256": "ba6b31c1d1e9ab4099c723b6312a27b7e3daad004f3ab7115fcc77e3b7ee34ec"
+    },
+    {
+      "path": "ros2_ws/src/vt_tracker_msgs/test/test_interface_schema.py",
+      "bytes": 1019,
+      "sha256": "632d5d958ff603434c7280fb5e91b2d247166f189aa64b01516c841c1ece03a1"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/config/roles.example.yaml",
+      "bytes": 258,
+      "sha256": "a99b8dbc3d9676d777406ae4ca270b8efc78e191ce6dfa6e5f8a7f3b24be4602"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/launch/tracker_visualization.launch.py",
+      "bytes": 1140,
+      "sha256": "cce2a08dd0860f9d1a96fccb2774f967ad7e75de60016396656f7818553d22da"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/launch/triple_tracker.launch.py",
+      "bytes": 2179,
+      "sha256": "69a170c91283c47a10407308733da3f7bc2965316b1cd70541476815cea2f418"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/package.xml",
+      "bytes": 792,
+      "sha256": "7083aebf3406b2d81d64f414b3bcb035030db8208a86948c00bb307be5a04914"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/resource/vt_vive_tracker",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/rviz/triple_tracker.rviz",
+      "bytes": 3047,
+      "sha256": "8b85d78470930c1a1d8f82301c29ad70a2b999f7c9bf0574caa336d06c2e0985"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/setup.cfg",
+      "bytes": 99,
+      "sha256": "edbc3b08367d4ec927e3504bd418dc705cd892ee70f412163f1d3a43ad5c88d7"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/setup.py",
+      "bytes": 1225,
+      "sha256": "0de77debe5e581c3315e3a9bbda7d1dd6fe6352b23aac0a8353ad351bb584d28"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_health.py",
+      "bytes": 6566,
+      "sha256": "9e98fcab3ed73802cc885af5769fb03ff9785c1e1d93a0aa7a1ed7fb4b65f660"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_identity.py",
+      "bytes": 930,
+      "sha256": "fa710f3bba6e1c0e1d0087e03642b0581028e1693c75ad705c1faccdfb5aee93"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_launch_arguments.py",
+      "bytes": 1840,
+      "sha256": "9a5d042a8a5f201e44076ba4ca90e00c4950073eccfcf09c7448800215913dd7"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_model.py",
+      "bytes": 5602,
+      "sha256": "12209b3a1692932514aa1f503f7fab1d810de0fbc45210fd12ecd797e89afadb"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_node_contract.py",
+      "bytes": 9621,
+      "sha256": "0adef40c8599f9b2580a401a19b9fa4d072018dcddce2ca8da1f8336ff780a21"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_pose_source.py",
+      "bytes": 11320,
+      "sha256": "6f4c3104150cf99a18ba388e82d7d07b96c68e8d645c749c273e8af3658b402c"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_roles.py",
+      "bytes": 4316,
+      "sha256": "196874366597d32fd069256f27d6223cc165f9bf0d21ee5509468549c25ce322"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_validate_topics.py",
+      "bytes": 7321,
+      "sha256": "842128df183edefb907158c879ca3bf7faf142f211695e86478b52b072a50aae"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_visualization_launch.py",
+      "bytes": 2611,
+      "sha256": "fdbd1006636051fb1bb42e10cf5c8bbcf540e18e2dde0d33d6171f5d524b8682"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_visualization_model.py",
+      "bytes": 5196,
+      "sha256": "effc2b51ca47c819a9cbb8f8a9568a667afb7b0d925e76e9cca0e8ea1ebdf063"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/test/test_visualizer.py",
+      "bytes": 7925,
+      "sha256": "60c3bdcf07c1904d45c3512b6cad9bd780390b60a37ff81909798ea657329d9b"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/__init__.py",
+      "bytes": 51,
+      "sha256": "4f486a319a0524b8753e6c044ed8d5099e77349d053cde1297e4384aa0d2ad39"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/health.py",
+      "bytes": 7694,
+      "sha256": "1898b8cb80a1e0959dd97c8c634be4e03a11ea86eb4887169635f189797f3540"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/identity.py",
+      "bytes": 483,
+      "sha256": "f7b11e77d189fc879d4b1ac14ced34eab31d16a417d796947c612bf8088bb93a"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/model.py",
+      "bytes": 5764,
+      "sha256": "87c31de45b39ab361dcd0278f21681e8a028d85667604dc5cbcd4a73c645cb94"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/node.py",
+      "bytes": 13655,
+      "sha256": "fc187d7791890ebcf70cdd4f2294cf7f0c7530db543235eab08432cb3a4e8194"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/pose_source.py",
+      "bytes": 11191,
+      "sha256": "fe2b0976cf848124517c456aee7d6e2b6c8a71afa6b5e1d57dde85dd0e8f1b8c"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/role_map_cli.py",
+      "bytes": 2736,
+      "sha256": "5d293569edd82e1b775793c037ad79c844a1e8f41dc741f894a1b08b6d4bcbca"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/roles.py",
+      "bytes": 3038,
+      "sha256": "9f56aff99c8f3bf9461a83b6b2879b88772bef0448dc131e0ab3883869942824"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/validate_topics.py",
+      "bytes": 12829,
+      "sha256": "0061ec6b62489b88e22406b9deb3a56d61a63c5d98f755a8e9db4c5592a84c44"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/visualization_model.py",
+      "bytes": 6405,
+      "sha256": "f2ad10b31ed3a2fe4c316fa15fd47ceaec901df62c845582f621a52928cf5725"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker/vt_vive_tracker/visualizer.py",
+      "bytes": 9895,
+      "sha256": "baacad93752cbf3366d52450b5573a4c409e3d7a203138a393b5e1a5623826b7"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/README.md",
+      "bytes": 2759,
+      "sha256": "bd9e678b6bb9f25be94c6c46b0407057ce5875b044150c828c11c9fe31404302"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/launch/tracker_gui.launch.py",
+      "bytes": 328,
+      "sha256": "736ee29cca6f49c439603c8fd76ea91e01e8dad4f9eae5d4a390c5464843d750"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/package.xml",
+      "bytes": 676,
+      "sha256": "01b0cab55f1c022f9c1c233ab7cf259cacbe2985274b3be3df8881094382ac64"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/resource/vt_vive_tracker_gui",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/setup.cfg",
+      "bytes": 107,
+      "sha256": "93647a468b6940d33a410ec4ebb47b03c92a8fbc787ff26b6270b859029ce610"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/setup.py",
+      "bytes": 899,
+      "sha256": "5d37b0587370f952f307fab644be675103f0d2c2d3e9f462ec9e648e700b3c74"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_app.py",
+      "bytes": 4500,
+      "sha256": "39f6fff773cd762234e0e1ef7cb4b50ad4fed4f9fb351c634fd2a39ec875e2da"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_canvas3d.py",
+      "bytes": 14359,
+      "sha256": "2bd0369a8c04954ba55dfeaad76877c5ca54338b377b6d3fadbc6b1df2acbf4e"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_display_model.py",
+      "bytes": 4476,
+      "sha256": "8601dcbbfce0b522add1828d2acdc3fc84b054d1852ca3bf43d227effbdec7d9"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_product_surface.py",
+      "bytes": 5726,
+      "sha256": "7c7db3301d2a23cd264574c73db9264b9f857c3ad0b53d44c6f59e8d889e36ff"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_projection.py",
+      "bytes": 3426,
+      "sha256": "9fabf119aa9dae88a9facdb532fa67a0095620077747132c754d379a2b2d26b8"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_ros_node.py",
+      "bytes": 10802,
+      "sha256": "0024ebf7fa76d937d58dfe91ded02c3466fb463a56f89c1ae01dd54cb1a53577"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_runtime.py",
+      "bytes": 6358,
+      "sha256": "041b0f53b4dbdb0b8de0e5aa0329d4349d2ce13dbacd2e131aa33255873011ff"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_snapshot_store.py",
+      "bytes": 1471,
+      "sha256": "8829af5f0c18d6761555cb8896b43ce9a4eef1956110955176ed2080d52ee561"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_view_contract.py",
+      "bytes": 1824,
+      "sha256": "8482a949b49bcecb68bbeb6c58e3d7af8ddc45c058cb587e225bdd74f47e7bcb"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/app.py",
+      "bytes": 3938,
+      "sha256": "c65dcf6ceb7387cc5ac5cc2f94fe337925797642b62d9ba77a01a6ffec1c8706"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/canvas3d.py",
+      "bytes": 11575,
+      "sha256": "24cd3af40b80ae3dd70955d4026d9883319b9875c883b12d0ddec27497ae8516"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/display_model.py",
+      "bytes": 4147,
+      "sha256": "fe0db36e1cfa866595b540032c4e6f5ee7fa08b1283a5dc979ccf8a831528518"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/main.py",
+      "bytes": 861,
+      "sha256": "fee25130e5c61d00e09edb5021914f9668b3fda995f079fb75f42f27f5a884f8"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/projection.py",
+      "bytes": 6993,
+      "sha256": "6b6901e83f40b8757107019e2c8cca84a69d55e604edab4c29badab07323787a"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/ros_node.py",
+      "bytes": 4705,
+      "sha256": "70ca6619cdaeecff0df7fb3f0740bfc14d4c1092452641b5c955bde673491b5d"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/runtime.py",
+      "bytes": 2724,
+      "sha256": "29356b4a2b47a8ae32a7463b209cb083252c68485886e4deb08d3b0852db02f2"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/snapshot_store.py",
+      "bytes": 1818,
+      "sha256": "b65d0db21b1d177373f995a8e934f409de91a03c810badd7a2eded1fd668c608"
+    },
+    {
+      "path": "ros2_ws/src/vt_vive_tracker_gui/vt_vive_tracker_gui/view.py",
+      "bytes": 12146,
+      "sha256": "a1a4279b06ecd2f57cdd7a78a1985c3247c1aa0917678780cf574b29b671e06a"
+    },
+    {
+      "path": "tools/capture_console/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "tools/capture_console/README.md",
+      "bytes": 47947,
+      "sha256": "a7b0a2db96eca7fc1298149a44fb1a79dea54a0e6effc35a263c8c1e1e18d6eb"
+    },
+    {
+      "path": "tools/capture_console/THIRD_PARTY_NOTICES.md",
+      "bytes": 1004,
+      "sha256": "0c33f8451f834f31b51e250f5672cd393a999d39cd179e52f37aeed0ebbae480"
+    },
+    {
+      "path": "tools/capture_console/pyproject.toml",
+      "bytes": 1013,
+      "sha256": "afc9bf9f2535457c204de07b8b115da569367b329c9254dde290198883a40bd0"
+    },
+    {
+      "path": "tools/capture_console/requirements-tested.txt",
+      "bytes": 144,
+      "sha256": "0c978e14d1b157ee7a044f0253af45a3f14bbe751890cf781be86004cc980f99"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/__init__.py",
+      "bytes": 103,
+      "sha256": "5928f5959f78254e44a414d57efdfab95e5555ccb988c6e19e62008d94c860c8"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/__main__.py",
+      "bytes": 48,
+      "sha256": "a67c172046323b0efcafe92cb83abc266d5dd4bc931d9312cde1b7bed50643db"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/app.py",
+      "bytes": 4101,
+      "sha256": "f42165d02d255b91515235a3f34abe135522e68f34ac80315f332119c0700f71"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/__init__.py",
+      "bytes": 69,
+      "sha256": "5be8af57cb4fa5eb6824358ecc5dfaf8c59dd4824ff5b2873a0434014ac79dac"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/alignment_task.py",
+      "bytes": 8614,
+      "sha256": "94b10f472dfa44e9305e870555d30c17f9474596417436731375b5321c0bc355"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/demo_backend.py",
+      "bytes": 14435,
+      "sha256": "194e51a4e9e1be4b504c88bea262ff283bf31bcbc4bdce0130c9495b9eb01944"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/glove_calibration.py",
+      "bytes": 13664,
+      "sha256": "3c0155f7f4f68db8f0bc35318b240dc364c12604a6900a6558db4bd993308c16"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/ipc_client.py",
+      "bytes": 22399,
+      "sha256": "4b7c2a46ea780f0ff58b6326e8a51a77ff2db64deed505e9d1add262d5950d6a"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/local_runtime.py",
+      "bytes": 26270,
+      "sha256": "47e106aaeb04f1e5b3092b9d0b3c76f7dc45fb2db5314a9a3fe197fbb93e1cfb"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/pose_preview.py",
+      "bytes": 14143,
+      "sha256": "11b0124aad7cb870109109a79a1f59102745954b198522e7472c75f0cd10d666"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/tool_launcher.py",
+      "bytes": 2292,
+      "sha256": "0d58f2385124a9755fadee511775ad0c5a1fc69880a55a849cb24468a6aabceb"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/tracker_settings.py",
+      "bytes": 8480,
+      "sha256": "915dfc0b1fac61402b0fce9d20f2d5dfac84b4d13c8a5d93eaac079df5363a34"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/tracker_workflow.py",
+      "bytes": 19268,
+      "sha256": "884acebaf77c076a321c1e7f14d4898b48d13057ed77524d99539a6c9f699a53"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/backend/workstation_settings.py",
+      "bytes": 7159,
+      "sha256": "3018e93289c961605d28789846d46d821d5d68158104474062a62e63d42217a2"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/desktop_entry.py",
+      "bytes": 3278,
+      "sha256": "ac59c28af568b5baa30915541729b1c2148fd598fc8207cf493425b8bbffa2bc"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/theme/__init__.py",
+      "bytes": 559,
+      "sha256": "843ac06831b2482dd9d5f096fae87d2f67a4901847345739af1d72618b836a9f"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/theme/icons/chevron-disabled.svg",
+      "bytes": 218,
+      "sha256": "a084343a2826f94e77cd24cc487dfe98ce47fd8644157c6b10f025995bb54662"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/theme/icons/chevron-down.svg",
+      "bytes": 218,
+      "sha256": "830a532842ddf1dbe83a67f3ad77b6eb1d5c989ad7927726af28a0afb3129029"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/theme/icons/chevron-up-disabled.svg",
+      "bytes": 220,
+      "sha256": "fe1aa9b41b8902065ec47b83e927cbdca7f904ddc07515ec297758d088c58800"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/theme/icons/chevron-up.svg",
+      "bytes": 220,
+      "sha256": "6b07a4f8c68fed24fca2d22fc9682ca6e44229d1c27a9856099d19f59a95b141"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/theme/icons/orbit.svg",
+      "bytes": 433,
+      "sha256": "74f6f3a4cb3f4955663be20f1a1c7cfc5575c3509c8e09986a4b764e5b9ffec2"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/theme/theme.qss",
+      "bytes": 8764,
+      "sha256": "a8a297a24007217f2f655bdac4c4eee9ece5835fef9a0eda7612082f9948ae73"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/__init__.py",
+      "bytes": 34,
+      "sha256": "7d736188a80020e188da2457467f5883bef6381fdf3df2411d81502b44b0cbc0"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/desktop_tools.py",
+      "bytes": 14056,
+      "sha256": "25b78ad37b94300b48f0e59b44c0440c8d506b7ec3639a736b7a1587e049d7fb"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/icons.py",
+      "bytes": 6365,
+      "sha256": "f18fd3185c0468659b3dac99f69a65d47eff6e69a0bccf7c31a8223bc30e1d9a"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/main_window.py",
+      "bytes": 59945,
+      "sha256": "c57defd7d875caabb7aa802d7bbdd27795d0575f10675a2248f5e553713c7a45"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/__init__.py",
+      "bytes": 128,
+      "sha256": "6a1ee00fe0131a6936919d81742d92fd05629e8bde63009cbee9a431dfd9f591"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/device_controls.py",
+      "bytes": 11304,
+      "sha256": "31389af4f1cd0ddbe8c777e76f1313e2746c5951a5c1af0e0e7d04852a2eb86a"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/glove_3d.py",
+      "bytes": 10158,
+      "sha256": "aa0cd0db1c80a2cc56fd4071c29ac5bbca9449693d81ce185e10cab9c2d3f176"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/glove_detail.py",
+      "bytes": 5607,
+      "sha256": "1a4ef4198f8dde7220ca16911ab24ebb3884147a27771d9d5bcb9c2840a26756"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/offline_alignment.py",
+      "bytes": 8019,
+      "sha256": "80267749242af5d5c502ed1813a93a0e90aaa9525d6f0514584746cf6166fcc0"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/preview.py",
+      "bytes": 47306,
+      "sha256": "29567df1c8b46b81519730ced4184a3c45baf1d18e7f411e9999f7567cde2384"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/preview_detail.py",
+      "bytes": 5952,
+      "sha256": "e42d40bfb1ecc864524dc2fd01ecf5fadba00ed00652b5fca2eb5f18e38310b9"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/tactile_3d.py",
+      "bytes": 9012,
+      "sha256": "d8d971d272f8f935a103d023dec2e92f26d5236c3e220b5ee72fbfa3106a37b8"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/tactile_detail.py",
+      "bytes": 8815,
+      "sha256": "eed6ac190a6c24232677ffc724fa6376333c91807c6da5e5f126a686db85dbfd"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/tactile_hand.py",
+      "bytes": 2908,
+      "sha256": "868eab0e4a43cbf09e9bb478f2ac90bd4dd0a6afa0dbd991c9c15d25045af415"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/tactile_model_loader.py",
+      "bytes": 12728,
+      "sha256": "756750e5072989ccbf97422d1c89ea92c300373eb7b21dde53432735d303918d"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/tactile_surface_colors.py",
+      "bytes": 2166,
+      "sha256": "d05dc500b8c659dd2e3011e7ecc7071647fdc3c7b9110ff445c174fe7a090ce2"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/tracker_setup.py",
+      "bytes": 14687,
+      "sha256": "e505e91bc7160917b03d588d9031b52b53089890b1a722b415dfa64f741f0b95"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/trial_details.py",
+      "bytes": 11183,
+      "sha256": "db84100127a2b04a0a6a66b9674d1497e39414fd2c5f715c39e8a6a20b975a04"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/ui/widgets/workstation_settings.py",
+      "bytes": 15964,
+      "sha256": "adf4b1972ce4863cf0f4585d2f4485d8dbae6acac7d4c1063e62ab09c12ba4de"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/viewmodels/__init__.py",
+      "bytes": 72,
+      "sha256": "79c6dacd9cfb0f0a060efc563011e025e3ae8019646605d68793e91e8ca038c5"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/viewmodels/recording.py",
+      "bytes": 1433,
+      "sha256": "84440b49f6f60189a6e100aa3fdbc45a2e8101c855cd193ab1989116080c9a2b"
+    },
+    {
+      "path": "tools/capture_console/tests/conftest.py",
+      "bytes": 577,
+      "sha256": "cab937f0a0534ead19d43d1c7ada85efa3c07e484238a325e0b6465929f1299c"
+    },
+    {
+      "path": "tools/capture_console/tests/test_dashboard_interactions.py",
+      "bytes": 2642,
+      "sha256": "25d41919ca8e0344f4d20263f0a74457585975eca79457daaa773c55ea13773b"
+    },
+    {
+      "path": "tools/capture_console/tests/test_demo_backend.py",
+      "bytes": 1730,
+      "sha256": "ece4a041d454225629f72dcf30dd9cb48bd5fa4119a5c6313a6464e5b28732e9"
+    },
+    {
+      "path": "tools/capture_console/tests/test_desktop_entry.py",
+      "bytes": 1711,
+      "sha256": "e1b9a89f78b70f4b9d31bbfc7e209d1f27107c0646fdbfd5a6921830f49a65e3"
+    },
+    {
+      "path": "tools/capture_console/tests/test_desktop_tools.py",
+      "bytes": 2569,
+      "sha256": "65911cca78f11a6783fa28a2ae4385520949bf4fa228f9ed0f46519f3a399c3d"
+    },
+    {
+      "path": "tools/capture_console/tests/test_device_card_expansion.py",
+      "bytes": 8041,
+      "sha256": "8d6819da4d5be7aa221d88221c108f152898b9954f49d464b9681e5a6d574f50"
+    },
+    {
+      "path": "tools/capture_console/tests/test_device_controls.py",
+      "bytes": 12566,
+      "sha256": "39db90c9c46459b3bf69c7d6ec5f90fb41739897af15ebb9aaf527b00869964b"
+    },
+    {
+      "path": "tools/capture_console/tests/test_device_end_to_end.py",
+      "bytes": 10188,
+      "sha256": "628bf6697a3c16420b09682c904e5ad7e382dfcaf8fb5359db94e7d2798c9c8f"
+    },
+    {
+      "path": "tools/capture_console/tests/test_glove_calibration.py",
+      "bytes": 10044,
+      "sha256": "f96cfeb1ab1071af4355111f5616727f4a67784b95d6d448928d462f3351f15f"
+    },
+    {
+      "path": "tools/capture_console/tests/test_glove_hand_preview.py",
+      "bytes": 19883,
+      "sha256": "10724190749a05d5490063c2be542458e4320c8970b9a2ec92f58fbb997dc6cb"
+    },
+    {
+      "path": "tools/capture_console/tests/test_glove_workbench_actions.py",
+      "bytes": 11338,
+      "sha256": "91b5c654b921447ee2748b19d3882431ceb85d09e1de331aa6bace61259d214f"
+    },
+    {
+      "path": "tools/capture_console/tests/test_ipc_client.py",
+      "bytes": 31235,
+      "sha256": "fd725be094d7abf3ee47c4703ac2d6b65d7b45732600561e41570a60b89be904"
+    },
+    {
+      "path": "tools/capture_console/tests/test_local_runtime.py",
+      "bytes": 20991,
+      "sha256": "5ba2fc811738260caaa9da6ed6546823fc453c8d7f9c95e1923dd0e105519913"
+    },
+    {
+      "path": "tools/capture_console/tests/test_managed_workflow.py",
+      "bytes": 7647,
+      "sha256": "d53a0c04ba26f5fef1d503edf7d73115567d4145ccdfb7534f0647e6dbcb596b"
+    },
+    {
+      "path": "tools/capture_console/tests/test_offline_alignment.py",
+      "bytes": 8756,
+      "sha256": "74e3a4c3559b4ed1d1a349eadd5df5f0e9af2616337d6456dd29c0b09a1276a8"
+    },
+    {
+      "path": "tools/capture_console/tests/test_pose_preview.py",
+      "bytes": 10264,
+      "sha256": "d94795e003413bfd64f4c8eb1d3c139d79b238c1722adbacc8df70b51b236249"
+    },
+    {
+      "path": "tools/capture_console/tests/test_preview_detail.py",
+      "bytes": 10595,
+      "sha256": "b36b774fad721728118c7fd6b5b3f664adab17bbea6c09bb493b0d9578f3a4a7"
+    },
+    {
+      "path": "tools/capture_console/tests/test_preview_widgets.py",
+      "bytes": 13077,
+      "sha256": "81ac346399f2e368ba386f77ae1b764fd97d95832b5db4a2c8254614c97c1e4e"
+    },
+    {
+      "path": "tools/capture_console/tests/test_quality_end_to_end.py",
+      "bytes": 11792,
+      "sha256": "2d7fee35015ec0fbf653e42915382cc984770d14cc9b4f6caa49fd8a0f9d49f8"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tactile_3d_preview.py",
+      "bytes": 7030,
+      "sha256": "3f98b847033984f271edc02442cd6ceb92f091c27f3685d0a6e9ed7de26e31ba"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tactile_hand_controls.py",
+      "bytes": 10296,
+      "sha256": "25ec7db816a0c26402b29960c2fc7b0d0697d81004a6d5f65ad200e59b254cd0"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tactile_hand_preview.py",
+      "bytes": 10248,
+      "sha256": "669c2b9d25c76335618ba04eeb577c351d9b0dd5b3dad9b12cfa2fafbfa0e74d"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tactile_model_loader.py",
+      "bytes": 8743,
+      "sha256": "bfad44b589e312693bbcd9742c46e8931437c78787ebe0c7019a3e83f1cac471"
+    },
+    {
+      "path": "tools/capture_console/tests/test_theme_assets.py",
+      "bytes": 1018,
+      "sha256": "4e0689dcc618a68b2b54156da336063f198be01dc987b2ae75df99a3617280f2"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tool_launcher.py",
+      "bytes": 2018,
+      "sha256": "ed457600d368957e80e29922ef22e6443699d16c6550831368c75d2f4874b092"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tracker_settings.py",
+      "bytes": 10626,
+      "sha256": "293fa63fa10d3bb21b296b0a129cc597081df98eedc2270f17f452f9929976fb"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tracker_setup.py",
+      "bytes": 5229,
+      "sha256": "ded4f95a94a9107291f6c642a841b67224275426a1ee82cb6d8e6655dcbcfdc6"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tracker_setup_persistence.py",
+      "bytes": 12682,
+      "sha256": "c778399607f314a3bad827bee5080a0e66cf51b52dfe8e8aa99d664b3489265c"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tracker_workbench_actions.py",
+      "bytes": 13693,
+      "sha256": "03c061cdac22e169285523491fe1a1386beb5ccd80c765ca9e61f685a0d4a9d5"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tracker_workflow.py",
+      "bytes": 13364,
+      "sha256": "cc277053fb56c986ac75f445f02a9467b6296f3c91416cb5db12e3315f475552"
+    },
+    {
+      "path": "tools/capture_console/tests/test_trial_details.py",
+      "bytes": 8341,
+      "sha256": "1226e538e2b7e00d33d8f9d5bc980595e3c44a9ecf804c2d28bcc840983d6c6f"
+    },
+    {
+      "path": "tools/capture_console/tests/test_visual_layout.py",
+      "bytes": 10247,
+      "sha256": "982ee8902ff8f04508f37ac0928f69d41c54ff77b86587f0e30b381b7dca1b6f"
+    },
+    {
+      "path": "tools/capture_console/tests/test_workstation_settings.py",
+      "bytes": 7759,
+      "sha256": "ecab21f721463e170b8bf85a317b5e405380d137693e376cc32ddb33b9fdaa73"
+    },
+    {
+      "path": "tools/capture_console/tests/test_workstation_settings_ui.py",
+      "bytes": 13809,
+      "sha256": "98430f60fdf5f34794885777ebf1595b068ed915d6a7ff8d5531d278c519b035"
+    },
+    {
+      "path": "tools/capture_deploy/install.sh",
+      "bytes": 973,
+      "sha256": "ae3024072c9fe9d247da6dbf7f5e35eeba1f7305b9545d2558493f29ffc21d0b"
+    },
+    {
+      "path": "tools/capture_deploy/run_alignment.sh",
+      "bytes": 764,
+      "sha256": "6cb56e9c739d67a99bfecd7ae312cb114babfb57d6c97c69b9e40967414bd9b3"
+    },
+    {
+      "path": "tools/capture_deploy/serial_session.py",
+      "bytes": 9399,
+      "sha256": "9a03ad930826c908c05ca751565c3607b4214fed31e887360100ffdb40deda65"
+    },
+    {
+      "path": "tools/capture_deploy/start_console.sh",
+      "bytes": 491,
+      "sha256": "16ec0636904bac47793ccb02a54e81c50c59f6cc8edb2ae37666d939830db89a"
+    },
+    {
+      "path": "tools/capture_deploy/start_demo.sh",
+      "bytes": 171,
+      "sha256": "9598af0949e3dc4f1fd3fcecfaf53121c1d5f616e28ce4843b593bbca28375a1"
+    },
+    {
+      "path": "tools/capture_deploy/start_manager.sh",
+      "bytes": 925,
+      "sha256": "4bf2a20760f381666774a29bb0e7f361e05b1acbc70d019cb9ccf7ca8c9ba287"
+    },
+    {
+      "path": "tools/capture_deploy/start_workbench.sh",
+      "bytes": 351,
+      "sha256": "59c1df3beadbfee2c2abbe2e212837b6e1fca23df16368460fa40bfa37b6ba64"
+    },
+    {
+      "path": "tools/capture_deploy/tests/test_serial_session.py",
+      "bytes": 16070,
+      "sha256": "e19b54808641af59ec3ddfec414eb3a8f04fc35a6e405bb4b4ad2b4d9f8d5e73"
+    },
+    {
+      "path": "tools/check_public_tree.py",
+      "bytes": 18091,
+      "sha256": "4d3fb27ca4e629e8b8daefbda36059ad9e33fe2e15c31afbdc8adf3205f62153"
+    },
+    {
+      "path": "tools/fsglove12/.gitignore",
+      "bytes": 82,
+      "sha256": "6f13461ed50faa43b0aaffc881a3a6edacafc2957973c357186f8bc7bb591105"
+    },
+    {
+      "path": "tools/fsglove12/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "tools/fsglove12/README.md",
+      "bytes": 135382,
+      "sha256": "601f22922abda7d9373d44feeb05cc4037cd856f5aa92585366aadb254291bf4"
+    },
+    {
+      "path": "tools/fsglove12/THIRD_PARTY_NOTICES.md",
+      "bytes": 11607,
+      "sha256": "1b6a5c0395a5dceb567bd5a5bfdd2736260f721a5c12b2d6873b9f03b5f28e1f"
+    },
+    {
+      "path": "tools/fsglove12/pyproject.toml",
+      "bytes": 1051,
+      "sha256": "93f3f2710fd5ae24ba85e7ff5b33d515f0105e3819683971ed5dbf9e998dd4b1"
+    },
+    {
+      "path": "tools/fsglove12/requirements-functional-tested.txt",
+      "bytes": 158,
+      "sha256": "d5024ae79f3c2aa53adfa1aa0a43c32caa46abcccad59420351953016ccf7620"
+    },
+    {
+      "path": "tools/fsglove12/requirements-high-rate-tested.txt",
+      "bytes": 354,
+      "sha256": "e16f631ad4e5a8a9b68e4d810771951c1bda829b42d7207bf69820e687050757"
+    },
+    {
+      "path": "tools/fsglove12/requirements-live-tested.txt",
+      "bytes": 220,
+      "sha256": "25ebbc795392f94814cac4e846f844a7ea19c27eeb9a6a48c42b5bbb6f92faa1"
+    },
+    {
+      "path": "tools/fsglove12/requirements-mano-tested.txt",
+      "bytes": 994,
+      "sha256": "00d811cae9fd8b258353cd00bfb43ccb29fdcbbe21cd4ae36eea21d8cac39f9a"
+    },
+    {
+      "path": "tools/fsglove12/requirements-tested.txt",
+      "bytes": 197,
+      "sha256": "a1962cad55f44947764ff3dec34cabc09929c46a0c376a1e01f4fbb48168fc1e"
+    },
+    {
+      "path": "tools/fsglove12/requirements-upstream-tested.txt",
+      "bytes": 268,
+      "sha256": "8615a41a7585cf17083bc608e7a1c1672dd92485f0b88862b8b7fcc5074f8a21"
+    },
+    {
+      "path": "tools/fsglove12/scripts/analyze_imu_csv.py",
+      "bytes": 13145,
+      "sha256": "174943ee821aa4a8fa362544480fe461b7ee6206e2982251e088a5d4c3266883"
+    },
+    {
+      "path": "tools/fsglove12/scripts/analyze_imu_wire.py",
+      "bytes": 16569,
+      "sha256": "81277ec6eb44fa92e69deedad4213b42c7746d585ccb4714380074360ecb5ddc"
+    },
+    {
+      "path": "tools/fsglove12/scripts/audit_input_health.py",
+      "bytes": 15685,
+      "sha256": "2029faec0d8ec701a043dc5e770516a7087fc4f9d3cbe1cf4e08ad2c039924d2"
+    },
+    {
+      "path": "tools/fsglove12/scripts/benchmark_live_tick.py",
+      "bytes": 42008,
+      "sha256": "620def4bc3526d419a1948e3375e2bcefec5b9f4a4572243f797f714e218cddd"
+    },
+    {
+      "path": "tools/fsglove12/scripts/benchmark_live_ui.py",
+      "bytes": 21817,
+      "sha256": "7698879b67e00f85174c87a13384e57d4e3659dba21fce9bb0798bef37f13508"
+    },
+    {
+      "path": "tools/fsglove12/scripts/benchmark_upstream_runtime.py",
+      "bytes": 28750,
+      "sha256": "16a3d83b974aab2d5e8a902a8891ae2069833c278f2614d381efbbdadd0b3156"
+    },
+    {
+      "path": "tools/fsglove12/scripts/compare_pose_environments.py",
+      "bytes": 14168,
+      "sha256": "145adf61a5a104648634fe1beb140dbbdf4cefc41ea1f659be277bfd5cb4bd54"
+    },
+    {
+      "path": "tools/fsglove12/scripts/preview_tactile_surface.py",
+      "bytes": 6347,
+      "sha256": "585e47e046b2915564dedacba034ba789b82625067a660defb75d78707161364"
+    },
+    {
+      "path": "tools/fsglove12/scripts/probe_imu_wire.py",
+      "bytes": 16652,
+      "sha256": "75f5f7ff4e8e6ee734b9b34b05aa678dde7b64762da1c7ebbb35c5fb6ca4c9c9"
+    },
+    {
+      "path": "tools/fsglove12/scripts/replay_hinge_estimator.py",
+      "bytes": 23933,
+      "sha256": "6c0dab638523e2b6797d2005495758a05286c77fd645156a2815e2208500125d"
+    },
+    {
+      "path": "tools/fsglove12/scripts/verify_gap_recovery.py",
+      "bytes": 11921,
+      "sha256": "9c89dda9882432c8e76bce17f72defdd3ce86a7d58f3a69c86ee41e117c6971b"
+    },
+    {
+      "path": "tools/fsglove12/scripts/verify_mano_model.py",
+      "bytes": 6006,
+      "sha256": "4a993762d83616133ad3772f6d59e71cb9b29a598c0bf38e80970a5d1653f3bd"
+    },
+    {
+      "path": "tools/fsglove12/scripts/verify_upstream_port.py",
+      "bytes": 8552,
+      "sha256": "b0d8401d8884209c6b1082301ba612e1332a491b00fc946f49d7ad9de124a400"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/__init__.py",
+      "bytes": 103,
+      "sha256": "21e1ddf0eb6d15a0fbc3cb0ae8e05b69799b01e3f4cb66a713f7f17818895800"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/__main__.py",
+      "bytes": 79,
+      "sha256": "307299fda7b77d22c64cb51430ec75e5f59d78e9c948786afb3b2544fe45e4b7"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/calibration.py",
+      "bytes": 10550,
+      "sha256": "02a0f57c31906210c54d43e97871814857ba4003fda7ffb565d1b3c8888b6146"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/calibration_artifacts.py",
+      "bytes": 15382,
+      "sha256": "93133fed3cfff92de08146df9b232f3f57d2872e8278b4cb4234016d82e4e90c"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/cli.py",
+      "bytes": 22801,
+      "sha256": "b0822048f0ec0afef44911312cf07d0ecd52ad2afe1f0b44db4390fa2c98340c"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/config.py",
+      "bytes": 9215,
+      "sha256": "3697565ca06810d83805cb06ac9b33b0421967f20aa74555ea57f81488594f38"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/configs/left_current.json",
+      "bytes": 1531,
+      "sha256": "1d51e0cb62cfae0eddf4214950398292b9b5702d13bc24c772026403c869c543"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/configs/right_current.json",
+      "bytes": 1589,
+      "sha256": "c04c68955abb1999737254b92b507df800db32e58f4c9cb40ed5c3111185b7f8"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/configs/right_thumb3_proposed.json",
+      "bytes": 1233,
+      "sha256": "e559284a90ded1aeda2816aea359750a046e6f429baceabc74951a5a7fbe0ca2"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/display_pose.py",
+      "bytes": 5544,
+      "sha256": "3a25573a977fd5de6926076d271d49e62b4cad6db88046c482aaef758018f95b"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/functional_axes.py",
+      "bytes": 12380,
+      "sha256": "c5f231c38f1c164447245c5c0fe21da0b42af1af43d98ac6ac916d1e8609edd9"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/functional_pose.py",
+      "bytes": 14067,
+      "sha256": "94584e0a3ca7c62b77e27112b2b17c212c06cc72b0ce47c0f8df4a407097ed75"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/guided_calibration.py",
+      "bytes": 17169,
+      "sha256": "2f614005f847c103c920bce9dec9e4f11c0a6ae21d2f4ea09053ecab878d8a30"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/hand_view.py",
+      "bytes": 8965,
+      "sha256": "17aa980260ce61671b70dde21644515f2ee84cd9fd90de8a0ef36da218a5f98a"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/heading_correction.py",
+      "bytes": 15458,
+      "sha256": "ed76e5b8c345ec802d6fbc0bc37fc56108166ac42ec77bdaba701af482b16cbd"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/heading_window.py",
+      "bytes": 10114,
+      "sha256": "424ba91e395a0c8164c4dd1d5cd15947576f3cfc10b26e34689c49280b29c8a1"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/health_contract.py",
+      "bytes": 2237,
+      "sha256": "877c59ab0602a1819b3f0a81d5e396e34c6d8e7600dc22a83c21ccec7114818b"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/hinge_continuity.py",
+      "bytes": 4251,
+      "sha256": "cf4c68d805cdeb0099e6fb11c4909488ab769512d11f46783792813f3fd3125e"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/hinge_estimator.py",
+      "bytes": 17521,
+      "sha256": "3ad85aa649f2b682173592ad109a05ed8836a9bf4ef0a797690233825d08a82b"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/hinge_heading.py",
+      "bytes": 7186,
+      "sha256": "0fe65e02ed1b5a178510d4db8f00a6ef14fb9766958a1bd10821912235c0f936"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_contract.py",
+      "bytes": 8397,
+      "sha256": "31bd8fe1897c21fe2d7a99a051d355436679cbcd0496c0478742e4cc84a18225"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_diagnostics.py",
+      "bytes": 8865,
+      "sha256": "c94941f1abf5e7e2a9acc688a70d048e61ec5d121ead8edcb1a90c7d0bc62c7a"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_guard.py",
+      "bytes": 15414,
+      "sha256": "3a491c1cd16a05e3a52bc8894bfb7064ef6bf0328615e79e83cb97f9aa33eceb"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_health.py",
+      "bytes": 11624,
+      "sha256": "f99acb9db5d2e568d512c5b40e89a41d710b41f4de2bd96aecc527c6cdef5476"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_readiness.py",
+      "bytes": 11727,
+      "sha256": "0f80e7c8894f14272b8b8aeb6b0f96233f0091aa0f756defad380aaad0bbe598"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_scale_check.py",
+      "bytes": 17539,
+      "sha256": "c3c0f25c75000ae87622bec4b6515b0ba1f871121a431edb2a1b741e6f0caa25"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_scale_job.py",
+      "bytes": 2746,
+      "sha256": "ecb04dc01c6b6f0c0db3f9a5f6d72e0a31c4f500e50fe3cb7a57ff3b1e639fc1"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_unit_fit.py",
+      "bytes": 19834,
+      "sha256": "51442048dc10f6f445f9d42292424b2023a90f14dc84bae95fa1245ff706561e"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/input_unit_workflow.py",
+      "bytes": 3194,
+      "sha256": "ff11d5a35e1d6788d8e2fe68e0a4a03d66523106ce16424bad851d0e3de2ff09"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/joint_quality.py",
+      "bytes": 1591,
+      "sha256": "10fb53e447397caf48dc8cff4e6e86594abf32ca87f31eafa35b6886a458e8a2"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_display.py",
+      "bytes": 11428,
+      "sha256": "db8a733ae25ddb50b55f1857f6d82c56661c2de6e4b09a6119e565bf08c03553"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_gc.py",
+      "bytes": 6604,
+      "sha256": "4dea4ab4c28d8485c9b1274074415b2d543e71502b895bb20fd21e4f02d8aa3c"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_mesh.py",
+      "bytes": 6825,
+      "sha256": "0a25f9ff18a594233ca294e9e7128a1169888a5f426f5dd421ba1cabd69cdee0"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_process.py",
+      "bytes": 33136,
+      "sha256": "2124183eee34d6e9dc077bbb23857521ed33722e6a8383e8e5c3f1fc6dd59efc"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_recording.py",
+      "bytes": 7128,
+      "sha256": "2dc7cd876de4511d41f234f653546bc655b1ef9ea389a20e7f480a49fe724739"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_recording_process.py",
+      "bytes": 15297,
+      "sha256": "5897755a324cd951d81bfa9c22d43aa58ce560b2b732bdb56fe60dbc71d99304"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_replay.py",
+      "bytes": 2769,
+      "sha256": "3ab3ce0ed1cfd557a2b03ee3e25b2a326f1289294ee31bbd7463201da4b5f6bd"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_runtime.py",
+      "bytes": 119882,
+      "sha256": "68b92b4c49de1974b9d7a716500787f3a175b4960355c2638e7b7998357a35d3"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_shape.py",
+      "bytes": 31181,
+      "sha256": "10bb254a4533033a5fdd115663d654e66b2d4f67bef9e75872780f275302c6b8"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_shape_ui.py",
+      "bytes": 24065,
+      "sha256": "27153b41cb14807c7083337d128036946f89b30b74c23e9f45f97a1cbf013bfe"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_stream.py",
+      "bytes": 27997,
+      "sha256": "098f513183c57de6a258d93ac2d73899a035013c36d03ffcd079af7d22cf73b9"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/live_ui.py",
+      "bytes": 121888,
+      "sha256": "3519e14ed9b02a4afb74c7ca0d18eb51bf5ea6df68f782e0c94159190d203232"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/mano.py",
+      "bytes": 15874,
+      "sha256": "f25b53317d9574bb0c251329cb2a76edcf7a0065cf658ada11b0cd8938cbbbbf"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/mano_pose_preview.py",
+      "bytes": 4366,
+      "sha256": "06d3078480e09f238c5ffa3a35669e462bbbce6ace90c006e012a8adc9b5f7ad"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/neutral_reference.py",
+      "bytes": 5750,
+      "sha256": "36f05ad62d09763eaea4a3e7d3b6307be3f4a5bffcf4abb5d5aa92543bc6a521"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/pose_export.py",
+      "bytes": 12015,
+      "sha256": "7d3fe9e4716aaef6f8e9fb18ccd1daa257a5d61e06502bd7381d9e53ee65938c"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/recording_policy.py",
+      "bytes": 12407,
+      "sha256": "ece50d63dc70882c727e340f0792b0ba39e4bc3cdfa2fd03a23e6d51084fcdf3"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/replay.py",
+      "bytes": 17418,
+      "sha256": "8077f3e22e7754089af27c22a50e8530d1e222066ef85847fa1a801a8623a198"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/scale_capture_buffer.py",
+      "bytes": 3564,
+      "sha256": "7d2ec25342cb81faec368bda901467185d3b8de8d5cb59ebba5ce0738a071631"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/sensor_quality.py",
+      "bytes": 7150,
+      "sha256": "d847584a3ae1ad5d5881ef04a2433d318a8d2c9d7d2121718dca1c411583c724"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/shape_calibration.py",
+      "bytes": 15869,
+      "sha256": "aee611de7a00623d8c5238e730428b342881df13f9bfa79198cf0f8c4b5507de"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/shape_job.py",
+      "bytes": 4866,
+      "sha256": "994cafed7a1254bef7f64e59081c996b14d45514ffcef1999a008b18ba9c386a"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/solver.py",
+      "bytes": 16500,
+      "sha256": "c2095866118533794bced0d2c047b08bea7fce96839f63b614981b7c38fdc781"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/tactile_overlay.py",
+      "bytes": 15301,
+      "sha256": "0de95ec240921a561e79f85ce0ef326f3184927ab231bab527b7cde94a842d08"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/tactile_preview_export.py",
+      "bytes": 1834,
+      "sha256": "356bdb95fc9702bfbf60637aaa7d18b618ccabe7d476351e7c015e059e751f34"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/tactile_surface.py",
+      "bytes": 17750,
+      "sha256": "4a0087f4418491f73903d70bd5da972392a0f898b50f6c8e148efc6abb144656"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/upstream_backend.py",
+      "bytes": 36113,
+      "sha256": "5c5ba82aecaf8261e2773c1902ad01b32b42e07529171d09bc164b17d3b9606f"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/upstream_core.py",
+      "bytes": 12954,
+      "sha256": "9de857c41e015876f0745650ca1a65fdf4ff365904fb9639cf09ec162ce10308"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/upstream_functional.py",
+      "bytes": 22210,
+      "sha256": "0b03819800d3348f38713c6853473409b401b26d763d3dfab7833341509f2354"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/upstream_inference.py",
+      "bytes": 4105,
+      "sha256": "161bcede634911134b22355cc1e50725410773c189d0c64d16c18a62163b33ba"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/upstream_priors.py",
+      "bytes": 7711,
+      "sha256": "0b82bad2717ef3c6ee238e996bc43d41140416072b8449f87189265db1c733bf"
+    },
+    {
+      "path": "tools/fsglove12/src/vt_fsglove12/viewer.py",
+      "bytes": 8242,
+      "sha256": "39e91d41d6fed540c52104bcd696e56fcb0f676d38a451633e666db36d93c086"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_analyze_imu_csv.py",
+      "bytes": 6991,
+      "sha256": "c2da7d0eee03b6b7a5db31ba9bcf682ac77dc8a5e01616b4a5f6e462b1ca3d7b"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_analyze_imu_wire.py",
+      "bytes": 8650,
+      "sha256": "13b519cc2f719d3dadfe741176656494827d3d7d55b2035de4339d743b5b8d44"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_audit_input_health_replay.py",
+      "bytes": 7410,
+      "sha256": "4d027749f2bed0ada45a2b20c53bf13fcc919c262830f8c94c6f3d87bca4e484"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_backend_reset.py",
+      "bytes": 4227,
+      "sha256": "56aa0ae439364082e0713b987aa7739478f41aa819a2e17c54a682c5a109a0ee"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_benchmark_live_tick.py",
+      "bytes": 12414,
+      "sha256": "6953f6d2af018a20135b8c8b4f8c753be814a0a9acc8885f9c14d85d8f32bafa"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_benchmark_upstream_runtime.py",
+      "bytes": 10371,
+      "sha256": "3b6cc2dccbc67d278d1f08f87b38a280af3256fa76e424d6455c9810f3cd4423"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_calibration.py",
+      "bytes": 4020,
+      "sha256": "41a067177081845def5136136b0dd731f1b81bb6a5ffb4ee04bf5604bce0d1a3"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_calibration_artifacts.py",
+      "bytes": 13184,
+      "sha256": "33de77905d3076f6b4758ca5eea82c9f8a9af64718e2dcc544b7e0a2af857f1a"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_calibration_reset_runtime.py",
+      "bytes": 5213,
+      "sha256": "f5c4ad4d24c3e72e5b3332aa952a66fb733dd91d0676a8aaf2cd52cba49ced99"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_calibration_sampling.py",
+      "bytes": 15423,
+      "sha256": "5e8c3e4cfd169755fd5478ec034799e570d0e0561eb11872e00f954686e6035d"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_cli.py",
+      "bytes": 6549,
+      "sha256": "d8e4e56cdce5687230fe9956d72734e408630a90ab0fe01ab538683a96ab0d5d"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_compare_pose_environments.py",
+      "bytes": 4310,
+      "sha256": "41965973b5e91e0e31ce338df92f4b352ac06eb9cea58a1bffd615f9b46337f1"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_config.py",
+      "bytes": 2239,
+      "sha256": "0fa959f7565fac7cd2d9e85ca299db3a5f9591d54c769aeb5a5077959d4f06c8"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_display_pose.py",
+      "bytes": 5793,
+      "sha256": "42ca217d0aa2ad38c436e74675a8d9d913dce9fc9cc0dd01807abb0428e4bcfc"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_display_presentation_integration.py",
+      "bytes": 14483,
+      "sha256": "4ffded807fe53bbe4089ec0e3fa0c71cfec35590dc6bb148a8d8b9e7704f68d1"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_functional_axes.py",
+      "bytes": 15386,
+      "sha256": "d95afac71bd864bd9d95abbfbb00f354fbc8c7f51357b77bbc4fa65726f328e6"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_functional_coverage.py",
+      "bytes": 13942,
+      "sha256": "fd9bc90dfe86998621a0f8ccf2531b13f948ec527f7882a9a1424224ef61b129"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_fusion_calibration_reset.py",
+      "bytes": 7749,
+      "sha256": "31c66200e449224650af4d31428bc652f58e99535641dc7bde853536c7f6083c"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_gap_policy.py",
+      "bytes": 7461,
+      "sha256": "97180347b945415d82fe248054c8015534092bef29a04f3acc4b2638581e007d"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_guided_calibration.py",
+      "bytes": 11692,
+      "sha256": "20dcd94fe05d923f713bc8076194ad796f42058f11ac92fdceee15e6e9bf7fb5"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_hand_isolation.py",
+      "bytes": 6772,
+      "sha256": "0a9599dca2962522822521883c9c8bfe0252653f9e937ce921fcac1498fd7184"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_hand_view.py",
+      "bytes": 9057,
+      "sha256": "422257695cdff5b78083c856049b164a90afe539c37ce0eba69ada67d43c8c1e"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_heading_correction.py",
+      "bytes": 9608,
+      "sha256": "84c3596f8cb83c9d01fcf277ec7433bd8849743c466d4491585344c0714e8725"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_heading_window.py",
+      "bytes": 5688,
+      "sha256": "e4ea8d7e5a3dae8362ccce0f55f6c339fc405fa129b8eb12b8cc7f655ee81103"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_heading_window_review.py",
+      "bytes": 7301,
+      "sha256": "fa34f722e52e74940af7a6655c56845b8bf4708d2af38a09468fb5bc96faeb1c"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_highrate_health_contract.py",
+      "bytes": 4340,
+      "sha256": "c918a60087de7f89c0205a9cdc8bdaf6c5c38306a3729d7bed17647548dcb530"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_highrate_root_continuity.py",
+      "bytes": 6101,
+      "sha256": "4c5d2d009ce321ee060638eacee36a6acc92713a2c6eaaf53ccff062c627e004"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_hinge_continuity.py",
+      "bytes": 6623,
+      "sha256": "606f48a301ca246e8c9a60dda6d97ab52411dfe22c6ab2c748c6b05f1732015d"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_hinge_estimator.py",
+      "bytes": 11265,
+      "sha256": "55ef70f21315e13131d16c85f2ad3913e557c3f864999bd99178d5ae324b3f61"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_hinge_heading.py",
+      "bytes": 13686,
+      "sha256": "4d5231b0dffa7120749119aab4ab2affefe51ce2e31b2b03f0009ae11eb5180c"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_hinge_projection_performance.py",
+      "bytes": 2469,
+      "sha256": "a4e1c80232aebc35f4999a2e946e92b4116bce4af24cd93a4748a6dd9ad8f8f7"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_contract.py",
+      "bytes": 7485,
+      "sha256": "147f51d7e92169e228c9a0db31372a7b3154a1d23f61c4e6e8d6f0172a650563"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_diagnostics.py",
+      "bytes": 8348,
+      "sha256": "f1cd5199a0a5b69f78e87db47f008bdfee74be7184574aa40956bcac9bfbffd3"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_guard.py",
+      "bytes": 19021,
+      "sha256": "41de94f8b5cb7961e6e7c9844ea947a9d554cce3c28fa6a64d5c739401a7cfa5"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_guard_consumers.py",
+      "bytes": 10740,
+      "sha256": "a7a693aea42eb0aaf818d73397b686ed54999b30e25e536bfb719cee99669f0e"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_guard_integration.py",
+      "bytes": 6658,
+      "sha256": "41a1e369ccda3005afe4b93bc9b9b93bcd5af5da5cb5b86aba974dc7aac964ae"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_health.py",
+      "bytes": 4945,
+      "sha256": "e5bafbc80a5574572d124ffd792de392c6fefa7b450737432ad591d8c6d7b2ea"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_health_integration.py",
+      "bytes": 6470,
+      "sha256": "45e6f240f6d9e18932cafcbbef097159df9e311ec068bdd8aa9c08d28790dc66"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_readiness.py",
+      "bytes": 12710,
+      "sha256": "12089eee6211bdef6a1508f979934acc4ba5f5c949736c2a0957d250f7996da7"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_scale_check.py",
+      "bytes": 15814,
+      "sha256": "5799e280092607e6f744f1898b1e7707779a79af31d92c5d64951ac7707bf7c1"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_scale_job.py",
+      "bytes": 8365,
+      "sha256": "7e7c33efde3447612080c74f149eba8813f1d7e89c2bfec81653399eba7be7ee"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_scale_regression.py",
+      "bytes": 11758,
+      "sha256": "36946941c0818f21f7e84f794ec751c8952a6f0d2c93a241e33cf295fde541e6"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_unit_fit.py",
+      "bytes": 10207,
+      "sha256": "638e489629f0d11cdad00aee0f3f3e55a25cefd236026c9a344efea0f775d74f"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_input_unit_workflow.py",
+      "bytes": 1866,
+      "sha256": "dee77123571626aa41d5d28e98a729dfc87ca21713a21f478a18b0412ba9cc72"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_display.py",
+      "bytes": 9266,
+      "sha256": "0701941f53b45336318499749bccd41f0447b5632a559266ca397ccf07789d90"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_display_continuity_ui.py",
+      "bytes": 11299,
+      "sha256": "58a704c93444c050358c135cc095424176354d23ea0c728f59d4b3a77fae78a5"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_gc.py",
+      "bytes": 8567,
+      "sha256": "212076328c605f4e8fbb5b0604996acb29368e8c91cc4bc0c31a5cb8fff9a1a6"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_mesh.py",
+      "bytes": 9758,
+      "sha256": "46528f9373eb7e752acc8a6e93db5714d4d0eb9e18935d0eda3142bcf9eb43c6"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_pipeline_integration.py",
+      "bytes": 21270,
+      "sha256": "3032808c8ae192474175bec28b0db984db593d483c230307085dc2339ea8c0ae"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_process.py",
+      "bytes": 29566,
+      "sha256": "eb1722ef64dc4fb60df39f99738d1e63e77fa2a265cb8247f781e49a3219d412"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_process_input_scale.py",
+      "bytes": 9306,
+      "sha256": "148a42901b9d24951a5fa68ddb737c38b2f7f00bc429348b5ae3093c805b6bfa"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_process_publication.py",
+      "bytes": 1373,
+      "sha256": "d8ca8969089bed08c7237c15e2f0e20b2ca02d0dd5e8b987e1e83c3f96c0ed84"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_process_shape.py",
+      "bytes": 14907,
+      "sha256": "1ae0775d1580723b710783e0042ebb2a9705ad8a5ec1d3fa7304e0379784d656"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_recording_process.py",
+      "bytes": 16568,
+      "sha256": "276492b53ef44d1a697a13b8baa64d6945f848220ae76fb67927a0b81e4109ca"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_recording_stop.py",
+      "bytes": 6679,
+      "sha256": "96a4bc9c2dde86910d41ac6b5ea6d3fd1df433c6122ece7313b283958c1a5855"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_replay.py",
+      "bytes": 1579,
+      "sha256": "a104b0023f75b2a9533d827707840b8fd044641e779f86295c16a49f93d1c59b"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime.py",
+      "bytes": 59538,
+      "sha256": "6ca6006e2b465ee0c34415d6aa3d111899e352041626d3a9ef134cfb55324edc"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_atomic_json.py",
+      "bytes": 3975,
+      "sha256": "85deba2c075da82a038cd1cdcb2b81c5b7c1b8e73333d032b860cee7ce1f40ba"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_calibration_storage.py",
+      "bytes": 17306,
+      "sha256": "6eb0367f91a28b4c9fee62eba1f918a8e1e2b7441410e6f0a34a52e3fc7f5c9e"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_high_rate.py",
+      "bytes": 13500,
+      "sha256": "24b9eb183c00d9943287cfd28ac55d822d537ed929086e3c216604a627b085b7"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_input_scale.py",
+      "bytes": 12766,
+      "sha256": "04c234cc15e3ba3283724ee29eb99974043cb991d74427d332238423d07d20ad"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_process_recording.py",
+      "bytes": 2695,
+      "sha256": "2f6460b637ec4525b2429bcee96c6067fb6cd90c7554ec8ed1f7c3c87c759b21"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_recording_isolation.py",
+      "bytes": 10516,
+      "sha256": "0231bd722a28757b5dfb4a12de542a93c94efd21e865b5bdef3d9c8b49561741"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_scale_buffer.py",
+      "bytes": 4109,
+      "sha256": "f8ed9223cda38581e35f3bc00b8644fc2f82a2ab28d0b035eb8504b1b780f5b7"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_runtime_snapshot_ownership.py",
+      "bytes": 11796,
+      "sha256": "73de8b44c74f8a7e25bb08028cbf1369382a200890d4871c6c38b4e571b96820"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_shape_persistence.py",
+      "bytes": 10035,
+      "sha256": "be103b84fdddf96a7df1e9b64daa40b9d6ce94ad4d87b81607a1c7a7237b48da"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_shape_workflow.py",
+      "bytes": 21934,
+      "sha256": "96cfac904a6ee3de0fc2b90dbc1fbc559ac929328ef0412c620e30bd9470cd27"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_stream.py",
+      "bytes": 28605,
+      "sha256": "dac2238fe7402735a0d215d04ab0623b26daa0a2f0f5dd86d4f68632479bb18a"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_ui.py",
+      "bytes": 71462,
+      "sha256": "ce3b3c273aea71a266be337bd200a63a7aaae0761aab1bc84e6ca5b58248b7e7"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_ui_clear.py",
+      "bytes": 9285,
+      "sha256": "22631f60036624e651ec6c2dca03debe22c83d69f01b58abe2013497402c2e17"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_ui_compact_status.py",
+      "bytes": 8059,
+      "sha256": "dfc94fb9f40e89c9dbfe565ebfb88b7908fbb5b4fa66d84b14556055cbeff5a6"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_ui_input_scale.py",
+      "bytes": 14665,
+      "sha256": "86d8bbec1f5cb910211f2ec193a5535ac12c8820ba0670154d94b5a68c84c8aa"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_ui_local_recording.py",
+      "bytes": 5355,
+      "sha256": "590706265bf12bbad15e5aadc8947604d4a647dd05e73131b60881ccfad0e0e8"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_live_ui_shape.py",
+      "bytes": 21174,
+      "sha256": "0cf5d2a20ba4b722214e907fa75b916576b6daea853a3b0cc28fd0b82511e686"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_mano.py",
+      "bytes": 11215,
+      "sha256": "5a2afc62156b900472e01b0296c4f869681338d34b9d48619fe337d140253c99"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_mano_compact.py",
+      "bytes": 8165,
+      "sha256": "59f05682cc4321c8b9e4b0f4287766a68ff8e3dd2ca2ce16e43de8b540f586ff"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_mano_pose_preview.py",
+      "bytes": 2905,
+      "sha256": "5dae239776033e8791678b247c8f0191210bf16c55c1705b4b24afb543cfaf07"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_mano_solver_integration.py",
+      "bytes": 5499,
+      "sha256": "6f9833862d788ae4ebd7a7cff226720aead7fe3280f3dde9d4486786e232333c"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_neutral_anchor.py",
+      "bytes": 6753,
+      "sha256": "482e5fc5986b6eaf723158bc6fe1bf3c780140d98bfb5a8e52fef39c01b1ac35"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_neutral_reference.py",
+      "bytes": 5951,
+      "sha256": "86d84c843d85c42159f7fc48164f68261e3ae6371dd3a8c4a66eb37165d9c8e0"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_pose_export.py",
+      "bytes": 12438,
+      "sha256": "3e08cd967247e08490c5b2a6df11e3ae219cb1d782869e382cd6abb74d17dbcf"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_probe_imu_wire.py",
+      "bytes": 12549,
+      "sha256": "39364681d1509232434afac648ecde5822aa48d10c97802bc42cea0ac42f476e"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_recording_policy.py",
+      "bytes": 12131,
+      "sha256": "20e8a1cee18bae163866f9a2cf7f0f686e28f35548fe1f5728136d62743f6d13"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_replay.py",
+      "bytes": 7693,
+      "sha256": "4e12a6a7c9d71ac188120e8172ebab9fd3e9b82ea0762a75efd11fb9a5464ad4"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_scale_capture_buffer.py",
+      "bytes": 2984,
+      "sha256": "a6ff502d5c6ce7bf691d2244488fd87c7931787bdf603230bd71776709d20d87"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_sensor_quality.py",
+      "bytes": 15075,
+      "sha256": "cef2f353cffcb3003f8ae6da8eb1670f6b4781469341cafbec302f965e104a7c"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_shape_calibration.py",
+      "bytes": 13994,
+      "sha256": "f737c8ea95f9ecd309e5be4ee75e50a2d9fbba1abddec6ceae34328401f0cb88"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_shape_job.py",
+      "bytes": 7235,
+      "sha256": "8a9e7355cc42209c61f1942ba9e4226fcfb3f0667ae2deebc7ed099fd50a1bda"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_solver.py",
+      "bytes": 12860,
+      "sha256": "c2f6b56a1f5654c50c1dc3b2760d0612f875ba86693ce67fa2a4a14764ffeaf7"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_solver_constraints.py",
+      "bytes": 12277,
+      "sha256": "7055be254d2def77fd8adc0800f2f7b5367fb93e600d2ce4d3de98f9dd403824"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_solver_performance.py",
+      "bytes": 8649,
+      "sha256": "f35babb7940856a2f66923ae8000fb3af25c5a034ed1b2aef9812b48c0afadd1"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_tactile_live_integration.py",
+      "bytes": 10569,
+      "sha256": "ae233c938b0e268a8dafbdd0c6f2590ea9655cb035b60d8dcb478bad19ef204b"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_tactile_overlay.py",
+      "bytes": 18446,
+      "sha256": "6d23fefefe36dbfc542f75a9e1680704d741ef4b836f141040098defd36fb210"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_tactile_preview_export.py",
+      "bytes": 2588,
+      "sha256": "bd04209ac0079c0e99472649b7767eba612253cdf48d833bf29f5d84c44a1a2c"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_tactile_surface.py",
+      "bytes": 13843,
+      "sha256": "942eb6930fbb267f7e9481122683f971e63bc787da1521feee14bd855205297f"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_backend.py",
+      "bytes": 26073,
+      "sha256": "9ea782ec6eeb52882b9fc05749c0108da245b30714e592911c81ea6efad8cb31"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_cli.py",
+      "bytes": 17401,
+      "sha256": "4830e98d9f37dcc68a34ae1414ee107308dfe13fd69c07e3e8dbe917f226edf6"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_core.py",
+      "bytes": 11206,
+      "sha256": "5793696f5ec5b7b0afa2f60a4785dad94f2af53130486acc9f5e77cedfb4d1fa"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_functional.py",
+      "bytes": 22341,
+      "sha256": "120b6ccf00d0d54dec0ecebb953f29157b3b2b368e2c2f8f93a1d866feaded7a"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_functional_hand.py",
+      "bytes": 7348,
+      "sha256": "51893c29784ce49239c5e9d566bb810e93bab12b53287347f0bc9c790a7d8404"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_functional_integration.py",
+      "bytes": 28761,
+      "sha256": "b493e192531fae520ad4cade493ec43bfafe2fa3831685a70d6bc5af287bd189"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_inference.py",
+      "bytes": 8302,
+      "sha256": "e52b119e14f2f898aa426e2d21840af749931c564c6549e230e967cd640bc7dd"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_prior_batch.py",
+      "bytes": 7188,
+      "sha256": "7385092db598bb78e686dc7f57d2c3e5bf2253e923516ac35d1a7548c5ec60bb"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_priors.py",
+      "bytes": 10400,
+      "sha256": "a18ad7e8dbe06b9abdec71d57ff7d4fa1f06effcc33ff46da3ea60f301180b53"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_upstream_reconfigure.py",
+      "bytes": 5304,
+      "sha256": "8ad2a04a1962cf38de4a02d2b54f99373fa669bcb728616f3e2f2997847affe2"
+    },
+    {
+      "path": "tools/fsglove12/tests/test_viewer.py",
+      "bytes": 9941,
+      "sha256": "b8a3bdd27a2d56570e25cd134f6fa0b53faf58bee8cef9948e5850353fa37f3c"
+    },
+    {
+      "path": "tools/glove_hand_pose/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "tools/glove_hand_pose/README.md",
+      "bytes": 82462,
+      "sha256": "3e52e0914d9e310955486bbb920b1e8d240321bd5d2925568e39db9782fa8fbe"
+    },
+    {
+      "path": "tools/glove_hand_pose/THIRD_PARTY_NOTICES.md",
+      "bytes": 3921,
+      "sha256": "de47591aa9c0f8ea1ae607524350bcf8132128596342e1fccfe5725e56a97f0d"
+    },
+    {
+      "path": "tools/glove_hand_pose/configs/right_glove_20260930_empirical.json",
+      "bytes": 1959,
+      "sha256": "8671a0f8592de2552d193ac45f3c344c0c2db89135a1c9c012124a71c0649e94"
+    },
+    {
+      "path": "tools/glove_hand_pose/docs/IMU_PRODUCT_ROADMAP.md",
+      "bytes": 33793,
+      "sha256": "461f50ce95ca38bb2208566cd2f480a0eaaf5f46b46da573b70dc52ed4d1b241"
+    },
+    {
+      "path": "tools/glove_hand_pose/pyproject.toml",
+      "bytes": 780,
+      "sha256": "2fd1a21f6af4286a760040fe63db5e5fc47e8a391f9b3afb0dbcb6db78ca147d"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/__init__.py",
+      "bytes": 108,
+      "sha256": "101511f2ef3b391054c0df34f246a1838716e31b4fb9e9940126509427753f77"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/__main__.py",
+      "bytes": 48,
+      "sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/calibration_feedback.py",
+      "bytes": 3481,
+      "sha256": "8656d0cc49a8e7ebe6bfd3b2725c2bd3326fc8eda474ea5a05a04d201e46a0a1"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/canvas.py",
+      "bytes": 18814,
+      "sha256": "1065cff53f4054822871976e7d17e2fd6480ecd062032da892c005b3c4362ec6"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/cli.py",
+      "bytes": 19773,
+      "sha256": "6315b934ae91516d129c52dbf8beaa12c77635e8bf7cf1f4664b851ae9db6871"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/config.py",
+      "bytes": 5626,
+      "sha256": "209a866c62eb6240613918c8ed46982c79972abf4822bdaf58cc0bb3ea0f6282"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/default_config.json",
+      "bytes": 1734,
+      "sha256": "870ab95466aff4bd3bdd19d10d99dae943e2ba4c2d24a5d3757e0cdde8967d55"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/diagnostic_recording.py",
+      "bytes": 13966,
+      "sha256": "8ed9608d2b58bbae11367c1591d00d92e9c3beb979304f5924b2c09bf50b7ce0"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/diagnostic_state.py",
+      "bytes": 19501,
+      "sha256": "3c7e67b2fb8403f1275cb103effa4b47ae2e03254e017e7d3b290cccdad9ac76"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/diagnostics.py",
+      "bytes": 20625,
+      "sha256": "281e1aa2ff58ec8056b96d699ab4f60997c45b4fc30916af0f2add8e8b267bce"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/engine.py",
+      "bytes": 38801,
+      "sha256": "dd1acd83f80272cf9affbc28b8abcd5b0bca4b64f327d1b3178ddcd439e5846d"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/gui.py",
+      "bytes": 64620,
+      "sha256": "95ec1340d3045678ced21ff1f6b602cd01a7bc9d1fb1c1fe98d2677a6f02ee95"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/gyro_scale_diagnostic.py",
+      "bytes": 7599,
+      "sha256": "3cee514ba0dd7dcebe0f3fce0f4d7e32f6f855350b4673e8e9c285aef9909475"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_axes.py",
+      "bytes": 15738,
+      "sha256": "2e75b5d104242af3d83be0bb039fbc6ff3bafc63ff38e468bef59757055c1e53"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_benchmark.py",
+      "bytes": 13784,
+      "sha256": "d862cf98cb3c278b2838136819d7579aeea493d1756101523599145f234ed3ca"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_export.py",
+      "bytes": 6277,
+      "sha256": "7e2a5146371d5eef15daf1a54ffe5ff95830127e1ff1e57a7c3b5b25e938d0d8"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_frames.py",
+      "bytes": 19372,
+      "sha256": "38f4f4e8e89e36310d809c16d2ba562193adedc6deb5c666f1d0c166278821f2"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_gui.py",
+      "bytes": 25085,
+      "sha256": "b82b2f8f4a3e2aab5d39011581856daec8b64912564c1ffe44647a5d554e325a"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_guide.py",
+      "bytes": 20711,
+      "sha256": "b01fa7263f8acb1cf8d1878dae5570606856fa00803c3922135c42b94a45d873"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_guide_widget.py",
+      "bytes": 10492,
+      "sha256": "4b9ab7989da6687d14cfa10194c9cacd8c615b866ccf3b479ad30f4109bb27a1"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_joint_axes.py",
+      "bytes": 16741,
+      "sha256": "efcb4c64b7e7c7cf6a7d2c013e638f16446268525f02b28e7397424093df6a73"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_joint_experiment.py",
+      "bytes": 7029,
+      "sha256": "d3ace576e8ed535d63e4ee47c9ce10e9bf35a6880031a5b0de3cf71f6064eaa2"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_lab.py",
+      "bytes": 9831,
+      "sha256": "e7d66a20de66102a5d599651b086ab630c464e9ac76db4a5b27cc3485b040aeb"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_observer.py",
+      "bytes": 24715,
+      "sha256": "aaf9e66b40c501e461c3739694f360f840a21d742157797ae4f3a4c8ca1e3091"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_online.py",
+      "bytes": 12769,
+      "sha256": "df04b6462441c1cb8f81132200497e774851185bb4f507617f812ba63fb63b97"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_recovery.py",
+      "bytes": 10446,
+      "sha256": "a768e1f79c72740e169b274bc2c7b31b4b9d35ebba886fc3063284bb8b4760f3"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_replay.py",
+      "bytes": 16641,
+      "sha256": "a1e4233e820ae5032b6bfac799a910940f3e07a1b75d66306f937ae5992d6be2"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_report.py",
+      "bytes": 7434,
+      "sha256": "af3cfade011b6508401c75ae3959cb5da0c705a0e7db737fa295b8082df14f14"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_session.py",
+      "bytes": 37830,
+      "sha256": "6c64e98f622822993e4ac7c3f55c58a63c2c2d949ccf490684e8c63915dc6787"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_settings.py",
+      "bytes": 3621,
+      "sha256": "cdb290848cbe327a0d83dd0df355a11f9bfb2f312b34f07102eb1c71a116d83f"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_validation.py",
+      "bytes": 27086,
+      "sha256": "46168f40ba00efe4c9779a8d6a0147cd2a1fe146d0d3e1a356c13c055c3ebbbd"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_validation_io.py",
+      "bytes": 6590,
+      "sha256": "c5455df28da8fafcbced2754561d7708a1e790d4caea29bd88319a1888f2940e"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/hinge_worker.py",
+      "bytes": 18596,
+      "sha256": "b6cadaca6e8a9f515fc6a8abbe6f67d0f899f47615962ebb426dfb24e1d65c1b"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/kinematics.py",
+      "bytes": 16832,
+      "sha256": "2b2f0740eb66d434f8c82cae3777aa14b1f5fa56f0b66a076a32e147749cdb0a"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/math3d.py",
+      "bytes": 4997,
+      "sha256": "d92c75b8c900bd16188f8411f1d8ae3ae0a9f8e92987414fb4d3788bf820127a"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/mesh.py",
+      "bytes": 16814,
+      "sha256": "f86f07de5ab6ce7604d9c609ed3e115f49ba0ac9e90f0a3bbdeb8a4ce9e8ab7a"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/pair_capture.py",
+      "bytes": 17746,
+      "sha256": "d6d4950c03d86f39432f1525e64b674fb88998c35804f81e737b3dc0488dc49a"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/qmt_reference.py",
+      "bytes": 18320,
+      "sha256": "77853ed0273fdae58a3e0d13301b525efaa392ce2ce75a1269493c2bfab48eb0"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/quick_hand.py",
+      "bytes": 32547,
+      "sha256": "1ac538bf32b595f9dc46a639dd2fa7604b3a0c763071a2e5826df87318efcad1"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/quick_hand_live.py",
+      "bytes": 29580,
+      "sha256": "91a0b9edde0e04be7f2d8ac335b4ae5cfadb7d1a96139521aa85f37796db5418"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/records.py",
+      "bytes": 2440,
+      "sha256": "28384249b53c4dcd8d9f12837d5609cd528b777573c9f569bc4551c7e02567a5"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/stream.py",
+      "bytes": 19896,
+      "sha256": "553be2fa4ea9946df37d8e89b16ba30f45aba30aba1007912c6a5bae88d23fea"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_angle_candidate.py",
+      "bytes": 12495,
+      "sha256": "4b8c18568c0e64439551da476b4183dd979d2447449ded5dffdf4a307a998eb4"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_angle_replay.py",
+      "bytes": 6657,
+      "sha256": "2e8da9a90ab586bcbc334a58ae95fd13576c614e8f2c9731855d30fb23477f3e"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_angle_stream.py",
+      "bytes": 13289,
+      "sha256": "a94f021ce0042af8251001f1671ce1fafd4758f9f28ef192c0a2636f4e32965a"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_angle_widget.py",
+      "bytes": 10010,
+      "sha256": "1ed3c4f27daa8b4ed28c7863adbad87319ae78f7d1175b418852bfd2d576e5be"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_calibration.py",
+      "bytes": 32303,
+      "sha256": "658002c695181f7406a0dabf5ae2f59a4cefd6189477cfd775892f644316da6c"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_flexion.py",
+      "bytes": 19587,
+      "sha256": "1b9e543ac04763ea72089f550f741932ce6072fb24092d18ea9c1b02ac9393ee"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_orientation.py",
+      "bytes": 9855,
+      "sha256": "d963410c4c46890c6560d0bc95c7e2b80480637b9ec243e1a8d0bc5d0cc17e5c"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_preview.py",
+      "bytes": 7429,
+      "sha256": "ad3820a617364167db7984db31d556dc4382f84a5714a44b75c1d2eef6d1d160"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_preview_gui.py",
+      "bytes": 22010,
+      "sha256": "03578291e8e8bb6d39f3bfedfd6602f391b9b21529475264779e30b8b4a78a1a"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_preview_live.py",
+      "bytes": 27522,
+      "sha256": "d6484be065c6e1de88178274be247aba17c679882d540768a011edf688430088"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_trial.py",
+      "bytes": 15298,
+      "sha256": "180d82d06d3d9df88da5f82898df0b0b40fb342f7c7d77a96494cc5b2eb90202"
+    },
+    {
+      "path": "tools/glove_hand_pose/src/vt_glove_pose/thumb_trial_analysis.py",
+      "bytes": 11145,
+      "sha256": "569c821817549b939499a1d43c8fc322103241fc2fca0e94eb3dfa1995dfa193"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_axis_sign.py",
+      "bytes": 6024,
+      "sha256": "9bdad13ebe8a3a34020dc65b7af89a2c600bba164830742730b9c34973515980"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_calibration_feedback.py",
+      "bytes": 6599,
+      "sha256": "54807bf4b0fe0578e098cf541b046024e2ca82a3393b9f077e84c96aac73251a"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_canvas_identity.py",
+      "bytes": 11451,
+      "sha256": "bd5564408eda345e4e226ef3400e9ff312b8a91a1e2cba260582336505b85a4d"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_cli.py",
+      "bytes": 2091,
+      "sha256": "168aff53e035addc5753e67c30dd4f59bc6ebd279bca90fbdb673325d5929c7c"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_confirmed_mapping.py",
+      "bytes": 4362,
+      "sha256": "629d3eaea4301fe6f6e034ca6e7ec57926d931dc4767509ff748396181afb996"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_diagnostic_gui.py",
+      "bytes": 9051,
+      "sha256": "2b320e81b6dc6f68c68b03255e0e9054953d342e7283d870f0b4326ece06bdb4"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_diagnostic_recording.py",
+      "bytes": 19426,
+      "sha256": "6222d8427454d2f97a4b94bbb53b3346c9e6037833e7f287f197619ab669af9c"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_diagnostic_state.py",
+      "bytes": 20307,
+      "sha256": "34159f0ae2bab9e4a813624100e55de462fba775b0b8b7d6ae8564c731b7bbe5"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_diagnostics.py",
+      "bytes": 11256,
+      "sha256": "11281bb722d1eb318cf963fd04f3ae18809c00f4ce1327d2fe6652c00943a65b"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_engine.py",
+      "bytes": 24155,
+      "sha256": "29493d2596b3aff2da668ddef023e92d47d614e3186f6537df67269097fe96b2"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_gui.py",
+      "bytes": 16773,
+      "sha256": "1641f6649a31768e2f5a651c1c6de3a3643de2649680358c2813fab910a788b8"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_gyro_scale_diagnostic.py",
+      "bytes": 2073,
+      "sha256": "fd4f5d709dd6fc2cca02f6c391aaad7bbef7133d747b96f072c0e5017639ec5d"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_handedness_integration.py",
+      "bytes": 11480,
+      "sha256": "766bba28bb455ac2341f62b574a769b1e2ddd0c7c556b994c24c96614d546b3e"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_axes.py",
+      "bytes": 10264,
+      "sha256": "114f9f5162502b51cfb63a91f5b68cb55f8c41633cc3fb1c2a994e680ffcc8a4"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_benchmark.py",
+      "bytes": 5459,
+      "sha256": "79341b049e7d78a0f73f42c3838e4875e5811ee89fd6f4624fd3c431421821da"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_frames.py",
+      "bytes": 12730,
+      "sha256": "0cd7bf1d4f2cc6a2ff69e017f4d357f3be402fc324c5522f7d91a7f620625e96"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_frames_informative.py",
+      "bytes": 6525,
+      "sha256": "9d0f697e7d898238ebb850d3631dfb62f2758f4cd8035733b47edf7b2fa826be"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_guide.py",
+      "bytes": 10216,
+      "sha256": "16f93284f1451f2aa0666a1bd637f4acc49f9562c5625d2481e31735ca7814f0"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_guide_widget.py",
+      "bytes": 4131,
+      "sha256": "e219dcfb5b61dba5201763b338f14d8bef62fb8a5273198bf45867f762a1ef12"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_joint_axes.py",
+      "bytes": 9010,
+      "sha256": "b61ce8120c01c95cd5154c309eeed6666cb46c16acef805ec109f5bdf157654b"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_joint_experiment.py",
+      "bytes": 3228,
+      "sha256": "1ce1a8ba6436c9ed98a7b24a4ec639450c5e255fb76fefb2d4338a503254b232"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_lab.py",
+      "bytes": 6063,
+      "sha256": "bac280a799672b55e4dd6a3fc12477975172019fe509970f4d5e11755620a946"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_live.py",
+      "bytes": 25146,
+      "sha256": "cbe32d32e7b806d71e99bdfe9c6260941bd408e6365bab97b6bcb6e31531e264"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_observer.py",
+      "bytes": 13813,
+      "sha256": "8caf6124f220d3238a2df8a31c6730493a36ca40017f2f3e489b60ef593877fe"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_online.py",
+      "bytes": 9204,
+      "sha256": "a837f2bd853243504ec500579302fc5b328b9808d8520072233fd879a9e0f7c8"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_per_node_units.py",
+      "bytes": 11591,
+      "sha256": "c9b3356e539f942d04bc49e3777cb3cdf88a02aa29b63b0e4ace870cd328eb73"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_recovery.py",
+      "bytes": 5094,
+      "sha256": "669506f884b6b5d057c01e00e3209ed0b1973a43a37a4247ad624bf3ce03520a"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_recovery_guide.py",
+      "bytes": 3711,
+      "sha256": "3f5563f2db98954cd3fab013180f5afe15b52acc97dc5f7b1121bbb8f0adf649"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_replay.py",
+      "bytes": 10981,
+      "sha256": "e85a7592564b37bec585290437ef196a05d3fb0e830f6b83375cf87cbad04c4f"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_report.py",
+      "bytes": 2618,
+      "sha256": "ed435bbda508956affa38bd689fac288d1b06e3b7cdd4662074d7320846d0edb"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_session.py",
+      "bytes": 31446,
+      "sha256": "0993a251c511f1113749a2de8c2ae7f9a5321fce154d6194bca6d346fbc8f95d"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_short_gap_recovery.py",
+      "bytes": 8077,
+      "sha256": "8676704a00c5b5dbe3e362e28aa2f9482173662525fece64b6024f6f5c9077ed"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_validation.py",
+      "bytes": 15628,
+      "sha256": "d9379409fb93e480fe20b4d8b01799f54bc2800b2107a47aa69c1eca49cb37fd"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_hinge_validation_io.py",
+      "bytes": 9366,
+      "sha256": "3b6c53ba11538f781f4d9f6ce9e6f45b710e870e612a184f32e46448e5bcab92"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_imu_monitor_units.py",
+      "bytes": 2212,
+      "sha256": "fadc5e242bed83e2e543065ab7d8631c2c9ebdd3f70cae4f30e1e41d83ce481c"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_kinematics.py",
+      "bytes": 8061,
+      "sha256": "81eb58049e22ae70cc47311c849110711635e2855caf336a884e35c1b9490fe4"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_mesh.py",
+      "bytes": 18079,
+      "sha256": "8c806b264460c16f1a40e69a29bf434823336a184ddec50ced4a59bece5774dd"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_pair_capture.py",
+      "bytes": 12231,
+      "sha256": "dbbf3ab0d0dc06a0d3fe9328eb60be0c2bf9a5db177a9150f5923f1a5a0484ba"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_per_node_gyro_core.py",
+      "bytes": 10821,
+      "sha256": "df529bfbf9c76a26e4f9c52648b8fe78ff1ca1fa562e75d16f6304861c168744"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_qmt_reference.py",
+      "bytes": 6641,
+      "sha256": "88e40b1d0ebb5805ab27a053ce8b6040be5231b800a42c96a8e5684db0bc2653"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_quick_hand.py",
+      "bytes": 9645,
+      "sha256": "e62f8fda78f46294498e8461d2ad8e9f30e26590b6d432810d960fe40e3ae408"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_quick_hand_alignment.py",
+      "bytes": 8832,
+      "sha256": "ba33c5469cbeeeb6b92eb100bd906bbde4ec79eba2336bec92ac4e3c0b1555bc"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_quick_hand_cli.py",
+      "bytes": 896,
+      "sha256": "42d887bef90f619c82c528a9e90188751956c2b536b423af2db35b0c31b76bff"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_quick_hand_live.py",
+      "bytes": 17445,
+      "sha256": "2489ba0358c2e0fa993b68239ada4b66f1a0f1f5ef01b8b7372904978ea8d7f4"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_root_orientation.py",
+      "bytes": 7334,
+      "sha256": "771d774fa98eeec2675bee4b1e0ca60bfd2fc0f66d4d39fa532ed303f10c231a"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_stream.py",
+      "bytes": 25945,
+      "sha256": "6821e48cb62f2472566be5511baf2d72fd2da99afd6742108e495821eb178893"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_angle_candidate.py",
+      "bytes": 6033,
+      "sha256": "55de9a32bb0722cc507c6dc8af3462bb571e21ca2847411178101b4d87b61754"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_angle_live.py",
+      "bytes": 11222,
+      "sha256": "419234a8fca63d019a984928a18d2f5f403da5068755290a550140041f02c513"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_angle_recording.py",
+      "bytes": 9010,
+      "sha256": "a310da61a05a901a6a4d6b0fa9cd2882677d61b064a8f7e3334d823fba753c06"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_angle_replay.py",
+      "bytes": 3748,
+      "sha256": "bf639e40417518686c3ec23a9ee79e50ac39f999176b9a9767a8d030dc8a44c8"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_angle_stream.py",
+      "bytes": 13099,
+      "sha256": "5154bae9426a47600c3d15d4eab01b53e894df29f473cd075b46e19b56cb0e5e"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_angle_widget.py",
+      "bytes": 4843,
+      "sha256": "39df8d8a5e6796f127d95a287de1a541a193ea9bd1247a4339acb7c69aaca87d"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_calibration.py",
+      "bytes": 13470,
+      "sha256": "8d5194f7f7f6b5533e28c8fb89bdf70576c6100ad209e591d6cdfd24ce4bb1de"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_calibration_gui.py",
+      "bytes": 15351,
+      "sha256": "cf31e5eb94a9f6ad6678d8d1d15f00a8211a4241c1e321a704488039c227915d"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_calibration_robust.py",
+      "bytes": 11979,
+      "sha256": "4f9ed9e604a7bcd5a3b029abe181d0b73d05ff069bfdf922d7383071e7fdefbb"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_flexion.py",
+      "bytes": 16510,
+      "sha256": "e841a05de9644e8e8a3ebbf9a6d9d9baca3f94f30a0121d2d457d22c8290cd42"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_integration.py",
+      "bytes": 7920,
+      "sha256": "f663d08e62af181d885bb843e461b585034caa16bb1b0ef435cbef433b0fd7ac"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_joint_workflow.py",
+      "bytes": 16716,
+      "sha256": "935b707c780b1c2f0f62e36b99e79467ea68312ede488211698d4192dc6ea8fb"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_orientation.py",
+      "bytes": 6368,
+      "sha256": "603da7dd118953e60259c99997cdf3cf10f0ce470479d7951ea1f5eae4d69e64"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_preview.py",
+      "bytes": 5379,
+      "sha256": "6e7604a4ee7d9df924b5837868cabc19ca3c4e3c6b79fd073741a410ebdf73fd"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_preview_connection_state.py",
+      "bytes": 5014,
+      "sha256": "9716cf78a0cbae1131a9c1dae09dc585d68dcf707b167c7bcea909249f82d960"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_preview_gui.py",
+      "bytes": 7182,
+      "sha256": "ea4f7b1a35730165e52f0163c55f28ad8f67219f9df53b026926894d4ab3277f"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_preview_guided_live.py",
+      "bytes": 5183,
+      "sha256": "75bebb2ea56cce2a7a293bafc84065fef59849a5c340749bb62a9372a73f139f"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_trial.py",
+      "bytes": 11864,
+      "sha256": "7ad6da2dd328b9ac13ebac42bf48ffebfd70da3d2cbbe339b2df63e7081c8b18"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_trial_analysis.py",
+      "bytes": 8485,
+      "sha256": "c9fe9901c8d8605de5fe1b41d1e13d830f927e88dbd360cf5061e9637a03b461"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_thumb_trial_save_contract.py",
+      "bytes": 5530,
+      "sha256": "7435d05777c41cd0fe5e1acf3e5c20bf3a7c89172c72545715f93e3c4cdbf2c6"
+    },
+    {
+      "path": "tools/glove_hand_pose/tests/test_worker_regressions.py",
+      "bytes": 10266,
+      "sha256": "c197868b76108cf00a45613e05189072cfaa5d728cdd40ed7046fed04da837ca"
+    },
+    {
+      "path": "tools/multisensor_alignment/README.md",
+      "bytes": 31873,
+      "sha256": "8aab2d1c24b943d075fac850c6aba1989226d258d8e0de927f11b96a0315b61b"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.both_gloves.yaml",
+      "bytes": 2014,
+      "sha256": "d6b0a2970037e932d53b3ac5c983441ec67a9fb6ac47a58f854d53b10300f785"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.both_gloves_tactile.yaml",
+      "bytes": 2496,
+      "sha256": "cda44cf93c72dad13e6c6168d4bdfac64c65fa5bb59d164385135f841cfabbd2"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.both_tactile.yaml",
+      "bytes": 2064,
+      "sha256": "8cc224d80978d4b4a99e1fc53fa7247fad04b424f044511fc4c4f6ec7d4dd4cb"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.example.yaml",
+      "bytes": 1884,
+      "sha256": "e2496f4de6437515f8cb39a49072bc611388b883f99be9cfdae9e3b15a691084"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.left_glove.yaml",
+      "bytes": 1797,
+      "sha256": "4b7b91c02c39e3387e93ad7125780220a1a5195a54880dcad446c53fa80c606d"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.left_glove_tactile.yaml",
+      "bytes": 2037,
+      "sha256": "ab0c1c84d708e2bfe57bebd38131dfb3d6f594d72cf30a53c481b38379f7a30b"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.left_tactile.yaml",
+      "bytes": 1822,
+      "sha256": "d5418b97fc6fed17b82db64478726f77f5195c2580204662b5192a9e787a3a89"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.right_glove.yaml",
+      "bytes": 1884,
+      "sha256": "8cee22bb4ebb87ec7c8afbcab7588b1fce7f99059b5bae5aa0d50d9d4b5f7fc0"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.right_glove_tactile.yaml",
+      "bytes": 2270,
+      "sha256": "a906f7b04d64246627f1b030f5c71a00fe61cd05f94f0c8e4f4ea7f30bcbf65a"
+    },
+    {
+      "path": "tools/multisensor_alignment/config/alignment.right_tactile.yaml",
+      "bytes": 1824,
+      "sha256": "6b4b41993acdf465a4fe2df52067e296145e7b0c3846af8201263275036e5c26"
+    },
+    {
+      "path": "tools/multisensor_alignment/pyproject.toml",
+      "bytes": 546,
+      "sha256": "84e197fe9a296a457f9f94ed29601ff0ba1a4cb5cdc5fbd3992e9130b11d69ed"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/__init__.py",
+      "bytes": 160,
+      "sha256": "2a3beff6b586d926a990c42695e34ee3053e6a2930f0818a73aca7e0c2e8b411"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/__main__.py",
+      "bytes": 41,
+      "sha256": "dc79b52de8cc3c88214488a30a221ab85589885dc39d798cce37962d058a3aa0"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/aligner.py",
+      "bytes": 11127,
+      "sha256": "5df064cc2e003271a046d59bfea26166abc265de4d93fed3f8ee542874e4a3c5"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/bag_reader.py",
+      "bytes": 18908,
+      "sha256": "20fe11055546917839ce6cf4d160c6ba2f77d5d79582c2b488154d91584d7993"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/capture_quality.py",
+      "bytes": 28629,
+      "sha256": "d7cc6bda33d61bd184fe01e42777849565f8935a822913dcdbd5fe059d2d343a"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/cli.py",
+      "bytes": 9206,
+      "sha256": "9b41f7b01d29eaa427305d37df420817ee587d3f4b065901ae7be44873d3ca9e"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/clock_audit.py",
+      "bytes": 2786,
+      "sha256": "0b6e5d4f745b3ad8b94035e278888914b45c14a2656b1ea7f9c7620bc2bec09e"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/config.py",
+      "bytes": 12953,
+      "sha256": "83b3237d04fac3dd30fd2951f2d95be2b857386b53bd76edb078ec1735bea5c5"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/export.py",
+      "bytes": 11237,
+      "sha256": "ed46df89e57a0243ce95e68bc56975d692d619d5bf10995a6eceaf28f2304447"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/extrinsics.py",
+      "bytes": 6135,
+      "sha256": "dc973d8148ada7b621337a18109427bd9ff5267f3ebfcac6634ae7e954d69826"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/glove_adapter.py",
+      "bytes": 6497,
+      "sha256": "14140a0999fdac48ef002683b406327372207fc9294a8ac778813421cd4235ae"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/identity.py",
+      "bytes": 1785,
+      "sha256": "cc15ad800ee66a187fcf274b78332e5c2593952a9c33f47826b966f9d3a73644"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/matcher.py",
+      "bytes": 7375,
+      "sha256": "22b46485097b57ffd608ed98e5667d05d04bcaafda3b1b375f73c261effc7aef"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/model.py",
+      "bytes": 10085,
+      "sha256": "511b9d6fe1dacb319a3159bd0d93bdd68b58534cb99d947e0314f5c052309464"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/profiles.py",
+      "bytes": 5706,
+      "sha256": "16c2db04f1f488da28ecde29afc3bb4a237c1e015953ac5b190bfa352b83f95b"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/provenance.py",
+      "bytes": 5905,
+      "sha256": "0b4f69439cbc7bdd267f2b40e262db53e99b7637b8b2896e6d112007bee6d455"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/tactile_adapter.py",
+      "bytes": 14682,
+      "sha256": "cb2c431c7b233691085bcdf1aa9c9bc902c930bb95a555508f98c888034f52ba"
+    },
+    {
+      "path": "tools/multisensor_alignment/src/vt_multisensor_alignment/tactile_export.py",
+      "bytes": 14769,
+      "sha256": "79c9bf6f6e02c3448a931eb1fe8331f8f313223f6f759dfccce69ad4001f38e0"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_aligner.py",
+      "bytes": 6526,
+      "sha256": "13464bfa5f2ff91b7a146f82f1de3a54618bd07593377627a51b800bf81babf8"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_bag_reader.py",
+      "bytes": 3581,
+      "sha256": "e51e8113b946e3ceb697c94e55a3804068fdba7a6fa4da4a5a42fcd1ee59491e"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_capture_quality.py",
+      "bytes": 21088,
+      "sha256": "16d06ef3060536bf9c71865e161a44c0a625e377c79d8594af08eeb529a4f14e"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_cli.py",
+      "bytes": 4448,
+      "sha256": "d3d277d8d04a5502e2e889527cd0f70ba614aedde7a923d20f5699951a0aa051"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_clock_audit.py",
+      "bytes": 1810,
+      "sha256": "71977480a636c79d30a7be697fb6c4e5930db9388faf6b711f99a2ceebc3189a"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_config.py",
+      "bytes": 5507,
+      "sha256": "dcbac520ec9909df59bc3612bb533392fcc61d3126148c81fd1ad0a5901da082"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_export.py",
+      "bytes": 7314,
+      "sha256": "9ecbbe41c9de80d5d7ce904c2d27941c10ca86925ae53b91c9cd4dc061f74092"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_extrinsics.py",
+      "bytes": 3793,
+      "sha256": "6449d0dac268c096fabb65e0efaf8fec21a288026bdf4fce6d41e01a148d0ed7"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_glove_adapter.py",
+      "bytes": 11835,
+      "sha256": "72e1f50bf0992dadf6edffe7307962628e434e2285a3b1e2442481bf93742373"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_hands_profiles.py",
+      "bytes": 17404,
+      "sha256": "7b19d208423742e69dea57ea7013b21706e7cd2eae3bc859f884afac52017ce8"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_matcher.py",
+      "bytes": 3294,
+      "sha256": "e7c30aea0f2738f771dd34679f230b0a6decd18c8662c8530add5977085ea826"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_model.py",
+      "bytes": 2391,
+      "sha256": "00723108f5f54cb88ed2c04a2b9e457d70296be28e5843973060e77c3a0a7151"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_synthetic_mcap.py",
+      "bytes": 8880,
+      "sha256": "9d2d0ebd66337f462d2ad636594f4f96e7904b3a05175886838b35214dcf6eb3"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_tactile_adapter.py",
+      "bytes": 21930,
+      "sha256": "ab02e4e4a733c9be453680b092bf8b5a75986527eb5f3648213de2bc5f6c979a"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_tactile_crosspath.py",
+      "bytes": 7100,
+      "sha256": "5b334da73940f204d051cfcfff64e1ac8bba31a2c02c8e3c5a4c3f01f5d899de"
+    },
+    {
+      "path": "tools/multisensor_alignment/tests/test_tactile_provenance.py",
+      "bytes": 12122,
+      "sha256": "a0cc10e48a02576f758e9a83a39b9cf39af8dee3a0bc22aac13710143568adcd"
+    },
+    {
+      "path": "tools/release/README.md",
+      "bytes": 3965,
+      "sha256": "26662520b1921f222d7e7185ccb30dc0ac667b0011dab10d8995fc710c338a9a"
+    },
+    {
+      "path": "tools/release/prepare_release.py",
+      "bytes": 9685,
+      "sha256": "d2491b20a1c522f6ffbe482e727bf020356bef738858176daa2f74b81d573add"
+    },
+    {
+      "path": "tools/release/tests/test_prepare_release.py",
+      "bytes": 16343,
+      "sha256": "b954fd91945a8da9b96ba35599a1fcb866b732b8c05c770057f09de0f6b611da"
+    },
+    {
+      "path": "tools/test_check_public_tree.py",
+      "bytes": 19174,
+      "sha256": "0d98fdd7731f1ac26ac145b71cdbafe859e8c486e5202c2ee241ffc9b7ea230f"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/README.md",
+      "bytes": 30111,
+      "sha256": "99c3ed2a31594cca8a64eb3126aec664b745ece88dbf6667e494446cfb79f310"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/config/calibration.example.yaml",
+      "bytes": 1169,
+      "sha256": "f1b8f5ac73657661270ffbed263f795b3419ffa0df65ff6f844971006d476915"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/pyproject.toml",
+      "bytes": 712,
+      "sha256": "59695392917f3365d26224dadb49edddb7370ee4e1dcae203c7b385f4c238a39"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/run_gui.sh",
+      "bytes": 1630,
+      "sha256": "a324c7e0d3d882803602ede262ec5cc866d161649ccf40b6f3e95831c1eebcb3"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/__init__.py",
+      "bytes": 282,
+      "sha256": "555049ea0c2724fe16eaf4e447e4fd288d7dea5803f95b468e6ebdc1aba52f96"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/bag_reader.py",
+      "bytes": 13150,
+      "sha256": "5a57505a57b33762716885aafb0a2133a43c76c9ce657c4d9e0d07dab2a76d01"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/charuco.py",
+      "bytes": 5589,
+      "sha256": "68f99537c556363aa778a872093db821010db2e99ac4bcf61b32132c889c0c88"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/cli.py",
+      "bytes": 5597,
+      "sha256": "7c59113d74c7d138a632f0bcc9e864c69793cfc792ede97c9eb98f44dbef3bc5"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/config.py",
+      "bytes": 9314,
+      "sha256": "c5c341ba7128b6110b6abddb748ddce44a331bf4c508f364efbf23d5242d7856"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/config_writer.py",
+      "bytes": 3866,
+      "sha256": "e152c17bb1ee117df6803526dee5cbaffaacd3555b912e258d156981f0e2b111"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/export.py",
+      "bytes": 9124,
+      "sha256": "f50594c23f596f952ee4ac7fbedddbf5620836cfa7dc9817fe21731670174df3"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/gui.py",
+      "bytes": 21084,
+      "sha256": "2eeb327819757dec588c8093c354b9bd2a4328c4525c0763a956a6b9540b72d1"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/gui_live.py",
+      "bytes": 20043,
+      "sha256": "28ca8d47b7a7f90be2b4c3f735e0ec0c9cf46dc0fceffa9aac14a45629c22264"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/gui_workflow.py",
+      "bytes": 10779,
+      "sha256": "50040f177787aa6b7f0ebee64c6fa7722cc0a9a49ea06918d9c91e9ed691a9c6"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/handeye.py",
+      "bytes": 9854,
+      "sha256": "d1740199ccb83429bbc226d113b87a96f157f17c052e7b85f6af630a25bd2484"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/model.py",
+      "bytes": 4574,
+      "sha256": "3142322398ce1d95cf630beaeec95fc9beddcc3b75450ce588511eddb3ee78c0"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/pairing.py",
+      "bytes": 4880,
+      "sha256": "da0498827e1aa2f42c290a519ba195dcbc2ac5d451b89571c5ecf2ecc45d3429"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/repeatability.py",
+      "bytes": 9703,
+      "sha256": "089b6dade94fefb13bd3b3f03bcc7f69614b5254ee44a738593b6a769e7bf09c"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/src/vt_tracker_camera_calib/transforms.py",
+      "bytes": 8315,
+      "sha256": "0795e2de3033577e822de7c24ebefe5009a73e4cb3e7108b6ef00d8f73cebb60"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_charuco.py",
+      "bytes": 2199,
+      "sha256": "7fee5f42e50fa9323c75c93319fd41410021c7f3b40829ec983f43c1e16c5d35"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_config_and_bag_helpers.py",
+      "bytes": 2908,
+      "sha256": "d44364660c983ef8c8071791312bf1a1f09ec4f92102b706e6f4d326fd3b8c47"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_config_writer.py",
+      "bytes": 1819,
+      "sha256": "9b8a086b8f75e1c75d59b579cf32eef2c219e624a3b1b89efb358086fb0d1d9b"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_export.py",
+      "bytes": 3896,
+      "sha256": "37381145f4e200b746c010e298b928e94f4e9044c21b39dbd7d1217cf2c4f388"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_gui.py",
+      "bytes": 8059,
+      "sha256": "69d35e8e5cad4eb03c224f23e1395b137a8cf99165d7447b265c0f6eae3da216"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_gui_live.py",
+      "bytes": 19839,
+      "sha256": "a3767a7f17193b09c99b6cb672dd69384a2d3649b7bfcb3235cf56532f14be73"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_gui_workflow.py",
+      "bytes": 13442,
+      "sha256": "6b3b93d95fcf1f82ec0ba38133808feedb21cf03591bd03f98176c0286fc3df7"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_handeye.py",
+      "bytes": 3686,
+      "sha256": "b6a1f4f83cc5cadf1f3fcae8818e91b1477c72fd1373b4c3c47a3b80d0311047"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_pairing.py",
+      "bytes": 2454,
+      "sha256": "282bed51e8d04545b0066b5bc4450506df3049be1587ccc66dec1e25cdda99c2"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_repeatability.py",
+      "bytes": 5808,
+      "sha256": "9a69d3faaee10986da34e05f9dbe2c296c74108a5346960b7a4b205fa82bdfc5"
+    },
+    {
+      "path": "tools/tracker_camera_calibration/tests/test_transforms.py",
+      "bytes": 1782,
+      "sha256": "1a3090431725c8200ebc28fc46f5aae80588e1c67d6273f7769d49fbc9a69b80"
+    },
+    {
+      "path": "tools/vut_validation/config/70-vive-ultimate-tracker.rules",
+      "bytes": 234,
+      "sha256": "f2f950f5b43e6c3b748253be1120b933a30b036e443635da9eb1b3c084be5dbc"
+    },
+    {
+      "path": "tools/vut_validation/config/roles.example.json",
+      "bytes": 110,
+      "sha256": "474e542a48ece7764131483e1a75c34ecb7456ef342ebb1792bf4da400d8eb87"
+    },
+    {
+      "path": "tools/vut_validation/pyproject.toml",
+      "bytes": 304,
+      "sha256": "f238aec9301019a8928806ef4b501a54a64c2737e3839bec9a5271cb9fc3cc1c"
+    },
+    {
+      "path": "tools/vut_validation/src/vut_validation/__init__.py",
+      "bytes": 102,
+      "sha256": "52ba2553d649e72d3dcd0d53f4a4d7f20a129ea25529419d3a512ccb3f631b5b"
+    },
+    {
+      "path": "tools/vut_validation/src/vut_validation/backend.py",
+      "bytes": 2210,
+      "sha256": "abdf2df88bddba60ba7d668d9300ceb4175fa853dbb2f47eff371422263d1ca7"
+    },
+    {
+      "path": "tools/vut_validation/src/vut_validation/cli.py",
+      "bytes": 2563,
+      "sha256": "b098bdd6cdc79272de6e598fc81bcefc6b24644750a3f5fab068f876b7632f7b"
+    },
+    {
+      "path": "tools/vut_validation/src/vut_validation/metrics.py",
+      "bytes": 3136,
+      "sha256": "16e76dde35409bd5bfb691ef71748322afe91feb92d660f17bec928e5a573fdc"
+    },
+    {
+      "path": "tools/vut_validation/src/vut_validation/model.py",
+      "bytes": 1349,
+      "sha256": "15ad07633ea6fb8e1f5f96216da47e3b42328a51d191c7e77ff2c8a40cb12b14"
+    },
+    {
+      "path": "tools/vut_validation/src/vut_validation/preflight.py",
+      "bytes": 1691,
+      "sha256": "ca6355c8059017389f94251c553137dd8ce53a9f1e690cf9713c1ecaf955abf3"
+    },
+    {
+      "path": "tools/vut_validation/tests/test_backend.py",
+      "bytes": 2495,
+      "sha256": "5fe48b9ac5dd5fbe8f60dab6712a8989248365a20e09fa02a278c5fc5a41b864"
+    },
+    {
+      "path": "tools/vut_validation/tests/test_cli.py",
+      "bytes": 3252,
+      "sha256": "b625f6c715f3cad991f2f5127f14be5a7e536fda444d8baac5c0fee9e4d408f1"
+    },
+    {
+      "path": "tools/vut_validation/tests/test_metrics.py",
+      "bytes": 1978,
+      "sha256": "da279a08ff077be91ebeddda61c4661ac08e4a52e1963160bf6066e64d5e37a1"
+    },
+    {
+      "path": "tools/vut_validation/tests/test_model.py",
+      "bytes": 1352,
+      "sha256": "8d017e5f66d57530729b73367d4b5c5d8d9350c99ad82891b14de4ad40ab11b7"
+    },
+    {
+      "path": "tools/vut_validation/tests/test_preflight.py",
+      "bytes": 1712,
+      "sha256": "8248196f3c0c93ec53d6844036e57c9e6b412544af1dd3cdb3eb34a487a9f550"
+    }
+  ]
+}

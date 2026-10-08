@@ -1,0 +1,8 @@
+noChunkCRC: false
+noChunking: false
+noMessageIndex: false
+noSummary: false
+chunkSize: 16777216
+compression: "None"
+compressionLevel: "Fast"
+forceCompression: false

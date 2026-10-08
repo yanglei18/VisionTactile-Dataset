@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vt-fsglove12"
+version = "0.1.0"
+description = "Experimental twelve-IMU adapter for the FSGlove/MANO hand-model workflow"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26,<3", "scipy>=1.11,<2", "vqf>=2.0,<3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+viewer = ["polyscope>=2,<3"]
+live = ["PyQt5>=5.15.11,<6", "pyqtgraph>=0.13.7,<0.14", "PyOpenGL>=3.1.10,<4", "pyserial>=3.5,<4"]
+upstream = ["pydantic>=2,<3", "scikit-learn>=1.5,<2", "tqdm>=4,<5"]
+functional = ["qmt==0.2.4"]
+
+[project.scripts]
+vt-fsglove12 = "vt_fsglove12.cli:main"
+
+[project.urls]
+Repository = "https://github.com/yanglei18/VisionTactile-Dataset"
+
+[tool.setuptools]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vt_fsglove12 = ["configs/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

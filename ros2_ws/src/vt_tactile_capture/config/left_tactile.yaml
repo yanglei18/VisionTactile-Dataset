@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    # Explicit LEFT tactile device only, never the IMU port or the right board.
+    # Launch with namespace:=/gloves/left/tactile as well as this config.
+    port: ""
+    baudrate: 115200
+    hand: left
+    frame_id: ""
+    queue_capacity: 512
+    sample_qos_depth: 128
+    read_batch_bytes: 1024
+    read_timeout_sec: 0.002
+    state_rate_hz: 30.0
+    diagnostics_rate_hz: 1.0
+    stale_timeout_sec: 2.0
+    max_cell_age_ms: 100.0
+    reconnect_interval_sec: 1.0
+    publish_heatmap: false

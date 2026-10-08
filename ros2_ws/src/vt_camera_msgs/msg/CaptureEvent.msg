@@ -1,0 +1,11 @@
+uint8 INFO=0
+uint8 WARNING=1
+uint8 FATAL=2
+std_msgs/Header header
+string request_id
+string session_id
+uint8 severity
+string code
+string camera_name
+string stream_name
+string detail

@@ -1,0 +1,4 @@
+[submodule "pyvut"]
+	path = pyvut
+	url = https://github.com/nijkah/pyvut
+	branch = main

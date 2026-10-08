@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "input_contract": {
+    "schema_version": 1,
+    "sensor_model": "LSM6DSRTR",
+    "model_source": "user_reported",
+    "scale_source": "empirical_validation"
+  },
+  "hand": "right",
+  "layout": "current_10_finger_1_palm_1_auxiliary",
+  "node_to_slot": {"1": 4, "2": 5, "3": 1, "4": 2, "5": 14, "6": 15, "7": 10, "8": 11, "9": 7, "10": 8, "12": 0},
+  "mounting_confirmed": false,
+  "sample_rate_hz": 120.0,
+  "output_rate_hz": 30.0,
+  "gyro_dps_per_lsb": 0.00875,
+  "gyro_dps_per_lsb_by_node": {},
+  "accel_g_per_lsb": 0.000122,
+  "stale_after_s": 0.15,
+  "filter_reset_gap_s": 1.0,
+  "input_filter": {
+    "enabled": true,
+    "boundary_lsb": 32760,
+    "gyro_jump_dps": 120.0,
+    "accel_jump_g": 1.5,
+    "confirmation_samples": 2,
+    "max_hold_samples": 2,
+    "max_invalid_s": 0.25
+  },
+  "input_health": {"enabled": true},
+  "dip_ratio": 0.65,
+  "units_verified": false,
+  "sample_rate_verified": false,
+  "provenance": "2026-10-01 raw-motion gravity-consistency and unmodified VQF replay support removing the former 2x gyro override for nodes 5/6. All nodes now inherit 0.00875 dps/LSB. This is empirical validation, not firmware register readback; units_verified remains false. Historical recordings/configurations are not rewritten; new input units require a new calibration.",
+  "notes": "Default preserves current wiring. Node 11 remains unmapped. Palm 12 and thumb bone mounting require physical confirmation. Four-finger second IMUs are treated as middle phalanges according to the user's description. Missing slots 3,6,9,12,13 are not measured."
+}

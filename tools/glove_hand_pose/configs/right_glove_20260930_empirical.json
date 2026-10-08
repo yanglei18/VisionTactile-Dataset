@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "hand": "right",
+  "hand_side_confirmed": true,
+  "sample_rate_hz": 120.0,
+  "sample_rate_verified": false,
+  "gyro_dps_per_lsb": 0.00875,
+  "gyro_dps_per_lsb_by_node": {"5": 0.0175, "6": 0.0175},
+  "gyro_scale_provenance": {
+    "kind": "empirical_candidate_not_firmware_readback",
+    "source_session": "hinge_20260930T065120111725Z_9c178469",
+    "basis": "Two recordings support approximately twice the recorded gyro conversion on nodes 5/6 via gravity-direction dynamics. Nodes 1..4 in the second recording support the original conversion. Nodes 7..12 were not included.",
+    "firmware_verified": false,
+    "unverified_nodes": [7, 8, 9, 10, 11, 12]
+  },
+  "accel_g_per_lsb": 0.000122,
+  "units_verified": false,
+  "stale_after_s": 0.5,
+  "palm_node": 12,
+  "auxiliary_node": 11,
+  "palm_mount_verified": false,
+  "dip_ratio": 0.65,
+  "estimate_dip": true,
+  "fingers": {
+    "thumb": {"proximal": 5, "distal": 6, "lengths_mm": [35, 25], "base_mm": [32, 22, 0], "neutral_splay_deg": -50, "anatomy_verified": false},
+    "index": {"proximal": 3, "distal": 4, "lengths_mm": [42, 25, 18], "base_mm": [26, 70, 0], "neutral_splay_deg": 0, "anatomy_verified": true},
+    "middle": {"proximal": 1, "distal": 2, "lengths_mm": [45, 28, 20], "base_mm": [8, 75, 0], "neutral_splay_deg": 0, "anatomy_verified": true},
+    "ring": {"proximal": 7, "distal": 8, "lengths_mm": [43, 26, 19], "base_mm": [-10, 72, 0], "neutral_splay_deg": 0, "anatomy_verified": true},
+    "little": {"proximal": 9, "distal": 10, "lengths_mm": [33, 20, 16], "base_mm": [-27, 60, 0], "neutral_splay_deg": 0, "anatomy_verified": true}
+  },
+  "notes": "Device-specific experimental conversion for the user's right glove. Not the universal default. Never globally double all nodes. No firmware registers, sensor mounting or anatomical angles have been certified by this file. Raw recordings remain unchanged; prior profiles must be refitted with explicit units."
+}

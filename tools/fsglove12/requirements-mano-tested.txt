@@ -1,0 +1,17 @@
+# Optional MANO environment exercised on 2026-09-30 with Python 3.12.
+# Direct pins, NOT a complete transitive/platform lock or a model license.
+# First install setuptools==78.1.0 and wheel==0.48.0 in the isolated venv.
+# Install torch separately from the official CPU index:
+#   python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.8.0+cpu
+# Then install this file using --no-build-isolation: chumpy setup imports pip.
+# Real model/solver tests and three model-only EGL renders passed.
+# This is NOT physical glove accuracy or interactive desktop GUI acceptance.
+-r requirements-tested.txt
+torch==2.8.0+cpu
+manotorch @ git+https://github.com/lixiny/manotorch.git@a2a70c591f91551078b7bb2af9b5d9f275b626e0
+# This upstream commit reports version 0.71; the PyPI 0.70 release is not equivalent.
+chumpy @ git+https://github.com/mattloper/chumpy.git@580566eafc9ac68b2614b64d6f7aaa84eebb70da
+opencv-python-headless==4.14.0.94
+deprecation==2.1.0
+six==1.17.0
+polyscope==2.6.1

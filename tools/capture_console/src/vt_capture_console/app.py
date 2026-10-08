@@ -1,0 +1,84 @@
+"""CLI entry point; default live mode never silently falls back to demo."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Vision Tactile 集成采集工作台")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--demo", action="store_true", help="合成演示，不连接硬件、不保存 bag")
+    mode.add_argument("--live", action="store_true", help="连接真实后台；录制控制须后台显式启用（默认模式）")
+    mode.add_argument("--desktop", action="store_true", help="桌面工作台：自动连接本机管理后台，图形化配置设备；不自动启动硬件")
+    parser.add_argument("--socket", help="管理后台 Unix socket 路径")
+    parser.add_argument("--smoke-seconds", type=float, default=0, help="指定秒数后退出，用于 GUI 冒烟测试")
+    parser.add_argument("--screenshot", help="在退出前保存当前工作台截图，需要 --smoke-seconds")
+    parser.add_argument("--size", default="1440x900", help="初始窗口尺寸，如 1366x768")
+    args = parser.parse_args(argv)
+    if (args.demo or args.desktop) and args.socket:
+        parser.error("演示和桌面模式不能指定外部后台 socket")
+    if args.smoke_seconds < 0 or (args.screenshot and args.smoke_seconds <= 0):
+        parser.error("截图需要正数 --smoke-seconds")
+    try:
+        width, height = map(int, args.size.lower().split("x"))
+        if not (1080 <= width <= 7680 and 720 <= height <= 4320):
+            raise ValueError
+    except ValueError:
+        parser.error("窗口尺寸须为 WIDTHxHEIGHT，最小 1080x720")
+    if "PyQt5" in sys.modules or "PyQt6" in sys.modules or "rclpy" in sys.modules:
+        parser.error("界面必须运行在独立 PySide6 环境，不能混载 PyQt 或 ROS")
+    from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication, QMessageBox
+    from .backend.demo_backend import DemoBackend
+    from .backend.ipc_client import IpcBackend
+    from .ui.main_window import MainWindow
+    from .theme import stylesheet
+
+    application = QApplication([sys.argv[0]])
+    application.setStyle("Fusion")
+    application.setApplicationName("Vision Tactile Capture Console")
+    application.setOrganizationName("VisionTactile")
+    font = QFont()
+    font.setFamilies(["Inter", "Noto Sans", "Noto Sans CJK SC"])
+    font.setPointSize(10)
+    application.setFont(font)
+    application.setStyleSheet(stylesheet())
+    runtime = None
+    if args.desktop:
+        from .backend.local_runtime import DesktopRuntime
+        try:
+            runtime = DesktopRuntime()
+            runtime.start()
+        except (OSError, ValueError, RuntimeError) as exc:
+            QMessageBox.critical(None, "工作台无法启动", f"本地工作站设置无法加载：{exc}\n请检查部署目录与本机配置。未启动任何传感器。")
+            return 1
+    backend = DemoBackend() if args.demo else IpcBackend(runtime.socket_path if runtime else args.socket)
+    if runtime is not None:
+        backend.runtime = runtime
+    window = MainWindow(backend)
+    if runtime is not None:
+        from .ui.desktop_tools import DesktopTools
+        window.desktop_tools = DesktopTools(window, backend, runtime)
+        if not any(group.get("enabled") for group in runtime.configuration.get("process_groups", ())):
+            window.navigation.button(2).click()
+    window.resize(width, height)
+    window.show()
+    exit_code = 0
+
+    def finish():
+        nonlocal exit_code
+        if args.screenshot and not window.grab().save(args.screenshot):
+            print(f"截图保存失败：{args.screenshot}", file=sys.stderr)
+            exit_code = 1
+        window.close()
+
+    if args.smoke_seconds:
+        QTimer.singleShot(max(1, int(args.smoke_seconds * 1000)), finish)
+    result = application.exec()
+    backend.close()
+    if runtime is not None:
+        runtime.close()  # Detach; closing the window must not stop data collection.
+    return exit_code or result

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vt-capture-console"
+version = "0.5.0"
+description = "Vision Tactile capture workstation: isolated Qt console"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = ["PySide6>=6.8,<7", "vt-capture-core>=0.5.0", "vt-tactile-capture>=0.1.0",
+                "vt-fsglove12>=0.1.0", "pyqtgraph>=0.13.7,<0.14", "PyOpenGL>=3.1.10,<4"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+vt-capture-console = "vt_capture_console.app:main"
+
+[project.urls]
+Repository = "https://github.com/yanglei18/VisionTactile-Dataset"
+Issues = "https://github.com/yanglei18/VisionTactile-Dataset/issues"
+
+[tool.setuptools]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vt_capture_console = ["theme/*.qss", "theme/icons/*.svg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

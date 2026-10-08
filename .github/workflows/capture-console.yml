@@ -1,0 +1,62 @@
+name: Capture console
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-console:
+    runs-on: ubuntu-24.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            tools/capture_console/requirements-tested.txt
+            tools/capture_console/pyproject.toml
+            tools/fsglove12/pyproject.toml
+            tools/multisensor_alignment/pyproject.toml
+            ros2_ws/src/vt_capture_core/setup.py
+            ros2_ws/src/vt_capture_manager/setup.py
+            ros2_ws/src/vt_tactile_capture/setup.py
+      - name: Install runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 fonts-noto-cjk
+      - name: Install isolated packages
+        run: >-
+          python -m pip install -r tools/capture_console/requirements-tested.txt
+          -e ros2_ws/src/vt_capture_core -e ros2_ws/src/vt_tactile_capture -e tools/fsglove12 -e tools/capture_console
+          -e ros2_ws/src/vt_capture_manager -e tools/multisensor_alignment
+          'opencv-python-headless>=4.9,<4.12'
+      - name: Check installed package dependencies and CLI entry points
+        run: |
+          python -m pip check
+          vt-capture-console --help
+          vt-multisensor-align --help
+      - name: Test shared core, managed capture workflow and GUI
+        run: >-
+          python -m pytest -q ros2_ws/src/vt_capture_core/test
+          ros2_ws/src/vt_capture_manager/test tools/capture_console/tests
+          tools/capture_deploy/tests
+      - name: Test shared hand renderer and dual-hand isolation without model assets
+        # Synthetic geometry and fake acquisition only; licensed MANO models
+        # and the separately deployed FSGlove/PyVUT runtime are not required.
+        run: >-
+          python -m pytest -q
+          tools/fsglove12/tests/test_hand_isolation.py
+          tools/fsglove12/tests/test_pose_export.py
+          tools/fsglove12/tests/test_hand_view.py
+      - name: Smoke test demo at laptop resolution
+        run: python -m vt_capture_console --demo --size 1366x768 --smoke-seconds 2 --screenshot /tmp/capture-console.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-console-preview
+          path: /tmp/capture-console.png

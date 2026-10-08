@@ -1,0 +1,32 @@
+# Subscriptions, not a device launch recipe. Omitting a device here
+# only hides its stream. Device control has a separate explicit opt-in/profile.
+# Replace the complete devices list for single-hand or tactile-only workstations.
+capture_status_topic: /capture/status
+stale_after_s: 1.0
+offline_after_s: 5.0
+disk_path: .
+# Used only when managed recording is explicitly enabled. Quality is a separate
+# read-only subprocess, queued after an owned recorder is confirmed stopped.
+quality_enabled: true
+quality_timeout_s: 900.0
+# Optional alignment config is frozen per START; later edits do not affect that trial.
+quality_alignment_config: ""
+# Explicit small JSON/YAML references only; content hashes do not prove solver load.
+# Example: [{name: right_mounting, kind: calibration, path: /path/to/profile.json}]
+metadata_refs: []
+# See workstation.devices.example.yaml for explicit, disabled-by-default recipes.
+process_groups: []
+devices:
+  - {id: d405_1_color, label: "D405_1 · RGB", kind: camera, side: "", topic: /d405_1/color/image_raw}
+  - {id: d405_1_depth, label: "D405_1 · 深度", kind: camera, side: "", topic: /d405_1/depth/image_rect_raw}
+  - {id: d405_2_color, label: "D405_2 · RGB", kind: camera, side: "", topic: /d405_2/color/image_raw}
+  - {id: d405_2_depth, label: "D405_2 · 深度", kind: camera, side: "", topic: /d405_2/depth/image_rect_raw}
+  - {id: d436_color, label: "D436 · RGB", kind: camera, side: "", topic: /d436/color/image_raw}
+  - {id: d436_depth, label: "D436 · 深度", kind: camera, side: "", topic: /d436/depth/image_rect_raw}
+  - {id: left_wrist, label: "左腕 Tracker", kind: tracker, side: left, topic: /vive/left_wrist/sample}
+  - {id: right_wrist, label: "右腕 Tracker", kind: tracker, side: right, topic: /vive/right_wrist/sample}
+  - {id: torso, label: "躯干 Tracker", kind: tracker, side: "", topic: /vive/torso/sample}
+  - {id: left_glove, label: "左手姿态", kind: glove, side: left, topic: /gloves/left/state}
+  - {id: left_tactile, label: "左手触觉", kind: tactile, side: left, topic: /gloves/left/tactile/state}
+  - {id: right_glove, label: "右手姿态", kind: glove, side: right, topic: /gloves/right/state}
+  - {id: right_tactile, label: "右手触觉", kind: tactile, side: right, topic: /gloves/right/tactile/state}

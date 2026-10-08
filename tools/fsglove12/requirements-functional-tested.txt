@@ -1,0 +1,3 @@
+# Optional QMT quaternion projection used by the manual functional adapter.
+# Does not enable the separately licensed Olsson joint-axis estimator.
+qmt==0.2.4

@@ -1,0 +1,59 @@
+# Copy to a local file, enter real paths, and set enabled: true only for needed modules.
+# This file does not autostart anything. --enable-device-control + a button click are required.
+# The preview device list defaults to all streams. Recording topics remain controller-owned.
+disk_path: .
+quality_enabled: true
+process_groups:
+  - id: cameras
+    label: 三相机与录制控制器
+    preset: cameras
+    enabled: false
+    startup_timeout_s: 45
+    parameters:
+      config_path: ''       # Absolute path to your cameras.yaml; set in the desktop configuration.
+      output_root: ''       # Absolute directory for this workstation's recordings.
+  - id: trackers
+    label: 三 Tracker ROS 读取
+    preset: trackers
+    enabled: false
+    parameters:
+      bundle_path: ''       # Existing private startup bundle; no pairing is performed.
+      role_map_path: ''     # Existing private role map.
+  - id: right_glove
+    label: 右手姿态与标定窗口
+    preset: glove
+    enabled: false
+    startup_timeout_s: 120
+    parameters:
+      hand: right
+      launch_gui: 'true'
+      glove_python: ''      # Absolute executable in the existing glove environment.
+      fsglove_source: ''
+      mano_assets: ''
+      port: ''              # Explicit IMU port; connect/calibrate manually in the existing GUI.
+  - id: left_glove
+    label: 左手姿态与标定窗口
+    preset: glove
+    enabled: false
+    startup_timeout_s: 120
+    parameters:
+      hand: left
+      launch_gui: 'true'
+      glove_python: ''
+      fsglove_source: ''
+      mano_assets: ''
+      port: ''
+  - id: right_tactile
+    label: 右手触觉采集
+    preset: tactile
+    enabled: false
+    parameters:
+      hand: right
+      port: ''              # Tactile serial port, not the IMU port.
+  - id: left_tactile
+    label: 左手触觉采集
+    preset: tactile
+    enabled: false
+    parameters:
+      hand: left
+      port: ''

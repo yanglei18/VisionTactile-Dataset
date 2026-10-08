@@ -1,0 +1,6 @@
+# Additional direct dependencies tested with official FSGlove a7988f05,
+# Python 3.12, torch 2.8.0+cpu and the MANO environment on 2026-10-01.
+# Not a full transitive lock, and does not include source or model assets.
+pydantic==2.13.5
+scikit-learn==1.9.1
+tqdm==4.70.1

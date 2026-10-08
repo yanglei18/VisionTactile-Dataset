@@ -1,0 +1,7 @@
+# Optional performance environment: Linux x86_64, Python 3.12, CPU torch 2.8.
+# Install in a separate prepared FSGlove environment, not in a running session.
+# These are the tested numerical dependencies, not a complete environment lock.
+# See README: high-rate solving. No source/model assets are distributed here.
+numpy==2.5.3
+scipy==1.16.3
+qmt==0.2.4
