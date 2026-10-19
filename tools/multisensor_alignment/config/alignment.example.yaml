@@ -1,0 +1,65 @@
+schema_version: 1
+reference_camera: d405_1
+
+cameras:
+  - name: d405_1
+    model: D405
+    serial: "260322278433"
+    frame_id: d405_1_color_optical_frame
+    tracker_role: torso
+    color_topic: /d405_1/color/image_raw
+    depth_topic: /d405_1/depth/image_rect_raw
+    camera_info_topic: /d405_1/color/camera_info
+    timing_topic: /d405_1/frame_timing
+  - name: d405_2
+    model: D405
+    serial: "260322276463"
+    frame_id: d405_2_color_optical_frame
+    tracker_role: left_wrist
+    color_topic: /d405_2/color/image_raw
+    depth_topic: /d405_2/depth/image_rect_raw
+    camera_info_topic: /d405_2/color/camera_info
+    timing_topic: /d405_2/frame_timing
+  - name: d436
+    model: D436
+    serial: "408322071716"
+    frame_id: d436_color_optical_frame
+    tracker_role: right_wrist
+    color_topic: /d436/color/image_raw
+    depth_topic: /d436/depth/image_rect_raw
+    camera_info_topic: /d436/color/camera_info
+    timing_topic: /d436/frame_timing
+
+trackers:
+  - role: left_wrist
+    frame_id: vive_tracker_left_wrist
+    sample_topic: /vive/left_wrist/sample
+  - role: right_wrist
+    frame_id: vive_tracker_right_wrist
+    sample_topic: /vive/right_wrist/sample
+  - role: torso
+    frame_id: vive_tracker_torso
+    sample_topic: /vive/torso/sample
+
+# Future continuous streams, such as motion-capture gloves, are added here.
+# The generic adapter records a message reference at the nearest valid sample.
+additional_streams: []
+#  - name: left_glove
+#    topic: /gloves/left/state
+#    type: glove_msgs/msg/GloveState
+#    time_source: header_stamp
+#    timestamp_field: header.stamp
+#    strategy: nearest
+#    max_delta_ms: 20.0
+#    required: true
+
+alignment:
+  max_camera_delta_ms: 20.0
+  max_tracker_gap_ms: 50.0
+  max_clock_step_ms: 5.0
+  min_camera_match_ratio: 0.99
+  min_tracker_coverage_ratio: 0.99
+  min_required_stream_coverage_ratio: 0.99
+
+frames:
+  world: vive_map

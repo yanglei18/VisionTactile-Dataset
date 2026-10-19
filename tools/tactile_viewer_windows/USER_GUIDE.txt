@@ -1,0 +1,75 @@
+触觉三维预览 / Tactile 3D Viewer
+
+简体中文
+
+安装包包含运行环境和静态右手模型，无需安装 Python、ROS、PyTorch，安装和使用均不需要联网。
+
+安装向导可选择简体中文或 English；默认跟随 Windows 界面语言。
+应用顶部可随时切换语言，当前连接和数据状态保持不变，选择会保存到下次启动。
+应用首次采用系统语言，之后使用已保存的选择；安装语言不会覆盖应用语言偏好。
+
+1. 安装后从桌面或开始菜单启动“触觉三维预览”。
+2. 插入触觉设备，点击刷新，选择对应 COM 串口。默认波特率为 115200。
+3. 点击连接，在固定右手模型上查看触觉信息。左键拖动旋转，滚轮缩放。
+4. 点击断开后，可以退出或改选串口。不要同时让其他程序打开同一串口。
+
+颜色表示原始 ADC，并非已标定的实际压力。显示规则与主采集程序一致。
+数据中断时，上一次画面会标记为历史；历史画面不代表当前测量值。
+此工具显示固定手形，不进行手指姿态解算。
+
+没有串口：请确认 USB 线支持数据传输，在 Windows 设备管理器中检查设备。
+若设备没有识别成 COM 串口，请使用设备厂商为该硬件提供的驱动。
+本安装包不会安装来源未知的驱动或修改其他设备。
+
+三维窗口无法显示：请安装显卡厂商提供的驱动；本工具需要可用的桌面 OpenGL。
+模型资源损坏：重新运行同版本安装包修复。
+
+升级：关闭程序后运行新版本安装包，安装位置和用户设置将保留。
+卸载：在 Windows“设置 → 应用”中找到“触觉三维预览”并卸载。
+卸载仅移除本程序的文件和快捷方式，保留用户设置。
+
+安装目录的 licenses 文件夹保存应用、依赖和模型的许可说明。
+dependencies.json 与 build-manifest.json 记录版本和文件校验值，供维护人员排查问题。
+
+
+English
+
+Tactile 3D Viewer includes its runtime and static right-hand model. You do not
+need Python, ROS or PyTorch. Installation and use work entirely offline.
+
+Choose Simplified Chinese or English in the installer. The application has a
+language selector at the top. Switching language preserves the current
+connection and data, and your choice is saved for the next launch. On first
+launch, the application follows the system language. Later launches use your
+saved preference. Installer language does not override this preference.
+
+1. Start Tactile 3D Viewer from the desktop or Start menu.
+2. Plug in the tactile device, refresh the port list, and select its COM port.
+   The default baud rate is 115200.
+3. Connect to view tactile data on the fixed right-hand model. Drag with the
+   left mouse button to rotate; use the mouse wheel to zoom.
+4. Disconnect before choosing another port or exiting. Do not open the same
+   serial port in another application at the same time.
+
+Colors represent raw ADC values, not calibrated physical pressure. The display
+uses the same rules as the main capture application. If data stops, the last
+frame is marked as historical; it is not a current measurement. This viewer
+uses a fixed hand shape and does not estimate finger poses.
+
+No serial port: check that the USB cable supports data, and check Windows
+Device Manager. If the device is not recognized as a COM port, obtain the
+appropriate driver from its manufacturer. The installer does not install
+USB drivers or change other devices.
+
+No 3D display: install the graphics driver supplied by the graphics vendor.
+The application requires working desktop OpenGL.
+Damaged model resources: run the same version's installer again to repair.
+
+Upgrade: close the viewer and run the new installer. The installation location
+and user preferences are retained.
+Uninstall: find Tactile 3D Viewer (or its Chinese name) in Windows Settings > Apps.
+Uninstall removes the application files and shortcuts but retains preferences.
+
+The licenses folder contains application, dependency and model license notices.
+dependencies.json and build-manifest.json record versions and checksums for
+maintenance and troubleshooting.

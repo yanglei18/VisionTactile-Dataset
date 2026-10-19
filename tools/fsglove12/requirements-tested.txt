@@ -1,0 +1,6 @@
+# Offline core environment actually installed and tested on 2026-09-30.
+# Python 3.12.13. Does NOT lock or validate the optional MANO/GUI stack.
+numpy==2.5.3
+scipy==1.18.1
+vqf==2.1.2
+pytest==8.4.2

@@ -1,0 +1,21 @@
+/**:
+  ros__parameters:
+    # Explicit tactile port only; never point this at the glove IMU serial port.
+    port: ""
+    baudrate: 115200
+    hand: right
+    # Empty derives <hand>_tactile; override only for an explicit frame convention.
+    frame_id: ""
+    queue_capacity: 512
+    sample_qos_depth: 128
+    # One real serial read targets this size, returning sooner when full or
+    # returning a short read at the timeout. Timestamp remains read completion.
+    read_batch_bytes: 1024
+    read_timeout_sec: 0.002
+    state_rate_hz: 30.0
+    diagnostics_rate_hz: 1.0
+    stale_timeout_sec: 2.0
+    # Initial software freshness threshold, NOT measured sensor scan timing.
+    max_cell_age_ms: 100.0
+    reconnect_interval_sec: 1.0
+    publish_heatmap: false

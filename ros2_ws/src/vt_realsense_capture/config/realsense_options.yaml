@@ -1,0 +1,7 @@
+depth_module.global_time_enabled: false
+rgb_camera.global_time_enabled: false
+# RealSense 4.58.1's DEFAULT maps to rmw_qos_profile_default (reliable,
+# volatile, keep-last depth 10). These are node parameters, not launch args.
+# Make the managed image publishers' contract explicit for reliable recording.
+color_qos: DEFAULT
+depth_qos: DEFAULT

@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible capture, timing, recording, or validation defect.
+title: "[Bug] "
+labels:
+  - bug
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach private camera images, credentials, bags, or MCAP files.
+        Provide text logs and a minimal reproduction instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the observed behavior and its impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: List the exact commands and sequence that reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+      description: State what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Ubuntu, ROS 2, RealSense ROS, and librealsense versions.
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Camera and USB details
+      description: Include model, firmware, serial mapping, and lsusb -t speed.
+    validations:
+      required: true
+  - type: input
+    id: ros_domain_id
+    attributes:
+      label: ROS_DOMAIN_ID
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant text logs
+      description: Paste the smallest relevant text excerpt with timestamps.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I removed credentials and did not attach private images or large bag files.
+          required: true

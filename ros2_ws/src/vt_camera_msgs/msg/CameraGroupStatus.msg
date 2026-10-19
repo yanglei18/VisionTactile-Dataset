@@ -1,0 +1,11 @@
+string camera_name
+uint64 rgb_frames
+uint64 depth_frames
+uint64 timing_frames
+uint64 complete_groups
+uint64 incomplete_groups
+uint64 duplicate_keys
+float32 fps
+float32 max_gap_ms
+float32 complete_group_coverage
+bool alive

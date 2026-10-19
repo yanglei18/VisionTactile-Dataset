@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vt_tactile_capture</name>
+  <version>0.1.0</version>
+  <description>Loss-aware tactile ADC capture and independent ROS heatmap viewer.</description>
+  <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <depend>rclpy</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>vt_tactile_msgs</depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-serial</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
+  <exec_depend>python3-pyqtgraph</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

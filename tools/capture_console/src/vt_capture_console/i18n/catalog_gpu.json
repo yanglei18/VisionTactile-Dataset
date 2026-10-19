@@ -1,0 +1,10 @@
+{
+  "三维 · 待确认": "3D · Unconfirmed",
+  "三维 · GPU": "3D · GPU",
+  "三维 · CPU": "3D · CPU",
+  "投影 · CPU": "Projection · CPU",
+  "当前三维上下文由 GPU 渲染": "The current 3D context renders on the GPU",
+  "当前三维上下文使用 CPU 软件渲染，GPU 加速尚未生效": "The current 3D context uses CPU software rendering; GPU acceleration is not active",
+  "当前三维上下文的硬件加速状态尚未确认": "Hardware acceleration for the current 3D context has not been confirmed",
+  "渲染器：{renderer}\n厂商：{vendor}\nOpenGL：{version}": "Renderer: {renderer}\nVendor: {vendor}\nOpenGL: {version}"
+}

@@ -1,0 +1,14 @@
+{
+  "磁盘空间不足：可用 {available} GiB，预计至少需要 {required} GiB（含停止预留 {reserve} GiB）。": "Insufficient disk space: {available} GiB available; at least {required} GiB required, including {reserve} GiB reserved for stopping.",
+  "磁盘空间查询失败：{error}": "Disk space check failed: {error}",
+  "磁盘空间达到停止阈值：可用 {available} GiB，预留 {reserve} GiB。": "Disk space reached the stop threshold: {available} GiB available; {reserve} GiB reserved.",
+  "磁盘容量预算仅包含已知图像流；追加话题未配置容量估计。": "The capacity budget covers known image streams only; additional topics have no configured size estimate.",
+  "磁盘空间不足：可用 {available} GiB，预计至少需要 {required} GiB（含停止预留 {reserve} GiB）。 磁盘容量预算仅包含已知图像流；追加话题未配置容量估计。": "Insufficient disk space: {available} GiB available; at least {required} GiB required, including {reserve} GiB reserved for stopping. The capacity budget covers known image streams only; additional topics have no configured size estimate.",
+  "Recorder process started; 磁盘容量预算仅包含已知图像流；追加话题未配置容量估计。": "Recorder process started; The capacity budget covers known image streams only; additional topics have no configured size estimate.",
+  "正在安全停止录制：磁盘空间查询失败：{error}": "Stopping recording safely: Disk space check failed: {error}",
+  "正在安全停止录制：磁盘空间达到停止阈值：可用 {available} GiB，预留 {reserve} GiB。": "Stopping recording safely: Disk space reached the stop threshold: {available} GiB available; {reserve} GiB reserved.",
+  "录制停止尚未确认：磁盘空间查询失败：{error}": "Recorder termination is not yet confirmed: Disk space check failed: {error}",
+  "录制停止尚未确认：磁盘空间达到停止阈值：可用 {available} GiB，预留 {reserve} GiB。": "Recorder termination is not yet confirmed: Disk space reached the stop threshold: {available} GiB available; {reserve} GiB reserved.",
+  "录制已提前结束并完成收尾：磁盘空间查询失败：{error}": "Recording ended early and finalization completed: Disk space check failed: {error}",
+  "录制已提前结束并完成收尾：磁盘空间达到停止阈值：可用 {available} GiB，预留 {reserve} GiB。": "Recording ended early and finalization completed: Disk space reached the stop threshold: {available} GiB available; {reserve} GiB reserved."
+}

@@ -1,0 +1,4 @@
+{
+  "接收 Hz 为后台最近一秒收到的消息数；不表示相机输出帧率或 bag 写入帧率。录制完整性请查看档案中的质量报告。": "Receive Hz counts messages received by the backend in the last second; it does not measure camera output or bag write rates. Review the quality report in Archive to check the recording.",
+  "切换页面后，录制标签持续显示状态。录制结束后请到档案查看质量报告。": "The Recording tab keeps showing status when you change pages. Review the quality report in Archive after recording ends."
+}

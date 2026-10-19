@@ -1,0 +1,5 @@
+schema_version: 1
+roles:
+  left_wrist: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  right_wrist: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  torso: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

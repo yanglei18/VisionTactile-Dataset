@@ -1,0 +1,3 @@
+# Preserve upstream bytes so pinned hashes survive Windows/Linux checkouts.
+/ChineseSimplified.isl -text whitespace=cr-at-eol
+/INNO_SETUP_LICENSE.txt -text whitespace=cr-at-eol

@@ -1,0 +1,17 @@
+uint8 IDLE=0
+uint8 PREFLIGHT=1
+uint8 WARMING_UP=2
+uint8 RECORDING=3
+uint8 FINALIZING=4
+uint8 COMPLETE=5
+uint8 INVALID=6
+std_msgs/Header header
+string request_id
+string session_id
+uint8 state
+StreamStatus[] streams
+CameraGroupStatus[] camera_groups
+bool recorder_alive
+uint64 disk_free_bytes
+float32 observed_write_mb_s
+string detail

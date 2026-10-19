@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "hand": "right",
+  "hand_side_confirmed": false,
+  "sample_rate_hz": 120.0,
+  "sample_rate_verified": false,
+  "gyro_dps_per_lsb": 0.00875,
+  "accel_g_per_lsb": 0.000122,
+  "units_verified": false,
+  "stale_after_s": 0.5,
+  "palm_node": 12,
+  "auxiliary_node": 11,
+  "palm_mount_verified": false,
+  "dip_ratio": 0.65,
+  "estimate_dip": true,
+  "fingers": {
+    "thumb": {"proximal": 5, "distal": 6, "lengths_mm": [35, 25], "base_mm": [32, 22, 0], "neutral_splay_deg": -50, "anatomy_verified": false},
+    "index": {"proximal": 3, "distal": 4, "lengths_mm": [42, 25, 18], "base_mm": [26, 70, 0], "neutral_splay_deg": 0, "anatomy_verified": true},
+    "middle": {"proximal": 1, "distal": 2, "lengths_mm": [45, 28, 20], "base_mm": [8, 75, 0], "neutral_splay_deg": 0, "anatomy_verified": true},
+    "ring": {"proximal": 7, "distal": 8, "lengths_mm": [43, 26, 19], "base_mm": [-10, 72, 0], "neutral_splay_deg": 0, "anatomy_verified": true},
+    "little": {"proximal": 9, "distal": 10, "lengths_mm": [33, 20, 16], "base_mm": [-27, 60, 0], "neutral_splay_deg": 0, "anatomy_verified": true}
+  },
+  "notes": "The user confirmed this right glove's mapping on 2026-09-28: thumb 5/6, index 3/4, middle 1/2, ring 7/8, little 9/10; the smaller ID in each pair is nearer the palm. This corrects the earlier activity-based index/ring assignment and is not a universal wiring order. Generic hand-side confirmation remains false for each new operator. Dimensions are illustrative, not measured. A=12 central/lower dorsal glove; B=11 above little-finger-side cuff, not a verified forearm reference. Confirmed thumb ordering does not establish exact phalanx or CMC anatomy. No sensor-to-segment rotations are pre-certified."
+}

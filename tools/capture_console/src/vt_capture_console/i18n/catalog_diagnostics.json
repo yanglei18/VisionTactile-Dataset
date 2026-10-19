@@ -1,0 +1,19 @@
+{
+  "无法读取 USB 设备枚举状态；相机启动前检查未完成，已阻止启动。": "Unable to read USB device enumeration. Camera startup is blocked because the preflight check could not complete.",
+  "当前未枚举到配置的相机，且无法确认 USB 控制器状态；已阻止相机启动，避免驱动持续重试。": "The configured cameras are not enumerated and the USB controller status could not be confirmed. Camera startup is blocked to prevent repeated driver retries.",
+  "当前未枚举到配置的相机；已阻止相机启动，相机重新连接后可再次启动。": "The configured cameras are not enumerated. Camera startup is blocked; try again after reconnecting the cameras.",
+  "内核报告 USB 控制器 {v0} 失效（HC died），当前未枚举到配置的相机。已阻止相机启动，避免驱动持续重试；控制器恢复且相机重新枚举后可再次启动。": "The kernel reported USB controller {v0} failure (HC died), and the configured cameras are not enumerated. Camera startup is blocked to prevent repeated driver retries; try again after the controller recovers and the cameras are enumerated.",
+  "右手姿态与标定窗口": "Right Hand Pose and Calibration Window",
+  "左手姿态与标定窗口": "Left Hand Pose and Calibration Window",
+  "右手触觉采集": "Right Hand Tactile Acquisition",
+  "左手触觉采集": "Left Hand Tactile Acquisition",
+  "联合空间暂不可用：{v0}": "Joint spatial view temporarily unavailable: {v0}",
+  "点云暂不可用：{v0}": "Point cloud temporarily unavailable: {v0}",
+  "已创建演示批次：{v0}": "Demo batch created: {v0}",
+  "脚本未完成或提示契约不匹配：{v0}": "Script incomplete or prompt contract mismatch: {v0}",
+  "子进程退出未确认，请人工核实：{v0}": "Subprocess exit unconfirmed; verify manually: {v0}",
+  "MANO 显示结果无效：{v0}": "Invalid MANO display result: {v0}",
+  "MANO 显示进程无法运行：{v0}": "MANO display process cannot run: {v0}",
+  "回放不可用：{v0}": "Playback unavailable: {v0}",
+  "本次命令回执已不可用；请核实后台状态，不会自动重试。": "Command receipt is no longer available; verify backend state. No retry was sent."
+}

@@ -1,0 +1,13 @@
+{
+  "Tracker · 左腕": "Tracker · Left Wrist",
+  "Tracker · 右腕": "Tracker · Right Wrist",
+  "Tracker · 躯干": "Tracker · Torso",
+  "左手 · 姿态": "Left Hand · Pose",
+  "右手 · 姿态": "Right Hand · Pose",
+  "左手 · 触觉": "Left Hand · Tactile",
+  "右手 · 触觉": "Right Hand · Tactile",
+  "左手 姿态 · 演示": "Left Hand Pose · Demo",
+  "右手 姿态 · 演示": "Right Hand Pose · Demo",
+  "左手 触觉 · 演示": "Left Hand Tactile · Demo",
+  "右手 触觉 · 演示": "Right Hand Tactile · Demo"
+}

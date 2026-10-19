@@ -1,0 +1,31 @@
+# Relative paths resolve against this YAML. CLI path overrides resolve against cwd.
+# Select independent modalities with pose_hands:=left|right|both|none and
+# tactile_hands:=left|right|both|none. Blank device = disconnected/manual choice.
+schema_version: 1
+runtime:
+  glove_python: ""       # Required only for an enabled pose GUI.
+  fsglove_source: ""
+  mano_assets: ""        # Needs MANO_LEFT.pkl for left, MANO_RIGHT.pkl for right.
+  tactile_gui_python: /usr/bin/python3
+  output_root: ~/visiontactile-data/glove_sessions
+hands:
+  right:
+    pose_enabled: true
+    tactile_enabled: true
+    imu_port: ""
+    tactile_port: ""
+    pose_config: ""
+    tactile_layout: ""   # Existing right-hand candidate layout.
+    pose_gui: true
+    tactile_gui: true
+    tactile_overlay: true
+  left:
+    pose_enabled: false
+    tactile_enabled: false
+    imu_port: ""
+    tactile_port: ""
+    pose_config: ""      # Bundled left mapping is a template, not hardware-verified.
+    tactile_layout: ""   # No assumption about left wiring: default matrix only.
+    pose_gui: true
+    tactile_gui: true
+    tactile_overlay: true # Activates only with pose + tactile + explicit left layout.

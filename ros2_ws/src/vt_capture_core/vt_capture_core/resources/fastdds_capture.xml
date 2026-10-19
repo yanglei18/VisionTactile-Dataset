@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Capture transport v1: finite capacity per DDS participant, not per machine.
+  One 1280x720 RGB8 + 16UC1 pair is 4,608,000 raw bytes; at 30 Hz a camera
+  sends 138,240,000 bytes/s. 64 MiB allows about 14.6 pairs / 0.485 s before
+  allocation overhead. Seven participants reserve about 448 MiB plus queues.
+  This provides scheduling headroom, not a delivery or latency guarantee.
+  Keep the default 65,500-byte transport message limit: larger images still
+  fragment. The listener queue holds 4,096 descriptors, not 4,096 full images.
+  Explicit UDPv4 retains discovery and remote peers while disabling builtins
+  prevents creation of a second, undersized default SHM transport.
+  Endpoint QoS, publication mode and OS socket settings remain ROS/user owned.
+
+  Reference: Fast DDS 2.14.6 shared_memory.html and xml_configuration/transports.html
+  https://fast-dds.docs.eprosima.com/en/v2.14.6/fastdds/transport/shared_memory/shared_memory.html
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>vt_capture_shm_64m_v1</transport_id>
+      <type>SHM</type>
+      <maxMessageSize>65500</maxMessageSize>
+      <segment_size>67108864</segment_size>
+      <port_queue_capacity>4096</port_queue_capacity>
+    </transport_descriptor>
+    <transport_descriptor>
+      <transport_id>vt_capture_udp_v1</transport_id>
+      <type>UDPv4</type>
+    </transport_descriptor>
+  </transport_descriptors>
+  <participant profile_name="vt_capture_transport_v1" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>vt_capture_shm_64m_v1</transport_id>
+        <transport_id>vt_capture_udp_v1</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>

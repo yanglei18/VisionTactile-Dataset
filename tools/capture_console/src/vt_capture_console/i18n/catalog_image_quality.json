@@ -1,0 +1,12 @@
+{
+  "图像源时间平均帧率 {observed:.3f} Hz；最低 {minimum:.3f} Hz，期望 {expected:g} Hz。": "Image source-time average rate {observed:.3f} Hz; minimum {minimum:.3f} Hz, expected {expected:g} Hz.",
+  "有效图像时间戳不足两个，或源时间跨度不足 1 秒，无法评估期望帧率。": "Fewer than two valid image timestamps or less than 1 second of source-time span; the expected frame rate cannot be assessed.",
+  "图像源时间间隔 {count} 次超过 {threshold} ns；请查看完整报告。": "{count} image source-time intervals exceed {threshold} ns; see the full report.",
+  "图像源时间戳重复 {count} 次。": "{count} duplicate image source timestamps.",
+  "图像源时间戳回退 {count} 次。": "{count} regressing image source timestamps.",
+  "图像已有数据，但未录入对应的相机标定参数。": "Images were recorded without the corresponding camera calibration.",
+  "相机标定参数无效：{count} 条；原因见完整报告。": "Invalid camera calibration: {count} messages; see the full report for the reason.",
+  "畸变模型暂不支持：{count} 条；原始参数已保留。": "Unsupported distortion model: {count} messages; the original parameters are preserved.",
+  "标定参数发生变化：{count} 次；请查看完整报告。": "Calibration changed: {count} time(s); see the full report.",
+  "标定参数": "Calibration parameters"
+}

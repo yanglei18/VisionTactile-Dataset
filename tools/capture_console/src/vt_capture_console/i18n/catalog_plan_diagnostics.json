@@ -1,0 +1,18 @@
+{
+  "录制控制器已变化，请刷新后重新开始。": "The recording controller has changed. Refresh before starting again.",
+  "录制状态已变化，请刷新后重新开始。": "The recording state has changed. Refresh before starting again.",
+  "已有录制或状态未确认，未发送新的录制命令。": "A recording is active or its state is unconfirmed. No new recording command was sent.",
+  "采集计划或控制器清单格式无效，未发送录制命令。": "The capture plan or controller topic list is invalid. No recording command was sent.",
+  "采集计划时长与录制请求或控制器限制不一致。": "The capture plan duration does not match the recording request or exceeds the controller limit.",
+  "当前录制清单已变化，请刷新后重新开始。": "The recording topic list has changed. Refresh before starting again.",
+  "采集计划与控制器实际录制清单不一致，请检查设备配置。": "The capture plan does not match the controller's actual recording topic list. Check the device configuration.",
+  "无法检查本次必需数据流：{topics}": "Cannot check required streams for this recording: {topics}",
+  "本次必需数据流尚未就绪：{topics}": "Required streams are not ready for this recording: {topics}",
+  "当前没有可录制的数据流，请先启动至少一个采集设备。": "No data streams are available to record. Start at least one capture device.",
+  "已保存的采集计划无效，未发送录制命令。": "The saved capture plan is invalid. No recording command was sent.",
+  "开始前已接收的数据流已中断：{topics}": "Streams receiving data before start have stopped: {topics}",
+  "后台正在退出，未发送录制命令。": "The backend is shutting down. No recording command was sent.",
+  "录前复核未完成，未发送录制命令。": "The final pre-recording check could not be completed. No recording command was sent.",
+  "当前后台不支持采集计划校验，需要 v5；未发送命令": "This backend does not support capture plan validation, which requires v5. No command was sent.",
+  "当前后台要求完整采集计划；未发送无计划的录制命令": "This backend requires a complete capture plan. No recording command was sent without a plan."
+}

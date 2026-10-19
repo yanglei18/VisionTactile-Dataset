@@ -1,0 +1,253 @@
+# Interface reference
+
+This page is the operator-facing reference for launch arguments, ROS 2
+interfaces, command-line tools, and time semantics. Commands assume the
+workspace has already been built and sourced as described in the
+[end-user manual](user-manual.md).
+
+## Common environment
+
+Use absolute paths and keep runtime data outside the Git worktree:
+
+```bash
+export VT_REPO="$(git rev-parse --show-toplevel)"
+export VT_WS="${VT_REPO}/ros2_ws"
+export VT_DATA_ROOT="${HOME}/visiontactile-data"
+mkdir -p "${VT_DATA_ROOT}"
+
+source /opt/ros/jazzy/setup.bash
+source "${VT_WS}/install/setup.bash"
+```
+
+Every terminal in one run must use the same `ROS_DOMAIN_ID`.
+
+## Camera launch arguments
+
+Launch with:
+
+```bash
+ros2 launch vt_realsense_capture triple_realsense.launch.py \
+  output_root:="${VT_DATA_ROOT}"
+```
+
+| Argument | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `output_root` | Yes | empty | Existing, writable absolute directory that is not itself a symlink. The supported workflow additionally requires a canonical path outside the repository. |
+| `config_path` | No | installed `config/cameras.yaml` | Fixed D405/D405/D436 capture configuration. A replacement file must satisfy the strict topology, stream, and recording contract. |
+
+The supported stream contract is RGB8 color plus Z16 depth at
+`1280x720x30` for each camera. The recording contract is a 300-second maximum
+bag duration, 128 GiB maximum bag size, and 1 GiB rosbag cache. These values
+are configuration-contract values, not runtime quality guarantees.
+
+### Recorded unified topics
+
+The default v2 allowlist contains 21 candidate topics. Factory extrinsics use
+reliable/transient-local/keep-last depth 1 for late Recorder subscriptions. Other
+core subscriptions use keep-last depth 30, volatile: reliable for the six managed
+image sources, best-effort for CameraInfo, timing and Tracker. Exact-topic
+operator overrides take precedence; publisher QoS is not changed by the Recorder.
+
+`<camera>` is `d405_1`, `d405_2` or `d436`; each contributes six topics:
+
+| Recorded Topic | Type | Purpose |
+| --- | --- | --- |
+| `/<camera>/color/image_raw` | `sensor_msgs/msg/Image` | Color image |
+| `/<camera>/depth/image_rect_raw` | `sensor_msgs/msg/Image` | Native depth image |
+| `/<camera>/color/camera_info` | `sensor_msgs/msg/CameraInfo` | Color intrinsics |
+| `/<camera>/frame_timing` | `vt_camera_msgs/msg/CameraFrameTiming` | Frame-group timestamps |
+| `/<camera>/depth/camera_info` | `sensor_msgs/msg/CameraInfo` | Native-depth intrinsics |
+| `/<camera>/extrinsics/depth_to_color` | `realsense2_camera_msgs/msg/Extrinsics` | Factory transform inside one camera |
+
+| Tracker role | Recorded Topic | Type |
+| --- | --- | --- |
+| `left_wrist` | `/vive/left_wrist/sample` | `vt_tracker_msgs/msg/TrackerSample` |
+| `right_wrist` | `/vive/right_wrist/sample` | `vt_tracker_msgs/msg/TrackerSample` |
+| `torso` | `/vive/torso/sample` | `vt_tracker_msgs/msg/TrackerSample` |
+
+External Tracker–camera calibration results, TF, raw RealSense metadata, Tracker `/pose` and `/status`,
+and all `/capture/*` topics may be visible live but are not recorded. Explicit
+`recording.additional_streams` entries are sorted after the 21-topic core.
+Factory calibration is recorded independently of Tracker and space configuration;
+it does not supply an external mounting/world transform. Recipe v1 and historical
+`unified-dataset-v1` frozen plans retain their original 15-topic default; new
+Recipe v2 plans use `unified-dataset-v2`.
+
+The separate calibration workflow records its own dedicated bag. See
+[Tracker–camera calibration](tracker-camera-calibration.md).
+
+### Applied camera–Tracker calibration
+
+The embedded **Calibration & Offline Tools → Camera–Tracker Calibration**
+workspace uses the manager's optional calibration service. It publishes
+`/calibration/<camera>/tracker_from_camera` as
+`vt_camera_msgs/msg/CameraTrackerCalibration`, with reliable, transient-local,
+keep-last depth 1 QoS. It is separate from the factory depth-to-color transform
+and does not publish or override a TF edge.
+
+| Fields | Meaning |
+| --- | --- |
+| `schema_version`, `manager_instance_id` | Message contract and current publishing manager identity. |
+| `header`, `camera_frame_id`, `tracker_from_camera` | Parent Tracker frame, child color optical frame and parent-from-child rigid transform; translation in metres. |
+| `camera_name`, `camera_model`, `camera_serial`, `tracker_role`, `tracker_id`, `world_frame_id` | Physical device and coordinate bindings. |
+| `revision`, `sha256`, `activated_ns`, `quality_grade` | Immutable version, artifact digest, activation time and accepted quality grade. |
+| `valid`, `valid_until_ns`, `reason` | Current identity assertion and its expiry in host realtime (Unix nanoseconds). |
+
+The adapter refreshes the assertion at 1 Hz, with a 2-second validity interval.
+Consumers must require both `valid=true` and a non-expired `valid_until_ns`;
+a cached transient-local message alone does not establish current validity.
+Device loss or identity mismatch invalidates the assertion. The immutable
+calibration remains available for audit and can become valid again after the
+same identities are verified. Formal trial metadata freezes the active documents
+and revisions at START; later calibration changes do not rewrite past trials.
+
+### Calibration management IPC (v6)
+
+The authenticated local manager socket negotiates protocol v6. Existing v1–v5
+clients retain their original contracts. A v6 snapshot adds
+`capabilities.calibration` and a `calibration` branch with `enabled`, `busy`,
+`session`, `active`, `cameras` and `trackers`. Numerical processing and Recorder
+ownership stay in the backend; the desktop renders snapshots and submits commands.
+
+All calibration commands require a unique `request_id` and
+`expected_manager_instance_id`. The latest 128 receipts survive restart;
+repeating a retained request returns its receipt without repeating the action.
+
+| Command | Additional parameters |
+| --- | --- |
+| `calibration.start` | `mode` (`guided` or `offline`), `camera_name`, `tracker_role`, `config_path` (empty or absolute), `board`, `bag_paths`. Guided mode takes no bags; offline mode takes one or three distinct closed bags. |
+| `calibration.cancel` | `session_id`; requests orderly closure of the owned Recorder before termination. |
+| `calibration.retry_publish` | `session_id`; retries application/publication of an already committed version. |
+| `calibration.restore` | `camera_name`, historical `revision`, `expected_active_revision`; verifies identity and creates a new audited revision. |
+
+`board` contains `squares_x`, `squares_y`, `square_length_mm`,
+`marker_length_mm` and `dictionary`. Session snapshots include the current
+round, accepted/target pose counts, one guidance hint, optional preview and result
+paths. Three independent accepted rounds are required for automatic activation;
+one offline bag produces a `CANDIDATE`. `WAITING_TO_APPLY` and
+`APPLIED_PENDING_PUBLICATION` remain distinct from `COMPLETE`. Calibration,
+formal recording and device maintenance share the same admission lock.
+
+The manager accepts `--enable-calibration`, `--calibration-python` and
+`--calibration-root`. The desktop supplies its separate calibration environment;
+the default private result root is under the configured data root. Result versions
+are immutable and an atomic active reference selects the current configuration.
+Closing the desktop leaves a backend-owned session running. Restart recovery
+never silently restarts a recording or assumes an unclosed bag succeeded.
+
+### Capture control topics
+
+| Topic | Type | QoS | Direction and purpose |
+| --- | --- | --- | --- |
+| `/capture/command` | `vt_camera_msgs/msg/CaptureCommand` | reliable, volatile, depth 10 | Operator to controller; `START=1`, `STOP=2`. |
+| `/capture/status` | `vt_camera_msgs/msg/CaptureStatus` | reliable, volatile, depth 10 | Current Recorder lifecycle, published periodically. |
+| `/capture/event` | `vt_camera_msgs/msg/CaptureEvent` | reliable, volatile, depth 10 | Discrete informational, warning, or fatal events. |
+| `/capture/session_info` | `vt_camera_msgs/msg/SessionInfo` | reliable, transient-local, depth 10 | Latest session identity and environment description. |
+
+The successful lifecycle is:
+
+```text
+IDLE -> RECORDING -> FINALIZING -> COMPLETE
+```
+
+`INVALID` is the terminal result when finalization cannot confirm a valid
+Recorder stop. `PREFLIGHT` and `WARMING_UP` remain wire-compatibility constants
+but are not entered by the current Recorder-only workflow. `COMPLETE` means
+only that Recorder process termination was confirmed. It does not assert topic
+completeness, timing quality, absence of loss, or experiment suitability.
+
+## Camera time semantics
+
+`CameraFrameTiming` groups one color metadata observation and one depth
+metadata observation from the same camera. It does not hardware-synchronize
+three cameras.
+
+| Field family | Clock/source | Intended use |
+| --- | --- | --- |
+| `header.stamp`, `shared_ros_timestamp_ns` | Common ROS stamp used to group the color/depth pair | ROS correlation within one camera. |
+| `*_device_timestamp_ns` | RealSense-reported device timestamp and domain | Device-stream diagnostics; may reset or use a different domain. |
+| `*_host_monotonic_raw_ns`, `group_host_monotonic_raw_ns` | Linux host monotonic raw clock | Interval and ordering measurements within the current boot. |
+| `*_host_realtime_ns`, `group_host_realtime_ns` | Linux host realtime clock | Correlation with host wall-clock logs. |
+
+The D436 device clock must not be substituted for host time. Use the explicit
+host realtime fields when wall-clock correlation is required, and inspect the
+validity flags before consuming any optional timestamp field.
+
+## Tracker launch arguments
+
+Launch the read-only publisher with its two private input files:
+
+```bash
+ros2 launch vt_vive_tracker triple_tracker.launch.py \
+  bundle_path:="${VT_BUNDLE}" \
+  role_map_path:="${VT_ROLE_MAP}"
+```
+
+| Argument | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `bundle_path` | Yes | none | Absolute path to the private, approved bootstrap bundle. It must be a regular non-symlink file, owned by the current user, with no group/other permission bits. |
+| `role_map_path` | Yes | none | Absolute path to the private physical-role map, with the same ownership and permission requirements as the bundle. |
+| `frame_id` | No | `vive_map` | Native mapped coordinate-frame label; it does not imply camera or world alignment. |
+| `status_rate_hz` | No | `10.0` | Per-role status publication rate; valid range 0.1–100 Hz. |
+| `read_timeout_ms` | No | `100` | Backend read timeout used for bounded shutdown and recovery; valid range 1–100 ms. |
+| `disconnect_timeout_ms` | No | `1000` | Time without a report before a role is considered disconnected; valid range 1–60000 ms. |
+| `queue_capacity` | No | `4096` | Maximum in-process sample queue depth before old samples are counted as dropped; valid range 1–1000000. |
+
+Changing timeout, rate, or queue values creates a non-reference operating
+profile and must be recorded in the experiment manifest.
+Hardware input also rejects the ROS parameter `use_sim_time=true`.
+
+### Tracker topics
+
+Each role is one of `left_wrist`, `right_wrist`, or `torso`.
+
+| Topic pattern | Type | QoS | Meaning |
+| --- | --- | --- | --- |
+| `/vive/<role>/sample` | `vt_tracker_msgs/msg/TrackerSample` | best-effort, volatile, depth 10 | Pose, motion fields, identity, tracking status, and host timestamps. |
+| `/vive/<role>/pose` | `geometry_msgs/msg/PoseStamped` | best-effort, volatile, depth 10 | Convenience pose in `vive_map`. |
+| `/vive/<role>/status` | `vt_tracker_msgs/msg/TrackerStatus` | reliable, transient-local, depth 1 | Connection/tracking state and cumulative counters. |
+
+The publisher emits no TF and does not align `vive_map` with any RealSense
+frame. Only the three `/sample` topics enter the unified bag; convenience pose
+and status streams remain live-only.
+
+## Visualization launch arguments
+
+```bash
+ros2 launch vt_vive_tracker tracker_visualization.launch.py
+ros2 launch vt_vive_tracker_gui tracker_gui.launch.py
+```
+
+`tracker_visualization.launch.py` accepts optional `rviz_config`, defaulting to
+the installed three-Tracker RViz configuration. The standalone GUI has no
+launch arguments. Both are read-only ROS consumers: neither opens the Dongle,
+changes pairing or mapping, starts the publisher, nor records data.
+
+## Command-line tools
+
+| Command | Purpose | Important arguments |
+| --- | --- | --- |
+| `ros2 run vt_realsense_capture storage_bench` | Optional destructive-write throughput test in a dedicated temporary file under the selected data root. | `--output-root <absolute-directory>` |
+| `ros2 run vt_vive_tracker vt-vive-write-role-map` | Create a private role map from an approved bundle. | `--bundle`, `--output`, `--host`, `--client0`, `--client1` |
+| `ros2 run vt_vive_tracker vt-vive-validate-topics` | Measure the three published ROS role streams and write a private JSON report. | `--duration` (default `30`), required `--output` |
+| `vt-vut-validate` | Validate direct-USB or Dongle input through the separately installed validation package. | `preflight` or `run`, `--mode`, `--duration`, `--expected-trackers`, `--output` |
+| `vt-tracker-camera-calibrate configure` | Create an immutable, identity-bound calibration configuration for one reference camera and one physical Tracker role. | `--camera`, `--tracker-role`, `--square-length-mm`, `--marker-length-mm`, `--output` |
+| `vt-tracker-camera-calibrate board` | Render the configured printable ChArUco board with DPI metadata. | `--config`, `--output`, optional `--dpi` |
+| `vt-tracker-camera-calibrate calibrate` | Read a dedicated bag, solve Tracker-to-color-optical external calibration, validate it, and export immutable artifacts. | `--bag`, `--config`, `--output` |
+| `vt-tracker-camera-calibrate compare` | Verify identity consistency and pairwise repeatability across at least three valid calibration runs, then identify the run closest to their consensus. | `--inputs`, `--output`, optional repeatability thresholds |
+| `vt-multisensor-align inspect` | Check one unified bag's required topics, types, identities, frames, and valid input counts without writing output. | `--bag`, `--config` |
+| `vt-multisensor-align align` | Match three cameras, interpolate three Tracker streams, apply three external calibrations, and atomically export an alignment index. | `--bag`, `--config`, `--extrinsics`, `--output` |
+| `vt-multisensor-align validate` | Recompute output integrity hashes and verify row count and quality verdict. | `--output` |
+
+Use `--help` on the installed command as the final authority for CLI syntax in
+the checked-out version.
+
+## Compatibility and change control
+
+The reference platform is Ubuntu 24.04, ROS 2 Jazzy, RealSense ROS 4.58.1,
+and the PyVUT revision pinned in
+[Tracker Linux validation](tracker-linux-validation.md). Replacement camera
+serials require a reviewed configuration file. Firmware, RealSense wrapper,
+PyVUT revision, message definition, QoS, topic allowlist, or Tracker mapping
+changes require a new acceptance record; they must not be treated as a
+transparent runtime change.

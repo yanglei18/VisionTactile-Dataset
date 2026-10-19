@@ -1,0 +1,10 @@
+{
+  "静态手模型 JSON 包含重复字段": "Static hand model JSON contains duplicate fields",
+  "静态手模型 JSON 包含非有限数值": "Static hand model JSON contains non-finite values",
+  "静态手模型文件超出允许大小": "Static hand model exceeds the allowed file size",
+  "静态手模型路径为空，请修复安装或检查模型文件": "Static hand model path is empty; repair the installation or check the model file",
+  "静态手模型不存在，请修复安装或检查模型文件": "Static hand model is missing; repair the installation or check the model file",
+  "静态手模型已发生变化，请重新加载模型": "Static hand model changed; reload the model",
+  "静态手模型加载失败：": "Static hand model could not be loaded: ",
+  "串口被占用或访问被拒绝，请关闭其他使用该串口的程序并检查设备权限。": "The serial port is busy or access was denied. Close other applications using it and check device permissions."
+}
