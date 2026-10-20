@@ -17,7 +17,7 @@ import uuid
 
 from .tracker_workflow import (BootstrapConfig, bootstrap_environment_overrides,
                                detect_defaults)
-from .environment_discovery import discover_bootstrap_configuration
+from .environment_discovery import discover_bootstrap_configuration, managed_tracker_installation
 from .workstation_settings import repository_root
 
 FIELDS = frozenset(("python", "script", "capture", "bundle", "expected_sha256"))
@@ -180,12 +180,26 @@ class TrackerBootstrapSettings:
 
     def defaults(self):
         saved = self.load()
-        values = detect_defaults(self.repo_root, include_environment=False)
         workstation_bundle = self._workstation_bundle()
-        if workstation_bundle:
-            values["bundle"] = workstation_bundle
-        values.update(saved)
+        # The publisher's explicitly selected managed bundle pins all initializer
+        # inputs. An older saved initializer cannot silently select another rig.
+        managed = (managed_tracker_installation(workstation_bundle, current=False)
+                   if workstation_bundle else None)
+        values = {key: "" for key in FIELDS}
+        if managed is not None:
+            values["bundle"] = str(managed.bundle)
+        else:
+            if workstation_bundle:
+                values["bundle"] = workstation_bundle
+            values.update(saved)
         values = discover_bootstrap_configuration(
             values, repo_root=self.repo_root, environ={}, replace_missing=True).configuration
+        if not any(values.get(key) for key in ("bundle", "capture", "expected_sha256")):
+            # Keep the old, bounded local suggestions only when no explicit or
+            # managed private input group has already been selected.
+            legacy = detect_defaults(self.repo_root, include_environment=False)
+            for key, value in legacy.items():
+                if not values.get(key):
+                    values[key] = value
         values.update(bootstrap_environment_overrides())
         return values

@@ -144,6 +144,7 @@ def test_windows_paths_are_passed_as_single_arguments(tmp_path):
     assert "--collect-data" not in arguments
     assert "--copy-metadata" not in arguments
     for module in ("torch", "manotorch", "rclpy", "PyQt5", "vt_capture_core",
+                   "vt_tracker_deploy", "vt_capture_console.backend.environment_discovery",
                    "vt_capture_console.backend.workstation_settings",
                    "vt_capture_console.ui.widgets.glove_3d", "vt_capture_console.ui.widgets.camera_gl"):
         assert arguments[arguments.index(module) - 1] == "--exclude-module"
@@ -199,6 +200,7 @@ def test_audit_requires_resources_model_integrity_and_executable(distribution):
 @pytest.mark.parametrize("forbidden", [
     "torch", "torch.cuda", "rclpy", "manotorch.manolayer", "PyQt5.QtCore",
     "vt_capture_core.workstation", "vt_capture_console.backend.workstation_settings",
+    "vt_tracker_deploy.manifest", "vt_capture_console.backend.environment_discovery",
     "vt_capture_console.backend.pose_preview", "vt_capture_console.ui.widgets.glove_3d",
     "vt_capture_console.ui.widgets.camera_gl", "vt_capture_console.ui.gpu_status",
 ])
@@ -216,6 +218,7 @@ def test_audit_checks_modules_inside_archive(distribution, forbidden):
     "vt_capture_core-0.1.0.dist-info/METADATA",
     "vt_capture_console-0.5.0.dist-info/entry_points.txt",
     "vt_fsglove12-0.1.0.dist-info/direct_url.json",
+    "vt_tracker_deploy-0.1.0.dist-info/entry_points.txt",
 ])
 def test_audit_rejects_unrelated_profiles_and_tool_metadata(distribution, forbidden):
     root, toc, digest = distribution

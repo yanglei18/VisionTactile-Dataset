@@ -24,6 +24,7 @@ jobs:
             tools/capture_console/requirements-tested.txt
             tools/capture_console/pyproject.toml
             tools/fsglove12/pyproject.toml
+            tools/tracker_deploy/pyproject.toml
             tools/multisensor_alignment/pyproject.toml
             ros2_ws/src/vt_capture_core/setup.py
             ros2_ws/src/vt_capture_manager/setup.py
@@ -35,12 +36,14 @@ jobs:
           python -m pip install -r tools/capture_console/requirements-tested.txt
           -e ros2_ws/src/vt_capture_core -e ros2_ws/src/vt_tactile_capture -e tools/fsglove12 -e tools/capture_console
           -e ros2_ws/src/vt_capture_manager -e tools/multisensor_alignment
+          -e tools/tracker_deploy
           'opencv-python-headless>=4.9,<4.12'
       - name: Check installed package dependencies and CLI entry points
         run: |
           python -m pip check
           vt-capture-console --help
           vt-multisensor-align --help
+          vt-tracker-deploy --help
       - name: Test shared core, managed capture workflow and GUI
         env:
           # Exercise the real pure-Python controller/manager boundary as well
@@ -49,7 +52,7 @@ jobs:
         run: >-
           python -m pytest -q ros2_ws/src/vt_capture_core/test
           ros2_ws/src/vt_capture_manager/test tools/capture_console/tests
-          tools/capture_deploy/tests
+          tools/capture_deploy/tests tools/tracker_deploy/tests
       - name: Test shared hand renderer and dual-hand isolation without model assets
         # Synthetic geometry and fake acquisition only; licensed MANO models
         # and the separately deployed FSGlove/PyVUT runtime are not required.

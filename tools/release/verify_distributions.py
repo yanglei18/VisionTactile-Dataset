@@ -31,6 +31,7 @@ PACKAGES = {
     "manager": ("ros2_ws/src/vt_capture_manager", "vt_capture_manager", None),
     "tactile": ("ros2_ws/src/vt_tactile_capture", "vt_tactile_capture", None),
     "console": ("tools/capture_console", "vt_capture_console", "vt-capture-console"),
+    "tracker_deploy": ("tools/tracker_deploy", "vt_tracker_deploy", "vt-tracker-deploy"),
     "fsglove12": ("tools/fsglove12", "vt_fsglove12", "vt-fsglove12"),
     "alignment": ("tools/multisensor_alignment", "vt_multisensor_alignment", "vt-multisensor-align"),
     "calibration": ("tools/tracker_camera_calibration", "vt_tracker_camera_calib", "vt-tracker-camera-calibrate"),
@@ -43,7 +44,7 @@ PACKAGES = {
 PROFILES = {
     "core": ("core", "manager"),
     "offline": ("core", "manager", "alignment", "calibration", "validation"),
-    "console": ("core", "manager", "tactile", "fsglove12", "console"),
+    "console": ("core", "manager", "tactile", "fsglove12", "console", "tracker_deploy"),
     "all": tuple(PACKAGES),
 }
 

@@ -24,6 +24,8 @@ from ...i18n.widgets import (
 )
 
 from ...backend.workstation_settings import validate_configuration
+from ...backend.alignment_task import recording_blocker
+from .tracker_deployment import TrackerDeploymentDialog
 
 
 GROUPS = (
@@ -78,6 +80,8 @@ class WorkstationSettingsDialog(QDialog):
         self.enabled_checks = {}
         self._indices = {}
         self._applying = False
+        self.deployment_dialog = None
+        self._pending_close = None
         self.setWindowTitle(tr('配置设备 · 本地工作站'))
         self.setModal(False)
         # QScrollArea enables auto-fill on its content widget. Give the pages
@@ -216,7 +220,53 @@ class WorkstationSettingsDialog(QDialog):
         enabled.toggled.connect(form_widget.setEnabled)
         form_widget.setEnabled(enabled.isChecked())
         layout.addWidget(form_widget)
+        if identifier == "trackers":
+            self.import_tracker_button = QPushButton(tr('导入 Tracker 部署包…'))
+            self.import_tracker_button.clicked.connect(self._open_tracker_deployment)
+            layout.addWidget(self.import_tracker_button)
         return box
+
+    @property
+    def deployment_running(self):
+        return self.deployment_dialog is not None and self.deployment_dialog.running
+
+    def _deployment_blocker(self):
+        if self._applying or runtime_busy(self.runtime):
+            return tr('请等待后台操作完成，再导入部署包。')
+        try:
+            problem = recording_blocker(self.snapshot_provider() or {})
+        except (ValueError, RuntimeError, OSError):
+            return tr('后台状态暂不可用，请稍后导入部署包。')
+        return diagnostic(problem) if problem else ""
+
+    def _open_tracker_deployment(self):
+        problem = self._deployment_blocker()
+        if problem:
+            self._set_status(problem)
+            return
+        if self.deployment_dialog is None:
+            self.deployment_dialog = TrackerDeploymentDialog(self, blocker=self._deployment_blocker)
+            self.deployment_dialog.installed.connect(self._tracker_deployment_installed)
+            self.deployment_dialog.closed.connect(self._tracker_deployment_closed)
+        self.deployment_dialog.show()
+        self.deployment_dialog.raise_()
+
+    def _tracker_deployment_installed(self, installation):
+        if self._pending_close is not None:
+            return
+        for key, attribute in (("pyvut_source", "source"), ("pyvut_site_packages", "site_packages"),
+                               ("bundle_path", "bundle"), ("role_map_path", "roles")):
+            self.fields[("trackers", key)].setText(str(getattr(installation, attribute)))
+        self.import_tracker_button.setToolTip("")
+        self._set_status(tr('部署包已导入；保存并应用后用于当前工作台。'))
+
+    def _tracker_deployment_closed(self):
+        dialog, self.deployment_dialog = self.deployment_dialog, None
+        if dialog is not None:
+            dialog.deleteLater()
+        if self._pending_close is not None:
+            result, self._pending_close = self._pending_close, None
+            self.done(result)
 
     @staticmethod
     def _browse(editor, kind, title):
@@ -281,7 +331,7 @@ class WorkstationSettingsDialog(QDialog):
 
     def detect_environment(self):
         detect = getattr(self.runtime, "detect_environment", None)
-        if self._applying or runtime_busy(self.runtime) or not callable(detect):
+        if self._applying or runtime_busy(self.runtime) or self.deployment_running or not callable(detect):
             return
         try:
             result = detect(self.configuration())
@@ -305,8 +355,13 @@ class WorkstationSettingsDialog(QDialog):
             elif editor is None:
                 self.original["process_groups"][self._indices[identifier]].setdefault("parameters", {})[key] = value
         pending = 0
+        self.import_tracker_button.setToolTip("")
         for finding in result.findings:
             identifier = identifiers.get(finding.group_id)
+            if identifier == "trackers" and finding.key == "installation_manifest":
+                self.import_tracker_button.setToolTip(
+                    tr('Tracker 安装清单不可用：{path}。请由部署人员检查后重新导入。',
+                       path=finding.value))
             editor = self.fields.get((identifier, finding.key))
             if editor is not None:
                 editor.setToolTip(self._finding_tooltip(finding))
@@ -351,7 +406,7 @@ class WorkstationSettingsDialog(QDialog):
         self.status_label.setToolTip(diagnostic(text))
 
     def apply(self):
-        if self._applying or runtime_busy(self.runtime):
+        if self._applying or runtime_busy(self.runtime) or self.deployment_running:
             return
         try:
             configuration = self.configuration()
@@ -388,14 +443,31 @@ class WorkstationSettingsDialog(QDialog):
         elif busy:
             self._set_status(state.get("detail") or tr('后台正在处理，请稍候。'))
         self.apply_button.setEnabled(not busy and not self._applying)
+        self.import_tracker_button.setEnabled(not self.deployment_running and not self._deployment_blocker())
+        if self.deployment_running:
+            self.apply_button.setEnabled(False)
         self.detect_environment_button.setEnabled(
-            not busy and not self._applying and callable(getattr(self.runtime, "detect_environment", None)))
+            not busy and not self._applying and not self.deployment_running
+            and callable(getattr(self.runtime, "detect_environment", None)))
 
     def closeEvent(self, event):
+        if self.deployment_running:
+            self._pending_close = QDialog.DialogCode.Rejected
+            self.deployment_dialog.close()
+            event.ignore()
+            return
+        if self.deployment_dialog is not None:
+            self.deployment_dialog.close()
         self.timer.stop()
         super().closeEvent(event)
 
     def done(self, result):
+        if self.deployment_running:
+            self._pending_close = result
+            self.deployment_dialog.close()
+            return
+        if self.deployment_dialog is not None:
+            self.deployment_dialog.close()
         self.timer.stop()
         super().done(result)
 

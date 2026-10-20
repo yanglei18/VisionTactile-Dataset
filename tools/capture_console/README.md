@@ -108,6 +108,8 @@ Chinese mode uses Chinese action labels, built-in device categories, Tracker rol
 
 检测只检查路径和文件结构，不安装依赖、不连接硬件。缺少 FSGlove、扩展 PyVUT 或获准使用的 MANO 时，仍需完成对应模块部署。标准目录、环境变量与新机操作步骤见[中文部署指南](../../docs/deployment.zh-CN.md#local-paths)。
 
+已有 Tracker 设备组可使用部署人员提供的 `.vttracker` 私有包，一并安装扩展 PyVUT、离线依赖和对应输入。新机安装支持 `bash tools/capture_deploy/install.sh --tracker-package "/绝对路径/设备组.vttracker"`；已有工作台可在 **配置设备 → 追踪器 → 导入 Tracker 部署包…** 选择文件。导入在后台校验和安装，完成后只填入当前配置草稿，核对并 **保存并应用** 才用于当前工作台；不启用模块、不启动硬件或改写活动后台。取消、关闭会等待本次安装清理，界面保持响应。步骤和系统依赖见[私有包部署指南](../../docs/tracker-deployment.zh-CN.md)（[English](../../docs/tracker-deployment.md)）。
+
 Before each new local backend starts, local paths are discovered, filled and saved automatically, including for migrated settings. The default data directory, `~/visiontactile-data` or `VT_DATA_ROOT`, is created if needed. Connecting to an existing backend preserves its configuration. **Detect Local Environment** remains a manual recheck; its form changes require **Save and Apply**. Valid selections, device identities and manual serial assignments are preserved. Detection does not install dependencies or connect hardware, and devices still start through an explicit action. See the [English deployment guide](../../docs/deployment.md#local-paths) for standard locations, environment variables and migration steps.
 
 ### 采集计划与录前核对
@@ -262,7 +264,7 @@ CameraInfo、机内外参和 frame timing 尚无实时观测，但有图像接�
 
 首次配置：
 
-1. 在 **设备 → 配置设备 → Tracker** 启用模块，填写已有 bundle、角色映射和扩展 PyVUT 环境，保存并应用，但先不要启动只读发布器。私有 bundle、角色映射放在仓库外，文件仅供当前用户读写，不随代码发布。
+1. 在 **设备 → 配置设备 → 追踪器** 启用模块，核对已有 bundle、角色映射和扩展 PyVUT 环境；可通过 **导入 Tracker 部署包…** 一次安装并填入四项路径。保存并应用，但先不要启动只读发布器。私有 bundle、角色映射放在仓库外，文件仅供当前用户读写，不随代码发布。
 2. 打开 **标定与离线工具 → Tracker 初始化向导**，核对 Python、脚本、已批准 Capture 和 bundle。向导与设备配置必须使用同一个 bundle。可以用“选择”定位文件，用 **计算指纹** 计算本机 Capture 的 SHA-256。计算指纹不会访问 Tracker，也不表示批准陌生抓包。
 3. 点击 **保存本机初始化配置**。下次打开会自动填入这五项；明确点击“开始初始化”时也会先保存。保存不会启动脚本、访问设备或记住执行批准。
 
@@ -274,7 +276,7 @@ CameraInfo、机内外参和 frame timing 尚无实时观测，但有图像接�
 4. 点击该按钮。工作台通过既有设备管理流程请求启动 ROS 读取，收到后台接受回执后进入 Tracker 预览；拒绝、失联或超时会保留向导并说明原因，不会自动重试。若已存在读取进程，则只进入预览，不重复启动，也不接管外部进程。
 5. 在预览中确认三路位姿持续更新、频率和有效状态正常。**启动请求被接受、初始化完成或灯色正常，都不等于三路有效 6DOF 已验收通过。**
 
-向导配置保存在 `~/.config/visiontactile/workbench/tracker-bootstrap.json`，仅含 Python、脚本、Capture、bundle 路径及 Capture 指纹，不保存凭据正文、批准勾选或“已初始化”状态。设备模块配置仍在同目录的 `workstation.json`；两者分别负责初始化输入与 ROS 读取参数。迁移电脑后，失效路径会保留在表单中供重新选择，不会自动更换抓包或重做配对。部署人员显式设置的 `VT_*` 初始化环境变量优先于保存值；日常桌面启动无需设置这些变量。
+向导配置保存在 `~/.config/visiontactile/workbench/tracker-bootstrap.json`，仅含 Python、脚本、Capture、bundle 路径及 Capture 指纹，不保存凭据正文、批准勾选或“已初始化”状态。设备模块配置仍在同目录的 `workstation.json`；两者分别负责初始化输入与 ROS 读取参数。工作台选用受管部署包中的 bundle 时，向导自动关联该版本的 Python、脚本、Capture 和指纹，不沿用另一版本的旧初始化输入。手动配置的私有输入迁移后若失效，仍保留供重新选择，不自动更换抓包或重做配对。部署人员显式设置的 `VT_*` 初始化环境变量优先；日常桌面启动无需设置这些变量。
 
 配置目录权限为 `0700`，向导配置文件权限为 `0600`。配置损坏或权限不符时会显示错误并保留原文件，需要修复本机配置后重开向导；不会静默覆盖。
 

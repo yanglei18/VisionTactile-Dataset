@@ -239,6 +239,7 @@ python3 tools/release/prepare_release.py check
 ## 文档
 
 - [新电脑部署指南（Ubuntu 主系统／Windows 独立工具）](docs/deployment.zh-CN.md) · [English](docs/deployment.md)
+- [Tracker 私有部署包：新机安装与界面导入](docs/tracker-deployment.zh-CN.md) · [English](docs/tracker-deployment.md)
 - [相机 USB 权限、缓冲检查与撤销](tools/capture_deploy/REALSENSE_USB.md)
 
 - [桌面安装、设备配置、预览、试次与质检](tools/capture_console/README.md)

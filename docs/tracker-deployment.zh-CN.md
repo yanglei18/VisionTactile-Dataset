@@ -1,0 +1,91 @@
+# Tracker 私有部署包：迁移到新电脑
+
+[English](tracker-deployment.md) · [整机部署指南](deployment.zh-CN.md) · [Tracker 发布与验收](tracker-ros2-publisher.md)
+
+`.vttracker` 将已验证的扩展 PyVUT、离线 Python 依赖、同一套设备的启动 bundle、角色表和已批准 Capture 一起交付。新电脑导入一次后，工作台可以自动填入对应路径，无需逐个寻找源码、环境和私有输入文件。
+
+公开 GitHub 仓库只包含打包、安装和识别工具。部署包包含私有设备输入，只应通过私有渠道交付给对应设备的操作人员，不上传 GitHub、公开附件或公共网盘。校验和用于检查包内一致性；包仍须来自可信部署人员，安装时会运行其中的软件。
+
+## 新电脑安装
+
+支持环境为 **Ubuntu 24.04、Linux x86_64、系统 Python 3.12**。先按[整机部署指南](deployment.zh-CN.md)安装 ROS 2、相机驱动和工作区；仅安装 Tracker 包不能替代这些基础环境。
+
+请保留完整、可信的项目源码目录。工作台以 editable 模式安装此工具，
+校验时复用项目中的 Tracker 身份与角色规则；仅安装工具的 wheel 不构成完整部署环境。
+Windows 独立触觉小工具不依赖此工具。
+
+1. 准备系统运行库：
+
+   ```bash
+   sudo apt update
+   sudo apt install python3-venv libhidapi-hidraw0 libhidapi-libusb0
+   ```
+
+2. 将交付的 `.vttracker` 复制到仓库外的本机普通目录。进入项目根目录，安装工作台时一并导入：
+
+   ```bash
+   bash tools/capture_deploy/install.sh \
+     --tracker-package "/绝对路径/设备组.vttracker"
+   ```
+
+   Tracker 包中的 wheel 离线安装，不访问 Python 包索引。**工作台自身及系统依赖的首次安装仍可能联网**。安装器不会打开 Tracker、执行配对、重建地图或开始采集。
+
+3. 从桌面打开工作台。新后台启动前会识别本机安装、填入路径并保存；无需逐个配置 PyVUT、bundle 和角色表。安装器已记住实际使用的工作台 Python 环境，桌面启动无需重复设置 `VT_CONSOLE_PYTHON`。
+4. 在 **设备 → 配置设备 → 追踪器** 核对所用设备组并启用 Tracker，保存并应用。启用默认仍由操作员选择，导入包不会自动启动硬件。
+5. 打开 **标定与离线工具 → Tracker 初始化向导**。向导使用当前工作台所选 bundle 对应版本的 Python、脚本、Capture 和指纹。核对输入并按向导明确批准初始化，再按提示开机。完成后启动读取并查看三路有效位姿。
+
+Windows 上原有的配对、建图和实体角色绑定仍须有效。此工具迁移的是已有设备组的运行材料，不会给新的 Tracker 猜测左右腕或躯干角色。导入成功只说明软件与输入校验通过，实际 6DOF、频率及持续运行仍按[Tracker 验收步骤](tracker-ros2-publisher.md)检查。
+
+## 已安装工作台：从界面导入
+
+在 **设备 → 配置设备 → 追踪器** 点击 **导入 Tracker 部署包…**；不必先启用模块。选择本机 `.vttracker` 后点击 **安装部署包**，窗口显示当前校验或安装阶段。
+
+安装在后台执行。完成后，当前配置草稿自动填入 PyVUT 源码、Python 依赖目录、bundle 和角色表四项，保留其他字段与启用状态。关闭导入窗口，核对后点击 **保存并应用**，才切换当前工作台配置；它不会直接改写正在使用的后台配置。应用前按原流程结束录制并停止需要停止的设备。
+
+点击取消或关闭窗口会请求取消并等待清理，界面保持响应。关闭整个工作台也会先等待本次安装清理完成。安装失败或取消不会将未完成版本设为可用，也不保存设备配置。已经安装成功的版本可以保留在本机；随后取消设备配置窗口只丢弃表单修改。
+
+已有有效路径会保留。迁移旧配置时，已经填写但失效的私有 bundle 或角色表不会自动替换成另一套设备；使用此导入入口明确选择交付包后，再保存并应用。**检测本机环境** 可手动复检已安装资源，本身不安装部署包。
+
+部署人员也可只安装 Tracker 包：
+
+```bash
+python3 tools/tracker_deploy/manage.py install \
+  --package "/绝对路径/设备组.vttracker"
+```
+
+该命令登记本机安装，不保存工作台表单、不重启已有后台。新配置会在下一次新后台启动准备阶段发现；已有有效设备选择保持不变。要将已有工作台明确切换到另一个包，使用界面导入并保存。
+
+## 部署人员：生成交付包
+
+在已经正常运行且输入已批准的原电脑操作。工作台须保存同一套 Tracker 的扩展 PyVUT、bundle 和角色表；初始化配置须使用相同 bundle，并保存批准 Capture 的路径和 SHA-256。不要使用公开上游 PyVUT 子模块代替扩展实现。
+
+构建须使用原始扩展 PyVUT 的 Git 源码目录。导入后的安装版本仅包含批准的运行文件，
+不能代替原 Git 源码目录重新生成交付包。
+
+准备一个专用 wheel 目录，包含匹配 Linux x86_64 / CPython 3.12 的 `hid==1.0.9`、`numpy==1.26.4`、`scapy==2.7.0`、`PyYAML==6.0.2`；不混入其他版本或包。依赖版本与受支持格式以[打包实现](../tools/tracker_deploy/src/vt_tracker_deploy/archive.py)为准。获取这些 wheel 属于部署准备，可在联网环境中完成。
+
+```bash
+python3 tools/tracker_deploy/manage.py build \
+  --from-workstation \
+  --wheelhouse "/绝对路径/tracker-wheels" \
+  --output "/仓库外的绝对路径/设备组.vttracker"
+
+python3 tools/tracker_deploy/manage.py inspect \
+  --package "/仓库外的绝对路径/设备组.vttracker"
+```
+
+`build` 只收集运行所需的已跟踪源码白名单、许可说明、指定依赖与三项私有输入，保存源码版本及文件摘要；不会复制整套工作站、虚拟环境或硬件日志。`inspect` 检查包的完整性并输出摘要、目标环境与文件数量，不展示私有输入正文，也不访问硬件。包构建成功不替代在目标环境中的安装与设备验收。
+
+## 本机文件与故障定位
+
+安装保存到 `~/.local/share/visiontactile/tracker-deployment/versions/<版本标识>/`，版本目录包含独立 Python 环境与对应输入；`current.json` 只在安装和校验成功后更新。工作台保存具体版本路径，之后安装另一版本不会把原 bundle 的初始化输入偷偷换成新版本。私有输入和本机索引按当前用户私有权限保存；不要手工改动版本目录中的文件。
+
+| 提示 | 处理 |
+| --- | --- |
+| Python 不可用、版本不支持或环境创建失败 | 核对 Ubuntu 24.04、`/usr/bin/python3` 为 3.12，并安装 `python3-venv` |
+| 运行依赖不可用 | 检查 `libhidapi-hidraw0`、`libhidapi-libusb0` 与包内 wheel |
+| 设备配置校验失败 | 由部署人员核对 bundle、角色表与已批准 Capture 的设备身份及指纹，重新生成同一套材料 |
+| 已有版本被修改或不完整 | 保留现状交由部署人员检查；安装器不会自动覆盖未知修改 |
+| 安装成功但没有实时位姿 | 按初始化向导完成硬件操作，并检查设备权限、连接和实际三路有效数据 |
+
+安装错误只显示固定错误类别，不把私有 Capture、bundle 正文或子进程输出写入界面。排查时优先记录错误类别、包版本和运行环境。

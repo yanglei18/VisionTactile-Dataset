@@ -10,7 +10,7 @@ from vt_capture_console.backend.tracker_workflow import detect_defaults
 
 
 MARKERS = (
-    "pyvut/live_hid.py", "pyvut/live_bootstrap_bundle.py", "pyvut/pose_decoder.py",
+    "pyvut/live_hid.py", "pyvut/live_probe.py", "pyvut/live_bootstrap_bundle.py", "pyvut/pose_decoder.py",
 )
 
 

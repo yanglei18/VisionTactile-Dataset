@@ -52,13 +52,15 @@ EXCLUDED_MODULES = (
     "vt_capture_console.app", "vt_fsglove12.tactile_preview_export",
     # Shared widgets have lazy imports for other preview kinds. The standalone
     # entry point injects its own settings and only constructs kind="tactile".
-    "vt_capture_core", "vt_capture_console.backend.workstation_settings",
+    "vt_capture_core", "vt_tracker_deploy",
+    "vt_capture_console.backend.environment_discovery",
+    "vt_capture_console.backend.workstation_settings",
     "vt_capture_console.backend.pose_preview", "vt_capture_console.ui.widgets.glove_3d",
     "vt_capture_console.ui.widgets.camera_gl", "vt_capture_console.ui.gpu_status",
 )
 FORBIDDEN_RESOURCE_PATTERNS = (
     "vt_capture_core*", "vt_capture_console-*.dist-info", "vt_tactile_capture-*.dist-info",
-    "vt_fsglove12-*.dist-info", "vt_fsglove12/configs/*",
+    "vt_fsglove12-*.dist-info", "vt_fsglove12/configs/*", "vt_tracker_deploy*",
     "vt_tactile_capture/layouts/left*",
 )
 REQUIRED_RESOURCES = (

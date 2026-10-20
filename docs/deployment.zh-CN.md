@@ -13,6 +13,8 @@
 
 公开仓库提供源码。Tracker 私有启动输入、扩展 PyVUT、FSGlove 外部源码和许可模型需要另行准备；相机采集、触觉原始数据及二维显示不要求 Tracker 或 MANO 模型。
 
+已有 Tracker 设备组可由部署人员将扩展运行环境与匹配私有输入交付为一个 `.vttracker` 文件。[Tracker 私有包指南](tracker-deployment.zh-CN.md)说明新机安装和“配置设备”中的导入流程。
+
 <a id="windows"></a>
 ## 1. Windows：只安装独立触觉工具
 
@@ -238,7 +240,9 @@ bash tools/capture_deploy/install.sh
 bash tools/capture_deploy/start_demo.sh
 ```
 
-安装器建立独立 Qt 环境与桌面入口；它**只安装桌面部分**，不会安装 ROS/相机驱动、下载模型或启动硬件。DEMO 画面应能显示、切换中文/English；演示录制不产生真实 bag。
+安装器建立独立 Qt 环境与桌面入口；不会安装 ROS/相机驱动、下载模型或启动硬件。DEMO 画面应能显示、切换中文/English；演示录制不产生真实 bag。
+
+已取得 Tracker 私有包时，可将上面的安装命令改为 `bash tools/capture_deploy/install.sh --tracker-package "/绝对路径/设备组.vttracker"`，同时安装独立 Tracker 环境及对应输入，前提与步骤见[私有包指南](tracker-deployment.zh-CN.md)。Tracker wheel 离线安装；工作台依赖安装仍可能联网。
 
 安装器会把实际使用的工作台 Python 环境记录到桌面入口；即使安装时使用了自定义 `VT_CONSOLE_PYTHON`，之后从桌面启动也无需重复设置该变量。其他环境变量不会因此自动保存到桌面入口。
 
@@ -305,12 +309,14 @@ cp -n "${VT_REPO}/ros2_ws/src/vt_realsense_capture/config/cameras.yaml" \
 | MANO 资源 | 仓库中的 `external/mano-assets`、数据目录中的 `models/mano-assets` 或 `models/mano`、`~/visiontactile-data/models/mano-assets`、`~/visiontactile-deps/mano-assets` | `VT_MANO_ASSETS`；兼容 `FSGLOVE12_MANO_ASSETS`、`MANO_ASSETS` |
 | 扩展 PyVUT 源码 | `~/.local/share/visiontactile/pyvut-src`、仓库中的 `external/pyvut` | `VT_PYVUT_ROOT` |
 | PyVUT 依赖目录 | `~/.local/share/visiontactile/pyvut-venv/lib/python*/site-packages` | `VT_PYVUT_SITE` 直接指定目录，或用 `VT_PYVUT_VENV` 指定虚拟环境根目录 |
-| Tracker 启动包 | 不猜测文件；填写明确路径，且文件须位于仓库外 | `VT_BUNDLE` |
-| Tracker 角色映射 | 数据目录中的 `tracker-validation/roles.yaml` | `VT_ROLE_MAP` |
+| Tracker 启动包 | 已安装 `.vttracker` 的匹配版本；否则填写明确路径，且文件须位于仓库外 | `VT_BUNDLE` |
+| Tracker 角色映射 | 已安装 `.vttracker` 的匹配版本；否则为数据目录中的 `tracker-validation/roles.yaml` | `VT_ROLE_MAP` |
 
 环境变量用于填入空项或修复允许修复的软件路径，不覆盖当前有效的配置。同一行列出的兼容变量按从左到右的顺序取第一个已设置项；显式位置无效时会提示缺失，不会另选其他目录。变量应传入本次工作台进程，例如在已设置变量的同一终端运行 `bash tools/capture_deploy/start_workbench.sh`；保存后的路径不依赖下次启动时继续设置变量。路径可使用 `~`，程序不执行 `$变量` 或 shell 命令展开。
 
 检测不会替换已经填写但失效的相机配置、Tracker 启动包、角色映射或标定配置，以免换成另一套设备的身份；这些项需手动重新选择。串口只枚举，不自动分配左右手或 IMU／触觉用途。MANO 按对应手检查 `models/MANO_RIGHT.pkl` 或 `models/MANO_LEFT.pkl`；缺少已安装的依赖、获准使用的模型或实际设备时，仍需按模块手册准备。**检测检查的是文件位置和结构，不代表依赖已完整安装或硬件已通过验证。**
+
+已安装的 Tracker 包还提供对应的 PyVUT 源码和依赖路径。要替换旧配置中明确指定的设备组，使用 **追踪器 → 导入 Tracker 部署包…**，核对填入的草稿后 **保存并应用**；导入本身不修改活动后台，也不启动硬件。
 
 <a id="first-run"></a>
 ### 8.4 从工作台完成短包验收
@@ -337,7 +343,7 @@ bash tools/capture_deploy/start_workbench.sh
 
 | 模块 | 需要额外准备 | 操作文档 |
 | --- | --- | --- |
-| Tracker | Windows 配对建图、批准的扩展 PyVUT、本机 bundle 与角色映射 | [Tracker 发布与验收](tracker-ros2-publisher.md) |
+| Tracker | Windows 配对建图及匹配的运行环境和私有输入，可通过 `.vttracker` 包交付 | [私有包部署](tracker-deployment.zh-CN.md)、[发布与验收](tracker-ros2-publisher.md) |
 | 手势解算 | 对应串口、外部 FSGlove、获准使用的 MANO、独立模型环境 | [手势手册](../tools/fsglove12/README.md) |
 | 触觉二维采集 | 串口权限、实际设备和手别；不要求模型 | [触觉采集](../ros2_ws/src/vt_tactile_capture/README.md) |
 | Linux 固定手形触觉工具 | Qt 环境、触觉串口、获准使用的静态模型或独立模型环境 | [独立工具说明](../tools/capture_console/README.md#独立触觉三维小窗口) |

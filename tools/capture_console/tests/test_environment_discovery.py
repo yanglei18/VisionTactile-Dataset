@@ -16,7 +16,7 @@ SOURCE_MARKERS = (
     "src/hand_visualiser/modules/datamodels.py",
 )
 TRACKER_MARKERS = (
-    "pyvut/live_hid.py", "pyvut/live_bootstrap_bundle.py", "pyvut/pose_decoder.py",
+    "pyvut/live_hid.py", "pyvut/live_probe.py", "pyvut/live_bootstrap_bundle.py", "pyvut/pose_decoder.py",
 )
 
 

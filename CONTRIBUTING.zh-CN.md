@@ -122,10 +122,14 @@ env PYTHONPATH=ros2_ws/src/vt_realsense_capture:tools/multisensor_alignment/src 
   QT_QPA_PLATFORM=offscreen PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
   .venv-capture-console/bin/python -m pytest -q \
   ros2_ws/src/vt_capture_core/test ros2_ws/src/vt_capture_manager/test \
-  tools/capture_console/tests tools/capture_deploy/tests
+  tools/capture_console/tests tools/capture_deploy/tests tools/tracker_deploy/tests
 QT_QPA_PLATFORM=offscreen bash tools/capture_deploy/start_demo.sh \
   --smoke-seconds 2
 ```
+
+`install.sh` 同时为 Linux 工作台安装可选的 `tools/tracker_deploy` 包。
+其测试使用合成私有输入，不导入或初始化真实 Tracker 设备。
+Windows 独立触觉小工具排除此包，须继续通过原生运行测试验证导入边界。
 
 这些命令安装当前用户的桌面入口并运行合成数据测试，不会启动传感器或录制 bag。
 可选 ROS 集成测试使用合成发布端和专用测试域，

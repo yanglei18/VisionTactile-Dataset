@@ -22,6 +22,8 @@ def test_installed_runtime_resources_and_static_mode_need_no_workstation(tmp_pat
             def find_spec(self, fullname, path=None, target=None):
                 excluded = (
                     "rclpy", "vt_capture_manager", "vt_capture_core", "torch", "manotorch",
+                    "vt_tracker_deploy",
+                    "vt_capture_console.backend.environment_discovery",
                     "vt_capture_console.ui.main_window",
                     "vt_capture_console.backend.local_runtime",
                     "vt_capture_console.backend.workstation_settings",

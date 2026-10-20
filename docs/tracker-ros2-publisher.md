@@ -20,6 +20,13 @@ pose-decoder modules imported by this Publisher. A clean clone therefore
 cannot run the Tracker Publisher until an approved extended PyVUT checkout is
 provided. Do not present the Tracker path as a self-contained public install.
 
+An existing device set can be transferred through a private `.vttracker`
+package containing that extended runtime and its matching approved inputs.
+Follow the [package deployment guide](tracker-deployment.md)
+([简体中文](tracker-deployment.zh-CN.md)) for the installer and GUI import.
+The package stays outside the public repository; Windows mapping and physical
+role assignment remain prerequisites.
+
 The protocol labels Host, Client 0, and Client 1 are session labels, not
 permanent physical identities. The private role map uses stable SHA-256
 identifiers so a Windows re-pair that only changes RF slot bits does not swap

@@ -17,6 +17,8 @@ calibration_results/
 *.pcapng
 *.webm
 *.zip
+*.vttracker
+*.whl
 lark-*.png
 rs-save-to-disk-output-*
 

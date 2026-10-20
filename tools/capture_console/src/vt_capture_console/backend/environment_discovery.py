@@ -11,7 +11,6 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 
-
 @dataclass(frozen=True)
 class PathFinding:
     group_id: str
@@ -37,8 +36,27 @@ _FSGLOVE_MARKERS = (
     "src/hand_visualiser/modules/datamodels.py",
 )
 _PYVUT_MARKERS = (
-    "pyvut/live_hid.py", "pyvut/live_bootstrap_bundle.py", "pyvut/pose_decoder.py",
+    "pyvut/live_hid.py", "pyvut/live_probe.py",
+    "pyvut/live_bootstrap_bundle.py", "pyvut/pose_decoder.py",
 )
+
+
+def managed_tracker_installation(bundle="", *, home=None, current=True):
+    """Read optional Linux deployment metadata without coupling portable tools.
+
+    An absent deployment package is normal for the standalone tactile viewer.
+    Errors inside an installed package and unsafe metadata remain explicit.
+    """
+    try:
+        from vt_tracker_deploy.manifest import for_bundle, load_installation
+    except ModuleNotFoundError as exc:
+        if exc.name in {"vt_tracker_deploy", "vt_tracker_deploy.manifest"}:
+            return None
+        raise
+    installation = for_bundle(bundle, home=home) if bundle else None
+    if installation is None and current:
+        installation = load_installation(home=home)
+    return installation
 
 
 def _path(value, home):
@@ -185,6 +203,13 @@ class _Discovery:
         return (self.home / ".local/share/visiontactile/pyvut-src",
                 self.root / "external/pyvut")
 
+    def tracker_installation(self, bundle=""):
+        """A configured managed bundle pins its version even after activation changes."""
+        installation = managed_tracker_installation(bundle, home=self.home)
+        if installation is not None and installation.bundle.resolve().is_relative_to(self.root.resolve()):
+            return None  # Private Tracker inputs may never be selected from a checkout.
+        return installation
+
     def tracker_venv(self):
         explicit, venv = self._explicit(("VT_PYVUT_VENV",))
         if not explicit:
@@ -224,38 +249,83 @@ class _Discovery:
                                     self.home / "visiontactile-deps/mano-assets"))
 
     def tracker(self, parameters, group_id, data):
+        bundle = parameters.get("bundle_path") or self.environment.get("VT_BUNDLE", "")
+        # A complete manual configuration does not depend on an unrelated
+        # installation pointer, which may be absent or awaiting repair.
+        complete = all(_matches(_path(parameters.get(key, ""), self.home), predicate)
+                       for key, predicate in (
+                           ("pyvut_source", _markers(_PYVUT_MARKERS)),
+                           ("pyvut_site_packages", _directory),
+                           ("bundle_path", _file), ("role_map_path", _file)))
+        installation, invalid_installation = None, False
+        if not complete:
+            try:
+                installation = self.tracker_installation(bundle)
+            except ValueError:
+                # Damaged optional Tracker metadata must not disable cameras or
+                # other sensors. Do not substitute private inputs from elsewhere.
+                invalid_installation = True
+                self.record(group_id, "installation_manifest", "missing",
+                            str(self.home / ".local/share/visiontactile/tracker-deployment/current.json"))
         self.select(parameters, group_id, "pyvut_source", predicate=_markers(_PYVUT_MARKERS),
-                    repair=True, environment=("VT_PYVUT_ROOT",), candidates=self.tracker_sources())
-        sites, _ = self.site_candidates()
+                    repair=True, environment=("VT_PYVUT_ROOT",),
+                    candidates=(installation.source,) if installation else self.tracker_sources())
+        sites, explicit_venv = self.site_candidates()
+        if installation and not explicit_venv:
+            sites = (installation.site_packages,)
         self.select(parameters, group_id, "pyvut_site_packages", predicate=_directory,
                     repair=True, environment=("VT_PYVUT_SITE",), candidates=sites)
+        bound = (installation is not None
+                 and ((not parameters.get("bundle_path") and "VT_BUNDLE" not in self.environment)
+                      or _path(bundle, self.home) == installation.bundle))
         self.select(parameters, group_id, "bundle_path",
                     predicate=lambda path: path.is_file() and not path.resolve().is_relative_to(self.root.resolve()),
-                    environment=("VT_BUNDLE",), manual=True)
+                    environment=("VT_BUNDLE",),
+                    candidates=(installation.bundle,) if bound else (), manual=True)
         self.select(parameters, group_id, "role_map_path", environment=("VT_ROLE_MAP",),
-                    candidates=(data / "tracker-validation/roles.yaml",), manual=True)
+                    candidates=(installation.roles,) if bound else
+                               () if invalid_installation else
+                               (data / "tracker-validation/roles.yaml",), manual=True)
 
 
 def discover_bootstrap_configuration(configuration, *, repo_root, home=None, environ=None,
                                      replace_missing=False) -> DiscoveryResult:
-    """Suggest only initialization software, leaving private inputs untouched.
+    """Suggest initialization software and one coherent managed input group.
 
     Source candidates share the publisher's structural checks. Existing explicit
-    scripts remain valid without imposing our installation layout. Callers that
-    give environment overrides final precedence apply them after this proposal.
+    private inputs remain untouched; empty inputs can use an approved installation
+    only when every nonempty bundle/capture/digest matches that same installation.
+    Callers with final environment precedence apply those overrides afterward.
     """
     local_home = Path.home() if home is None else Path(home).expanduser().absolute()
     root = Path(repo_root).expanduser().absolute()
     environment = dict(os.environ if environ is None else environ)
     discovery = _Discovery(configuration, root, local_home, environment, replace_missing)
-    venv, _ = discovery.tracker_venv()
+    complete = (all(configuration.get(key) for key in ("bundle", "capture", "expected_sha256"))
+                and _matches(_path(configuration.get("python", ""), local_home), _python)
+                and _matches(_path(configuration.get("script", ""), local_home), _file))
+    installation = None if complete else discovery.tracker_installation(configuration.get("bundle", ""))
+    venv, explicit_venv = discovery.tracker_venv()
+    python = ((installation.python,) if installation and not explicit_venv
+              else (venv / "bin/python",) if venv else ())
     discovery.select(discovery.configuration, "", "python", predicate=_python,
-                     repair=True, candidates=(venv / "bin/python",) if venv else ())
+                     repair=True, candidates=python)
     explicit, source = discovery._explicit(("VT_PYVUT_ROOT",))
-    sources = (source,) if explicit else discovery.tracker_sources()
+    sources = ((source,) if explicit else (installation.source,) if installation
+               else discovery.tracker_sources())
     scripts = tuple(path / "scripts/live_windows_bootstrap.py" for path in sources
                     if _matches(path, _markers(_PYVUT_MARKERS)))
     discovery.select(discovery.configuration, "", "script", repair=True, candidates=scripts)
+    if installation is not None:
+        private = {"bundle": str(installation.bundle), "capture": str(installation.capture),
+                   "expected_sha256": installation.capture_sha256}
+        compatible = all(not configuration.get(key) or configuration[key] == value
+                         for key, value in private.items())
+        if compatible:
+            for key, value in private.items():
+                if not configuration.get(key):
+                    discovery.set(discovery.configuration, "", key, value)
+                discovery.record("", key, "ready", discovery.configuration[key])
     return DiscoveryResult(discovery.configuration, tuple(discovery.findings),
                            tuple(discovery.updated_fields))
 

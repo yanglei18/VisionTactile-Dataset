@@ -13,6 +13,8 @@ This guide applies to the `source-preview-20261019` branch. It brings environmen
 
 The public repository provides source code. Private Tracker startup inputs, the extended PyVUT implementation, external FSGlove source and licensed models must be obtained separately. Camera capture, raw tactile data and 2D tactile display do not require Tracker or a MANO model.
 
+For an existing Tracker device set, a maintainer can deliver the extended runtime and matching private inputs as one `.vttracker` file. The [private Tracker package guide](tracker-deployment.md) covers installation on a new computer and import through Configure Devices.
+
 <a id="windows"></a>
 ## 1. Windows: install only the standalone tactile viewer
 
@@ -238,7 +240,9 @@ bash tools/capture_deploy/install.sh
 bash tools/capture_deploy/start_demo.sh
 ```
 
-The installer creates an isolated Qt environment and desktop launcher. It **installs only the desktop component**; it does not install ROS or camera drivers, download models or start hardware. DEMO views should render and allow switching between Chinese and English. Demonstration recording does not produce a real bag.
+The installer creates an isolated Qt environment and desktop launcher. It does not install ROS or camera drivers, download models or start hardware. DEMO views should render and allow switching between Chinese and English. Demonstration recording does not produce a real bag.
+
+If you received a private Tracker package, use `bash tools/capture_deploy/install.sh --tracker-package "/absolute/path/device-set.vttracker"` instead of the installation command above. This also installs its isolated Tracker runtime and inputs; see the [package prerequisites and steps](tracker-deployment.md). Tracker wheels install offline; workstation dependency installation can still require network access.
 
 The installer records the actual workbench Python environment in the desktop launcher. Even when installation uses a custom `VT_CONSOLE_PYTHON`, desktop launches do not require setting that variable again. Other environment variables are not automatically saved in the launcher.
 
@@ -305,12 +309,14 @@ Use **Devices → Configure Devices** to change modules, device identities or cu
 | MANO resources | `external/mano-assets` under the repository; `models/mano-assets` or `models/mano` under the data directory; `~/visiontactile-data/models/mano-assets`; `~/visiontactile-deps/mano-assets` | `VT_MANO_ASSETS`; also accepts `FSGLOVE12_MANO_ASSETS`, `MANO_ASSETS` |
 | Extended PyVUT source | `~/.local/share/visiontactile/pyvut-src`; `external/pyvut` under the repository | `VT_PYVUT_ROOT` |
 | PyVUT dependencies | `~/.local/share/visiontactile/pyvut-venv/lib/python*/site-packages` | `VT_PYVUT_SITE` for the directory directly, or `VT_PYVUT_VENV` for the virtual environment root |
-| Tracker startup bundle | No filename is guessed; provide an explicit path outside the repository | `VT_BUNDLE` |
-| Tracker role mapping | `tracker-validation/roles.yaml` under the data directory | `VT_ROLE_MAP` |
+| Tracker startup bundle | Matching installed `.vttracker` version; otherwise provide an explicit path outside the repository | `VT_BUNDLE` |
+| Tracker role mapping | Matching installed `.vttracker` version; otherwise `tracker-validation/roles.yaml` under the data directory | `VT_ROLE_MAP` |
 
 Environment variables fill empty fields or repair eligible software paths; they do not override a valid current selection. For aliases listed in one row, the first variable set in the listed order takes precedence. An invalid explicit location is reported as missing instead of falling back to another directory. Pass the variables to the workbench process, for example by running `bash tools/capture_deploy/start_workbench.sh` in the same terminal where they were set. Once saved, the paths do not require those variables on subsequent launches. Paths may use `~`; the application does not expand `$variables` or execute shell expressions.
 
 Detection preserves already entered but missing camera configurations, Tracker bundles, role mappings and calibration configurations so that it cannot silently select identities for another device set. Reselect these files manually. Serial ports are enumerated without assigning a hand or an IMU/tactile role. MANO discovery checks for the matching `models/MANO_RIGHT.pkl` or `models/MANO_LEFT.pkl`. Missing dependencies, authorized models and physical devices still need preparation according to the module manuals. **Detection checks file locations and structure; it does not establish that dependencies are fully installed or hardware has passed validation.**
+
+An installed Tracker package also supplies its matching PyVUT source and dependency paths. To replace an old explicit device selection, use **Trackers → Import Tracker Package…**, review the filled draft, then **Save and Apply**. Import itself does not change the running backend or start hardware.
 
 <a id="first-run"></a>
 ### 8.4 Accept a short recording through the workbench
@@ -337,7 +343,7 @@ See the [workbench manual (Chinese)](../tools/capture_console/README.md) for ope
 
 | Module | Additional preparation | Operation documentation |
 | --- | --- | --- |
-| Tracker | Windows pairing/mapping, an approved extended PyVUT implementation, local bundle and role mapping | [Tracker publishing and acceptance](tracker-ros2-publisher.md) |
+| Tracker | Windows pairing/mapping and matching runtime/private inputs, optionally supplied as a `.vttracker` package | [Package deployment](tracker-deployment.md), [publishing and acceptance](tracker-ros2-publisher.md) |
 | Gesture solving | Correct serial ports, external FSGlove source, authorized MANO resources and a separate model environment | [Gesture manual (Chinese)](../tools/fsglove12/README.md) |
 | 2D tactile capture | Serial permissions, actual hardware and hand assignment; no model required | [Tactile capture (Chinese)](../ros2_ws/src/vt_tactile_capture/README.md) |
 | Linux tactile viewer with a fixed hand | Qt environment, tactile serial port, and an authorized static model or separate model environment | [Standalone viewer instructions (Chinese)](../tools/capture_console/README.md#独立触觉三维小窗口) |

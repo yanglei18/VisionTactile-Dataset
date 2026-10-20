@@ -139,10 +139,15 @@ env PYTHONPATH=ros2_ws/src/vt_realsense_capture:tools/multisensor_alignment/src 
   QT_QPA_PLATFORM=offscreen PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
   .venv-capture-console/bin/python -m pytest -q \
   ros2_ws/src/vt_capture_core/test ros2_ws/src/vt_capture_manager/test \
-  tools/capture_console/tests tools/capture_deploy/tests
+  tools/capture_console/tests tools/capture_deploy/tests tools/tracker_deploy/tests
 QT_QPA_PLATFORM=offscreen bash tools/capture_deploy/start_demo.sh \
   --smoke-seconds 2
 ```
+
+`install.sh` also installs the optional `tools/tracker_deploy` package for the
+Linux workbench. Its tests use synthetic private inputs and do not import or
+initialize physical Trackers. The Windows standalone tactile viewer excludes
+this package; keep that import boundary covered by its native runtime tests.
 
 These commands install a current-user desktop entry and run synthetic tests;
 they do not start a sensor or record a bag. Optional ROS integration tests use

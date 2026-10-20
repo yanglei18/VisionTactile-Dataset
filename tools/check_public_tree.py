@@ -122,6 +122,7 @@ FORBIDDEN_BASENAMES = {".DS_Store", ".env", "auth.json", "MANO_LEFT.pkl", "MANO_
                        "live-bootstrap.json"}
 FORBIDDEN_BASENAME_PREFIXES = ("lark-", "rs-save-to-disk-output-", "live-bootstrap-")
 FORBIDDEN_SUFFIXES = (
+    ".vttracker",
     ".bag",
     ".db3",
     ".mcap",
@@ -335,7 +336,7 @@ REQUIRED_FILES.update({
 REQUIRED_FILES.update(
     f"tools/{name}/LICENSE" for name in (
         "capture_console", "fsglove12", "glove_hand_pose",
-        "tracker_camera_calibration", "multisensor_alignment", "vut_validation",
+        "tracker_camera_calibration", "multisensor_alignment", "vut_validation", "tracker_deploy",
     )
 )
 REQUIRED_FILES.update(
@@ -348,6 +349,7 @@ REQUIRED_FILES.update(
 )
 EXPECTED_SERVICES = {"ManagedCaptureCommand.srv", "GetCaptureSnapshot.srv"}
 PUBLIC_DOCUMENT_PATHS += (
+    "docs/tracker-deployment.md", "docs/tracker-deployment.zh-CN.md", "tools/tracker_deploy/README.md",
     "tools/release/README.md", "tools/capture_console/README.md",
     "tools/capture_console/THIRD_PARTY_NOTICES.md", "tools/fsglove12/README.md",
     "tools/fsglove12/THIRD_PARTY_NOTICES.md", "tools/glove_hand_pose/README.md",

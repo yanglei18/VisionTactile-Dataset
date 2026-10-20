@@ -547,6 +547,7 @@ files and must not be committed.
 ## Documentation
 
 - [New computer deployment](docs/deployment.md) · [简体中文](docs/deployment.zh-CN.md)
+- [Private Tracker package deployment](docs/tracker-deployment.md) · [简体中文](docs/tracker-deployment.zh-CN.md)
 - [RealSense USB access, buffer checks, and rollback](tools/capture_deploy/REALSENSE_USB.md)
 
 ### Operate the system

@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         self._trial_rows = []
         self.details_dialog = None
         self.settings_dialog = None
+        self._deployment_close_pending = False
         self.backend_log_dialog = None
         self.help_dialog = None
         self.demo_menu = None
@@ -1170,7 +1171,20 @@ class MainWindow(QMainWindow):
         self.recording_context.setText(text)
         self.recording_context.setToolTip(text)
 
+    def _finish_deployment_close(self, *_):
+        self._deployment_close_pending = False
+        if self.settings_dialog is not None:
+            self.settings_dialog.finished.disconnect(self._finish_deployment_close)
+        QTimer.singleShot(0, self.close)
+
     def closeEvent(self, event):
+        if self.settings_dialog is not None and self.settings_dialog.deployment_running:
+            if not self._deployment_close_pending:
+                self._deployment_close_pending = True
+                self.settings_dialog.finished.connect(self._finish_deployment_close)
+            self.settings_dialog.close()
+            event.ignore()
+            return
         self._closing = True
         self._presentation_app.removeEventFilter(self)
         self._presentation_sync_timer.stop()
