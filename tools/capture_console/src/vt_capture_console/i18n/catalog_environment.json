@@ -1,0 +1,13 @@
+{
+  "检测本机环境": "Detect Local Environment",
+  "补全本机路径，仅修改当前表单；保存并应用后生效。不会连接设备。": "Fill local paths in this form. Changes take effect after Save and Apply. No devices are connected.",
+  "已找到本机路径：{path}": "Found locally: {path}",
+  "请核对配置中的相机序列号与本机设备一致。": "Check that the camera serial numbers in the configuration match this computer's devices.",
+  "默认目录：{path}；保存并应用时创建。": "Default directory: {path}; created on Save and Apply.",
+  "找到多个候选，请手动选择：\n{paths}": "Multiple candidates found; choose manually:\n{paths}",
+  "需要手动选择此设备或授权资源。": "Select this device or authorized resource manually.",
+  "本机未找到此路径，请选择有效文件或目录。": "Path not found locally; choose an existing file or directory.",
+  "检测未完成：{detail}": "Detection did not complete: {detail}",
+  "已补全 {count} 项；已启用模块仍有 {pending} 项必需配置待设置。": "Updated {count} fields; {pending} required settings remain for enabled modules.",
+  "已补全 {count} 项；请核对后保存并应用。": "Updated {count} fields; review, then Save and Apply."
+}

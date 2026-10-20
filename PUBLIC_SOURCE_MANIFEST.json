@@ -63,8 +63,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 12649,
-      "sha256": "b819c9dd2abf7cf8b7594343876410791102c822a9b68331a0cc2214902ccf09"
+      "bytes": 12968,
+      "sha256": "f36148cb354b332e7f9bdd1e7af82533875d0fde182bc4fad72ee0ecdb1c2e54"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -133,13 +133,13 @@
     },
     {
       "path": "docs/deployment.md",
-      "bytes": 27086,
-      "sha256": "751430adafd0978926085ad85af7f9b9d1c5abaa86882f852a124fb6a4454a56"
+      "bytes": 31754,
+      "sha256": "f03009fc1318cb2a8fc61775e6a7a38ad5c6ac0356078b3a496885fee1407c2e"
     },
     {
       "path": "docs/deployment.zh-CN.md",
-      "bytes": 22853,
-      "sha256": "dff10d9eb80398c999555243badd63108979dd5ae4a6670ad36a43c512032b8b"
+      "bytes": 26828,
+      "sha256": "88af928fa0c54957720f2ca3b5b50f4b9af38ccc3c6271203b3a865f9449a00c"
     },
     {
       "path": "docs/hardware-reference.md",
@@ -1943,8 +1943,8 @@
     },
     {
       "path": "tools/capture_console/README.md",
-      "bytes": 81371,
-      "sha256": "4c679784cdfc620399be1d64bc025da8667796cb5f776406a5c20b75c8f37025"
+      "bytes": 83338,
+      "sha256": "fb91560c9b6743f937d7e3344e4d2ac6dd22f8853563fabca73a949280b77696"
     },
     {
       "path": "tools/capture_console/THIRD_PARTY_NOTICES.md",
@@ -2007,6 +2007,11 @@
       "sha256": "194e51a4e9e1be4b504c88bea262ff283bf31bcbc4bdce0130c9495b9eb01944"
     },
     {
+      "path": "tools/capture_console/src/vt_capture_console/backend/environment_discovery.py",
+      "bytes": 12684,
+      "sha256": "df97906185f7a9fc7432350dcd4e9da7b41181222655acac3776314b7927f2fa"
+    },
+    {
       "path": "tools/capture_console/src/vt_capture_console/backend/glove_calibration.py",
       "bytes": 13664,
       "sha256": "3c0155f7f4f68db8f0bc35318b240dc364c12604a6900a6558db4bd993308c16"
@@ -2018,8 +2023,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/local_runtime.py",
-      "bytes": 32206,
-      "sha256": "ef825913bf41cbe5b902542a1f1a279691d3f88a99a79857133fca2572ee6a7b"
+      "bytes": 32410,
+      "sha256": "c353d73b43a8e6e6f817f72fec8f967e68ee7e4b62ed403d49c6b18bec4a1f22"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/operation_receipts.py",
@@ -2093,8 +2098,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/workstation_settings.py",
-      "bytes": 7311,
-      "sha256": "4a86e53e1c5c1809973b4aae4e70803c3b208b1591d46caf5c6c0418f443f7ba"
+      "bytes": 7742,
+      "sha256": "5fbec011dfd9b754b416231895cd21afeeb7e868c0b1f5772538f2d6de86c769"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/desktop_entry.py",
@@ -2147,6 +2152,11 @@
       "sha256": "537bcf5033964faec6bd6921306b4d9d7967f8039cef412cddec40198a803490"
     },
     {
+      "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_diagnostics_environment.json",
+      "bytes": 652,
+      "sha256": "4c8aa96bd59f80ded9ef58c8de486e2427c8fb6fd4d2c27917bb72d84019f3f4"
+    },
+    {
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_diagnostics_management.json",
       "bytes": 18378,
       "sha256": "712fe0622d6fafbb4de791cc8ce39abf78480b726bb1c65bc22fa5e2d0e2ee56"
@@ -2155,6 +2165,11 @@
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_diagnostics_tactile.json",
       "bytes": 11386,
       "sha256": "cabe8544b8780d2bad09fbf3d34f7c83503ad2b469be915fe5d8fb9b48d527b8"
+    },
+    {
+      "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_environment.json",
+      "bytes": 1296,
+      "sha256": "84c9ac5d9990860d089bfb6795b61a2d9deddfc5f42471fb412e1dd5fd898fbc"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_extra.json",
@@ -2468,8 +2483,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/widgets/workstation_settings.py",
-      "bytes": 17035,
-      "sha256": "d735f20ed516ae1af87e6a4d44015ef9e9cadfd91c8da7e633c3a1b6cb16e892"
+      "bytes": 21310,
+      "sha256": "6e9299532e69d406f4c1d79491fe03d76ae740e566303772dcbc90eb00f9fb64"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/viewmodels/__init__.py",
@@ -2602,6 +2617,16 @@
       "sha256": "4102ec70020c77d5e129fb43339ce2d1f6c5a1e6ac565545318f4cc24a5bc0b1"
     },
     {
+      "path": "tools/capture_console/tests/test_environment_diagnostics.py",
+      "bytes": 5215,
+      "sha256": "eccfc76c894188e44ae4e56c23b31e65de406f8d2236734e8f2ad9b60deb968e"
+    },
+    {
+      "path": "tools/capture_console/tests/test_environment_discovery.py",
+      "bytes": 18197,
+      "sha256": "526f7b3976d5435d82bd99e4ba3155799573f7e7d5f57cc2e78988e6168d6a2f"
+    },
+    {
       "path": "tools/capture_console/tests/test_glove_calibration.py",
       "bytes": 10044,
       "sha256": "f96cfeb1ab1071af4355111f5616727f4a67784b95d6d448928d462f3351f15f"
@@ -2673,8 +2698,8 @@
     },
     {
       "path": "tools/capture_console/tests/test_local_runtime.py",
-      "bytes": 34762,
-      "sha256": "5a34fe93d0491e6b63ba8acb3de289d59fce268848dfc73d115c5682b9e994e8"
+      "bytes": 35688,
+      "sha256": "308bca1ed8c55ccb212731704c59be7ecb52740084be9612a4f9367e99dc339a"
     },
     {
       "path": "tools/capture_console/tests/test_managed_workflow.py",
@@ -2913,13 +2938,13 @@
     },
     {
       "path": "tools/capture_console/tests/test_workstation_settings.py",
-      "bytes": 9472,
-      "sha256": "2b1945cda98f68f07a5019a7280948491da60c9945e20371ae69168e1681475a"
+      "bytes": 12366,
+      "sha256": "5ebea343e5a3ca9df4df24dab71a3ef59e7bdc84514db9fc189fc0932beca5dc"
     },
     {
       "path": "tools/capture_console/tests/test_workstation_settings_ui.py",
-      "bytes": 13809,
-      "sha256": "98430f60fdf5f34794885777ebf1595b068ed915d6a7ff8d5531d278c519b035"
+      "bytes": 22664,
+      "sha256": "442855ec7e7904913c50764cb601a322d715a9e7189381465c385abaa836db20"
     },
     {
       "path": "tools/capture_deploy/REALSENSE_USB.md",

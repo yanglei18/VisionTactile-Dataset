@@ -285,8 +285,31 @@ cp -n "${VT_REPO}/ros2_ws/src/vt_realsense_capture/config/cameras.yaml" \
 
 Edit the copy and enter each device's actual `serial`, `firmware` and `asic_serial` from enumeration, keeping models and roles correctly matched. **Serial numbers in the repository belong to reference devices and cannot be reused for another camera set.** For glove/tactile recording, choose the [appropriate recording configuration (Chinese)](../ros2_ws/src/vt_glove_bridge/README.md) and explicitly include the corresponding topics in the list.
 
+<a id="local-paths"></a>
+### 8.3 Default paths and local environment detection
+
+When no workstation configuration has been saved on the new computer, the application checks the current source directory and common local installation locations, then fills paths it can identify. The data output directory defaults to `~/visiontactile-data`; set `VT_DATA_ROOT` to an absolute path in the workbench's environment to choose another default. The default data directory need not exist yet: **Save and Apply** creates it. Opening the dialog or running detection does not create directories. An existing output path is preserved.
+
+After section 8.2, open **Devices → Configure Devices → Detect Local Environment**. Detection fills empty fields and repairs missing software paths when exactly one valid candidate is available. Existing valid choices are preserved. Results remain in the form until you review them and click **Save and Apply**; Cancel discards the form changes. The status line shows the number of updated fields and required settings still missing from enabled modules. Hover over a field for missing-path or multiple-candidate details.
+
+| Setting | Standard locations checked | Environment variable for a custom location |
+| --- | --- | --- |
+| Data output directory | `~/visiontactile-data` | `VT_DATA_ROOT` |
+| Camera configuration | `config/cameras.yaml` in the data directory; otherwise the repository reference configuration is suggested | None; choose it in the form |
+| Glove Python | `.venv-fsglove-120hz/bin/python`, `.venv-fsglove/bin/python`, `.venv-glove/bin/python`, or `tools/fsglove12/.venv/bin/python` under the repository; `~/.venvs/vt-fsglove/bin/python` | `VT_FSGLOVE_PYTHON` |
+| FSGlove source | `external/FSGlove` under the repository; `~/visiontactile-deps/FSGlove`; `~/.local/share/visiontactile/fsglove` | `VT_FSGLOVE_SOURCE`; also accepts `FSGLOVE12_UPSTREAM_CHECKOUT`, `FSGLOVE_SOURCE` |
+| MANO resources | `external/mano-assets` under the repository; `models/mano-assets` or `models/mano` under the data directory; `~/visiontactile-data/models/mano-assets`; `~/visiontactile-deps/mano-assets` | `VT_MANO_ASSETS`; also accepts `FSGLOVE12_MANO_ASSETS`, `MANO_ASSETS` |
+| Extended PyVUT source | `~/.local/share/visiontactile/pyvut-src`; `external/pyvut` under the repository | `VT_PYVUT_ROOT` |
+| PyVUT dependencies | `~/.local/share/visiontactile/pyvut-venv/lib/python*/site-packages` | `VT_PYVUT_SITE` for the directory directly, or `VT_PYVUT_VENV` for the virtual environment root |
+| Tracker startup bundle | No filename is guessed; provide an explicit path outside the repository | `VT_BUNDLE` |
+| Tracker role mapping | `tracker-validation/roles.yaml` under the data directory | `VT_ROLE_MAP` |
+
+Environment variables fill empty fields or repair eligible software paths; they do not override a valid current selection. For aliases listed in one row, the first variable set in the listed order takes precedence. An invalid explicit location is reported as missing instead of falling back to another directory. Pass the variables to the workbench process, for example by running `bash tools/capture_deploy/start_workbench.sh` in the same terminal where they were set. Once saved, the paths do not require those variables on subsequent launches. Paths may use `~`; the application does not expand `$variables` or execute shell expressions.
+
+Detection preserves already entered but missing camera configurations, Tracker bundles, role mappings and calibration configurations so that it cannot silently select identities for another device set. Reselect these files manually. Serial ports are enumerated without assigning a hand or an IMU/tactile role. MANO discovery checks for the matching `models/MANO_RIGHT.pkl` or `models/MANO_LEFT.pkl`. Missing dependencies, authorized models and physical devices still need preparation according to the module manuals. **Detection checks file locations and structure; it does not establish that dependencies are fully installed or hardware has passed validation.**
+
 <a id="first-run"></a>
-### 8.3 Accept a short recording through the workbench
+### 8.4 Accept a short recording through the workbench
 
 Close the demonstration, then run:
 
@@ -295,7 +318,7 @@ cd "${VT_REPO}"
 bash tools/capture_deploy/start_workbench.sh
 ```
 
-1. Open **Devices → Configure devices** and enable only the modules you need. For cameras, select the copied configuration and data output directory. For tactile input, enter the actual serial port.
+1. Open **Devices → Configure Devices**, click **Detect Local Environment**, review the results and enable only the modules you need. Select the camera configuration containing this computer's device identities and the actual tactile serial port. See the [previous section](#local-paths) for default and custom paths.
 2. **Save and apply** saves configuration and reloads the **idle backend**; it does not restart the computer. When a reload is needed, finish recording and stop managed devices first, then restart the devices manually after applying changes.
 3. Start the required devices and confirm that previews update continuously without a historical-frame notice. The absence of Tracker does not prevent recording the configured streams that are available.
 4. Review the recording plan and verify the topics you need. Enabling a preview does not automatically add new topics to the Recorder list.
@@ -341,7 +364,7 @@ With apt-installed drivers, record full installed package versions instead of co
 
 Before upgrading, stop recording, devices and the backend normally, then back up desktop mode's `~/.config/visiontactile/workbench/`, the actual state directory used by any standalone backend, and data configurations. Back up the database after stopping the backend, or use a consistent SQLite backup procedure; do not omit an active WAL. See the [workbench manual (Chinese)](../tools/capture_console/README.md) for paths.
 
-With a clean working tree, use `git pull --ff-only` to update this branch. Preserve and resolve local changes first; do not force an overwrite. As required by the changes, rebuild ROS, rerun the desktop installer and update tool environments, then repeat the short-recording checks. After moving directories or changing computers, recreate venvs and desktop launchers, and reselect serial ports, configuration paths and output directories. Do not copy virtual environments or assume old absolute paths remain valid.
+With a clean working tree, use `git pull --ff-only` to update this branch. Preserve and resolve local changes first; do not force an overwrite. As required by the changes, rebuild ROS, rerun the desktop installer and update tool environments, then repeat the short-recording checks. After moving directories or changing computers, recreate venvs and desktop launchers; do not copy virtual environments. Migrated workstation settings retain their old paths. Use **Configure Devices → Detect Local Environment** to fill missing fields and repair identifiable software paths, then manually check device configurations, serial ports and output directories before saving and applying. See [default paths and local environment detection](#local-paths) for the selection rules.
 
 <a id="troubleshooting"></a>
 ## 11. Common first-deployment problems
@@ -353,6 +376,7 @@ With a clean working tree, use `git pull --ff-only` to update this branch. Prese
 | Wrapper version is not 4.58.1 | Check the driver source, `ros2 pkg prefix` and environment-loading order; sections 5–6 |
 | Build cannot find librealsense2 | Run `pkg-config --modversion realsense2`; confirm SDK installation completed and `ldconfig` ran |
 | `xcb`, EGL or Chinese-font errors | Install the Qt system libraries in section 2 and check the desktop graphics driver |
+| Configuration paths are empty or still point to the old computer | Click **Detect Local Environment** and inspect field tooltips; install missing dependencies, manually confirm device configurations and ports, then save and apply; section 8.3 |
 | Serial permission denied | Check `dialout` and the active login session; changing groups without logging out of the desktop is insufficient |
 | Camera is enumerated but cannot stream | Rule out another process holding the device, then check RSUSB permissions/buffers, USB links and actual identities |
 | Tactile or image preview shows a historical frame | Current data is no longer fresh; check whether the source continues producing data, and do not treat cached frames as live |

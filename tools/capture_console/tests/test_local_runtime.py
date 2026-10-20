@@ -82,6 +82,12 @@ def eventually(predicate, timeout=5.):
     raise AssertionError("timed out waiting for desktop runtime")
 
 
+@pytest.fixture(autouse=True)
+def isolated_output(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    monkeypatch.delenv("VT_DATA_ROOT", raising=False)
+
+
 @pytest.fixture
 def runtime_factory(tmp_path, monkeypatch):
     runtimes, children = [], []
@@ -142,6 +148,20 @@ def test_start_only_fixed_manager_recipe_and_no_sensor_commands(tmp_path):
     assert not any("device.start" in arg or ";" in arg for arg in argv)
     assert all(not profile["enabled"] for profile in runtime.configuration["process_groups"])
     runtime.close()
+
+
+def test_environment_detection_is_a_draft_without_starting_or_saving(runtime_factory, tmp_path):
+    runtime = runtime_factory(start=False)
+    original, status = runtime.configuration, runtime.status
+    camera = tmp_path / "ros2_ws/src/vt_realsense_capture/config/cameras.yaml"
+    camera.parent.mkdir(parents=True)
+    camera.write_text("# test template\n")
+    result = runtime.detect_environment(original)
+    assert result.configuration["process_groups"][0]["parameters"]["config_path"] == str(camera)
+    assert runtime.configuration == original and runtime.status == status
+    assert not runtime.settings_path.exists()
+    assert not (Path.home() / "visiontactile-data").exists()
+    assert not runtime_factory.children
 
 
 def test_start_is_nonblocking_and_close_detaches(runtime_factory):

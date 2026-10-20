@@ -122,6 +122,10 @@ class DesktopRuntime:
     def serial_ports(self):
         return serial_ports()
 
+    def detect_environment(self, configuration):
+        """Inspect the local filesystem without applying settings or touching hardware."""
+        return self.settings.detect_environment(configuration)
+
     def fresh_snapshot(self):
         """Worker-only fresh ownership-checked snapshot; no cached UI evidence."""
         snapshot, pid = self._probe()

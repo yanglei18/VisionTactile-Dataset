@@ -11,6 +11,16 @@ from vt_capture_console.backend.workstation_settings import (
 from vt_capture_core.workstation import parse_profiles
 
 
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    for key in ("VT_DATA_ROOT", "VT_FSGLOVE_PYTHON", "VT_FSGLOVE_SOURCE", "VT_MANO_ASSETS",
+                "FSGLOVE12_UPSTREAM_CHECKOUT", "FSGLOVE12_MANO_ASSETS", "FSGLOVE_SOURCE",
+                "MANO_ASSETS", "VT_PYVUT_ROOT", "VT_PYVUT_VENV", "VT_PYVUT_SITE",
+                "VT_BUNDLE", "VT_ROLE_MAP"):
+        monkeypatch.delenv(key, raising=False)
+
+
 def test_defaults_are_six_disabled_profiles_without_port_guessing(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     root = tmp_path / "repo"
@@ -19,7 +29,9 @@ def test_defaults_are_six_disabled_profiles_without_port_guessing(tmp_path, monk
     profiles = value["process_groups"]
     assert len(profiles) == 6 and not any(group["enabled"] for group in profiles)
     assert {group["id"] for group in profiles} == {"cameras", "trackers", "right_glove", "left_glove", "right_tactile", "left_tactile"}
-    assert profiles[0]["parameters"] == dict(config_path="", output_root="")
+    assert profiles[0]["parameters"] == dict(config_path="", output_root=str(tmp_path / "home/visiontactile-data"))
+    assert value["disk_path"] == profiles[0]["parameters"]["output_root"]
+    assert not (tmp_path / "home/visiontactile-data").exists()
     assert all(group["parameters"].get("port", "") == "" for group in profiles)
     assert all(group["parameters"].get("fsglove_source", "") == "" for group in profiles)
     assert not (root / "ros2_ws").exists()
@@ -37,6 +49,7 @@ def test_only_existing_known_paths_are_suggested(tmp_path, monkeypatch):
     interpreter = root / ".venv-fsglove-120hz/bin/python"
     interpreter.parent.mkdir(parents=True)
     interpreter.touch()
+    interpreter.chmod(0o700)
     value = default_configuration(root)
     assert value["disk_path"] == str(output)
     assert value["process_groups"][0]["parameters"] == dict(config_path=str(camera), output_root=str(output))
@@ -50,43 +63,98 @@ def test_existing_tracker_only_scene_is_suggested(tmp_path):
     assert default_configuration(tmp_path)["scene_config_path"] == str(path)
 
 
-def test_known_assets_are_suggestions_only_and_right_calibration_is_not_copied_left(tmp_path, monkeypatch):
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+def test_developer_dated_artifacts_are_not_used_as_new_machine_defaults(tmp_path):
     baseline = tmp_path / "artifacts/glove_hand_pose_live/upstream_baselines_20260930"
-    source, assets = baseline / "fsglove-a7988f0", baseline / "mano-assets"
-    source.mkdir(parents=True)
-    assets.mkdir()
+    (baseline / "fsglove-a7988f0").mkdir(parents=True)
+    (baseline / "mano-assets").mkdir()
     calibration = tmp_path / ".runtime/recovery/right_current_live_20261005.json"
     calibration.parent.mkdir(parents=True)
-    calibration.write_text("do not read or copy these calibration contents")
-    role_map = tmp_path / "visiontactile-data/tracker-validation/roles.yaml"
-    role_map.parent.mkdir(parents=True)
-    role_map.write_text("do not read identifiers")
+    calibration.write_text("old operator calibration")
     groups = {value["id"]: value for value in default_configuration(tmp_path)["process_groups"]}
     for hand in ("right", "left"):
-        value = groups[hand + "_glove"]
-        assert value["parameters"]["fsglove_source"] == str(source)
-        assert value["parameters"]["mano_assets"] == str(assets)
-        assert value["parameters"]["port"] == "" and not value["enabled"]
-    assert groups["right_glove"]["parameters"]["config"] == str(calibration)
-    assert groups["left_glove"]["parameters"]["config"] == ""
-    assert groups["trackers"]["parameters"]["role_map_path"] == str(role_map)
+        parameters = groups[hand + "_glove"]["parameters"]
+        assert parameters["fsglove_source"] == parameters["mano_assets"] == ""
+        assert parameters["config"] == parameters["port"] == ""
     assert groups["trackers"]["parameters"]["bundle_path"] == ""
 
 
-def test_only_existing_explicit_tracker_environment_directories_are_suggested(tmp_path, monkeypatch):
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
-    local = tmp_path / ".local/share/visiontactile"
-    source = local / "pyvut-src/.worktrees/capture-locked-live-bootstrap"
-    site = local / "pyvut-venv/lib/python3.12/site-packages"
-    before = next(profile for profile in default_configuration(tmp_path)["process_groups"] if profile["preset"] == "trackers")
-    assert before["parameters"]["pyvut_source"] == before["parameters"]["pyvut_site_packages"] == ""
-    source.mkdir(parents=True)
-    site.mkdir(parents=True)
-    profile = next(profile for profile in default_configuration(tmp_path)["process_groups"] if profile["preset"] == "trackers")
-    assert profile["parameters"]["pyvut_source"] == str(source)
-    assert profile["parameters"]["pyvut_site_packages"] == str(site)
-    assert not profile["enabled"]
+def test_default_data_directory_is_created_only_when_settings_are_saved(tmp_path):
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    output = Path.home() / "visiontactile-data"
+    assert not output.exists()
+    settings.detect_environment(settings.configuration)
+    assert not output.exists() and not settings.path.exists()
+    settings.save(settings.configuration)
+    assert output.is_dir() and not output.is_symlink()
+    assert output.stat().st_mode & 0o777 == 0o700
+    assert settings.configuration["disk_path"] == str(output)
+
+
+def test_default_output_file_or_symlink_cannot_replace_saved_configuration(tmp_path):
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    settings.save(settings.configuration)
+    before = settings.path.read_bytes()
+    output = Path.home() / "visiontactile-data"
+    output.rmdir()
+    output.write_text("unrelated file")
+    with pytest.raises((OSError, ValueError)):
+        settings.save(settings.configuration)
+    assert settings.path.read_bytes() == before and output.read_text() == "unrelated file"
+    output.unlink()
+    target = tmp_path / "target"
+    target.mkdir()
+    output.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match="数据目录"):
+        settings.save(settings.configuration)
+    assert settings.path.read_bytes() == before and list(target.iterdir()) == []
+
+
+def test_custom_missing_output_is_not_created_by_default_directory_preparation(tmp_path):
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    value = settings.configuration
+    custom = tmp_path / "operator-choice/output"
+    value["process_groups"][0]["parameters"]["output_root"] = str(custom)
+    settings.save(value)
+    assert not custom.exists()
+
+
+def test_data_root_override_is_created_on_save(tmp_path, monkeypatch):
+    output = tmp_path / "data-volume/new-user/datasets"
+    monkeypatch.setenv("VT_DATA_ROOT", str(output))
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    assert settings.configuration["process_groups"][0]["parameters"]["output_root"] == str(output)
+    assert not output.exists()
+    settings.save(settings.configuration)
+    assert output.is_dir() and output.stat().st_mode & 0o777 == 0o700
+
+
+def test_invalid_environment_default_does_not_block_explicit_configuration(tmp_path, monkeypatch):
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    output = tmp_path / "chosen"
+    output.mkdir()
+    value = settings.configuration
+    value["process_groups"][0]["parameters"]["output_root"] = str(output)
+    monkeypatch.setenv("VT_DATA_ROOT", "invalid-relative-default")
+    settings.save(value)
+    assert settings.configuration == value
+
+
+def test_existing_settings_wait_for_explicit_environment_detection(tmp_path):
+    root = tmp_path / "repo"
+    settings = WorkstationSettings(root, tmp_path / "private")
+    value = settings.configuration
+    value["process_groups"][0]["parameters"]["config_path"] = ""
+    settings.save(value)
+    camera = Path.home() / "visiontactile-data/config/cameras.yaml"
+    camera.parent.mkdir(parents=True)
+    camera.write_text("# operator configuration\n")
+    loaded = WorkstationSettings(root, settings.directory)
+    before = loaded.path.read_bytes()
+    assert loaded.configuration["process_groups"][0]["parameters"]["config_path"] == ""
+    detected = loaded.detect_environment(loaded.configuration)
+    assert detected.configuration["process_groups"][0]["parameters"]["config_path"] == str(camera)
+    assert loaded.path.read_bytes() == before
+    assert loaded.configuration["process_groups"][0]["parameters"]["config_path"] == ""
 
 
 def test_private_atomic_save_roundtrip_and_copy_isolation(tmp_path):

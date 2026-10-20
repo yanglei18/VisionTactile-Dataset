@@ -10,6 +10,10 @@ release or a completed hardware acceptance run.
 
 ### Added
 
+- Portable device-configuration defaults and a bilingual Detect Local Environment
+  action. The workbench finds installed dependencies in documented locations,
+  reports missing or ambiguous paths, and creates the default data directory
+  when saving. Existing device identities and serial assignments remain explicit.
 - Matching Chinese/English new-computer deployment guides with explicit preview-branch checkout, ROS setup, fixed RealSense source dependencies, USB/serial permissions, first recording checks, and migration steps. Complete Chinese capture, troubleshooting and contributor guides, and an English Windows build guide.
 
 - Chinese/English switching in the independent tactile viewer, with separate

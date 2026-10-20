@@ -285,8 +285,31 @@ cp -n "${VT_REPO}/ros2_ws/src/vt_realsense_capture/config/cameras.yaml" \
 
 编辑副本，按枚举结果填写每台设备的 `serial`、`firmware`、`asic_serial`，保持型号和角色对应；**仓库中的序列号属于参考设备，不能直接用于另一套相机**。手套／触觉录制应选择[对应的录制配置](../ros2_ws/src/vt_glove_bridge/README.md)，明确将相应 Topic 加入清单。
 
+<a id="local-paths"></a>
+### 8.3 默认路径与本机环境检测
+
+新电脑没有已保存的工作台配置时，程序会自动查找当前源码目录和本机常用安装位置，填入能够确定的路径。数据输出目录默认为 `~/visiontactile-data`；需要其他位置时，可在启动工作台的环境中设置绝对路径 `VT_DATA_ROOT`。默认数据目录不必提前存在，点击“保存并应用”时会创建；仅打开窗口或检测不会创建目录。已有的输出路径保持不变。
+
+完成第 8.2 节后，在“设备 → 配置设备”点击 **检测本机环境**。它会补齐空项，并在只有一个有效候选时修复失效的软件路径；当前仍有效的选择保留。结果先进入表单，核对后点击 **保存并应用**；取消会丢弃本次表单修改。底部显示补全数量和已启用模块仍需配置的必需项数量，悬停字段可查看缺失或多个候选的原因。
+
+| 配置项 | 自动查找的标准位置 | 自定义位置的环境变量 |
+| --- | --- | --- |
+| 数据输出目录 | `~/visiontactile-data` | `VT_DATA_ROOT` |
+| 相机配置 | 数据目录中的 `config/cameras.yaml`；不存在时提供仓库参考配置 | 无；在表单中选择 |
+| 手套 Python | 仓库中的 `.venv-fsglove-120hz/bin/python`、`.venv-fsglove/bin/python`、`.venv-glove/bin/python`、`tools/fsglove12/.venv/bin/python`，或 `~/.venvs/vt-fsglove/bin/python` | `VT_FSGLOVE_PYTHON` |
+| FSGlove 源码 | 仓库中的 `external/FSGlove`、`~/visiontactile-deps/FSGlove`、`~/.local/share/visiontactile/fsglove` | `VT_FSGLOVE_SOURCE`；兼容 `FSGLOVE12_UPSTREAM_CHECKOUT`、`FSGLOVE_SOURCE` |
+| MANO 资源 | 仓库中的 `external/mano-assets`、数据目录中的 `models/mano-assets` 或 `models/mano`、`~/visiontactile-data/models/mano-assets`、`~/visiontactile-deps/mano-assets` | `VT_MANO_ASSETS`；兼容 `FSGLOVE12_MANO_ASSETS`、`MANO_ASSETS` |
+| 扩展 PyVUT 源码 | `~/.local/share/visiontactile/pyvut-src`、仓库中的 `external/pyvut` | `VT_PYVUT_ROOT` |
+| PyVUT 依赖目录 | `~/.local/share/visiontactile/pyvut-venv/lib/python*/site-packages` | `VT_PYVUT_SITE` 直接指定目录，或用 `VT_PYVUT_VENV` 指定虚拟环境根目录 |
+| Tracker 启动包 | 不猜测文件；填写明确路径，且文件须位于仓库外 | `VT_BUNDLE` |
+| Tracker 角色映射 | 数据目录中的 `tracker-validation/roles.yaml` | `VT_ROLE_MAP` |
+
+环境变量用于填入空项或修复允许修复的软件路径，不覆盖当前有效的配置。同一行列出的兼容变量按从左到右的顺序取第一个已设置项；显式位置无效时会提示缺失，不会另选其他目录。变量应传入本次工作台进程，例如在已设置变量的同一终端运行 `bash tools/capture_deploy/start_workbench.sh`；保存后的路径不依赖下次启动时继续设置变量。路径可使用 `~`，程序不执行 `$变量` 或 shell 命令展开。
+
+检测不会替换已经填写但失效的相机配置、Tracker 启动包、角色映射或标定配置，以免换成另一套设备的身份；这些项需手动重新选择。串口只枚举，不自动分配左右手或 IMU／触觉用途。MANO 按对应手检查 `models/MANO_RIGHT.pkl` 或 `models/MANO_LEFT.pkl`；缺少已安装的依赖、获准使用的模型或实际设备时，仍需按模块手册准备。**检测检查的是文件位置和结构，不代表依赖已完整安装或硬件已通过验证。**
+
 <a id="first-run"></a>
-### 8.3 从工作台完成短包验收
+### 8.4 从工作台完成短包验收
 
 关闭演示，然后：
 
@@ -295,7 +318,7 @@ cd "${VT_REPO}"
 bash tools/capture_deploy/start_workbench.sh
 ```
 
-1. 进入“设备 → 配置设备”，只启用实际需要的模块；相机选择刚复制的配置和数据输出目录，触觉填写实际串口。
+1. 进入“设备 → 配置设备”，点击“检测本机环境”并核对结果，只启用实际需要的模块；相机选择已填写本机身份的配置，触觉选择实际串口。默认路径和自定义位置见[上一节](#local-paths)。
 2. “保存并应用”保存配置并重载**空闲后台**，不是重启电脑。需要重载时先结束录制、停止受管设备，完成后手动恢复设备。
 3. 启动需要的设备，确认预览持续更新，未显示历史保持。没有 Tracker 不妨碍录制已有配置流。
 4. 查看录制计划，核对真正需要的 Topic。只启用预览不会自动把新的 Topic 加入 Recorder 清单。
@@ -341,7 +364,7 @@ dpkg-query -W > "${VT_DATA_ROOT}/deployment/ubuntu-packages.txt"
 
 升级前正常停止录制、设备和后台，再备份桌面模式的 `~/.config/visiontactile/workbench/`、独立后台实际使用的状态目录及数据配置。数据库须在后台停止后备份，或采用 SQLite 一致性备份，不能漏掉活动 WAL。路径说明见[工作台手册](../tools/capture_console/README.md)。
 
-在工作区干净时使用 `git pull --ff-only` 获取该分支更新；有本地修改时先保留并处理，不强制覆盖。按变更重建 ROS、重新运行桌面安装器及更新各工具环境，再做短包回归。移动目录或更换电脑时重新建立 venv 和桌面入口，重新选择串口、配置路径和输出目录；不要复制虚拟环境或把旧绝对路径当成仍然有效。
+在工作区干净时使用 `git pull --ff-only` 获取该分支更新；有本地修改时先保留并处理，不强制覆盖。按变更重建 ROS、重新运行桌面安装器及更新各工具环境，再做短包回归。移动目录或更换电脑时重新建立 venv 和桌面入口，不要复制虚拟环境。迁移来的工作台配置会保留旧路径；进入“配置设备 → 检测本机环境”补齐缺项、修复可确定的软件路径，再手动核对设备配置、串口和输出目录，保存并应用。具体规则见[默认路径与本机环境检测](#local-paths)。
 
 <a id="troubleshooting"></a>
 ## 11. 首次部署常见问题
@@ -353,6 +376,7 @@ dpkg-query -W > "${VT_DATA_ROOT}/deployment/ubuntu-packages.txt"
 | wrapper 版本不是 4.58.1 | 核对驱动安装来源、`ros2 pkg prefix` 与 source 顺序，第 5–6 节 |
 | 编译找不到 librealsense2 | `pkg-config --modversion realsense2`；确认 SDK 安装完成并运行过 `ldconfig` |
 | `xcb`、EGL 或中文字体异常 | 补齐第 2 节 Qt 系统库，检查桌面显卡驱动 |
+| 新电脑配置路径为空或仍指向旧电脑 | 点击“检测本机环境”，查看字段提示；安装缺失依赖，手动确认设备配置和串口，再保存并应用，第 8.3 节 |
 | 串口权限不足 | 确认 `dialout` 和当前登录会话，不能只改用户组后继续用旧桌面 |
 | 相机枚举但不能读取 | 先排除设备占用，再检查 RSUSB 权限/缓冲、USB 链路及实际身份 |
 | 触觉或图像显示“历史保持” | 表示当前数据不再新鲜；检查源是否持续输出，不把缓存当作实时 |

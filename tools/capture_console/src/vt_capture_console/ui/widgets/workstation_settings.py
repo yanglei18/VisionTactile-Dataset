@@ -1,7 +1,8 @@
 """Graphical launch-profile editing, with all persistence owned by the runtime.
 
-The dialog only enumerates serial names. It never opens a serial device, starts
-a sensor, edits YAML, or imports ROS. Cancel discards the copied form state.
+The dialog enumerates serial names and requests local path suggestions. It never
+opens a serial device, starts a sensor, edits YAML, or imports ROS. Cancel
+discards the copied form state.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from pathlib import Path
 import stat
 
 from PySide6.QtCore import Qt, QTimer
+from vt_capture_core.workstation import PRESETS
 from ...i18n.widgets import (
     QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFormLayout,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
@@ -55,6 +57,13 @@ def _label(text="", wrap=True):
 
 def runtime_busy(runtime):
     return str((runtime.status or {}).get("state", "")).lower() in BUSY_STATES
+
+
+def _required_parameters(group):
+    required = set(PRESETS[group["preset"]][4])
+    if group["preset"] == "glove" and group.get("parameters", {}).get("launch_gui", "true") == "true":
+        required.update({"glove_python", "fsglove_source", "mano_assets", "port"})
+    return required
 
 
 class WorkstationSettingsDialog(QDialog):
@@ -113,6 +122,10 @@ class WorkstationSettingsDialog(QDialog):
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.status_label)
         actions = QHBoxLayout()
+        self.detect_environment_button = QPushButton(tr('检测本机环境'))
+        self.detect_environment_button.setToolTip(tr('补全本机路径，仅修改当前表单；保存并应用后生效。不会连接设备。'))
+        self.detect_environment_button.clicked.connect(self.detect_environment)
+        actions.addWidget(self.detect_environment_button)
         self.refresh_ports_button = QPushButton(tr('刷新串口列表'))
         self.refresh_ports_button.clicked.connect(self.refresh_ports)
         actions.addWidget(self.refresh_ports_button)
@@ -189,6 +202,16 @@ class WorkstationSettingsDialog(QDialog):
                 row.addWidget(browse)
                 form.addRow(title, row)
             editor.setAccessibleName(tr('{v0}：{v1}', v0=box.title(), v1=title))
+            base_tip = (tr('请核对配置中的相机序列号与本机设备一致。')
+                        if key == "config_path" else "")
+            if base_tip:
+                editor.setToolTip(base_tip)
+            # A previous path finding must not describe a new manual choice.
+            if isinstance(editor, QLineEdit):
+                editor.textChanged.connect(
+                    lambda _text, editor=editor, base_tip=base_tip: editor.setToolTip(base_tip))
+            elif isinstance(editor, QComboBox):
+                editor.currentTextChanged.connect(lambda _text, editor=editor: editor.setToolTip(""))
             self.fields[(identifier, key)] = editor
         enabled.toggled.connect(form_widget.setEnabled)
         form_widget.setEnabled(enabled.isChecked())
@@ -239,6 +262,64 @@ class WorkstationSettingsDialog(QDialog):
                 editor.setEditText(value)
             editor.blockSignals(False)
 
+    @staticmethod
+    def _finding_tooltip(finding):
+        if finding.status == "ready":
+            text = tr('已找到本机路径：{path}', path=finding.value)
+            if finding.key == "config_path":
+                text += "\n" + tr('请核对配置中的相机序列号与本机设备一致。')
+            return text
+        if finding.status == "default":
+            return tr('默认目录：{path}；保存并应用时创建。', path=finding.value)
+        if finding.status == "ambiguous":
+            return tr('找到多个候选，请手动选择：\n{paths}', paths="\n".join(finding.candidates))
+        if finding.status == "manual":
+            return tr('需要手动选择此设备或授权资源。')
+        if finding.status == "missing":
+            return tr('本机未找到此路径，请选择有效文件或目录。')
+        return ""
+
+    def detect_environment(self):
+        detect = getattr(self.runtime, "detect_environment", None)
+        if self._applying or runtime_busy(self.runtime) or not callable(detect):
+            return
+        try:
+            result = detect(self.configuration())
+        except (ValueError, RuntimeError, OSError) as exc:
+            self._set_status(tr('检测未完成：{detail}', detail=diagnostic(str(exc))))
+            return
+        profiles = {group["id"]: group for group in result.configuration["process_groups"]}
+        identifiers = {self.original["process_groups"][index]["id"]: identifier
+                       for identifier, index in self._indices.items()}
+        for group_id, key in result.updated_fields:
+            if not group_id:
+                self.original[key] = deepcopy(result.configuration[key])
+                continue
+            identifier = identifiers.get(group_id)
+            if identifier is None:
+                continue
+            value = profiles[group_id].get("parameters", {}).get(key, "")
+            editor = self.fields.get((identifier, key))
+            if isinstance(editor, QLineEdit):
+                editor.setText(value)
+            elif editor is None:
+                self.original["process_groups"][self._indices[identifier]].setdefault("parameters", {})[key] = value
+        pending = 0
+        for finding in result.findings:
+            identifier = identifiers.get(finding.group_id)
+            editor = self.fields.get((identifier, finding.key))
+            if editor is not None:
+                editor.setToolTip(self._finding_tooltip(finding))
+            if (identifier is not None and self.enabled_checks[identifier].isChecked()
+                    and finding.key in _required_parameters(profiles[finding.group_id])
+                    and finding.status in {"missing", "ambiguous", "manual"}):
+                pending += 1
+        count = len(result.updated_fields)
+        self._set_status(
+            tr('已补全 {count} 项；已启用模块仍有 {pending} 项必需配置待设置。',
+               count=count, pending=pending) if pending else
+            tr('已补全 {count} 项；请核对后保存并应用。', count=count))
+
     def configuration(self):
         result = deepcopy(self.original)
         for identifier, title, preset, hand in GROUPS:
@@ -256,12 +337,7 @@ class WorkstationSettingsDialog(QDialog):
             group = configuration["process_groups"][self._indices[identifier]]
             if not group["enabled"]:
                 continue
-            required = {"cameras": {"config_path", "output_root"},
-                        "trackers": {"bundle_path", "role_map_path"},
-                        "glove": {"glove_python", "fsglove_source", "mano_assets", "port"},
-                        "tactile": {"port"}}[preset]
-            if preset == "glove" and group["parameters"].get("launch_gui") == "false":
-                required = set()  # Existing bridge-only profiles retain their meaning.
+            required = _required_parameters(group)
             for key, field_title, kind in FIELDS[preset]:
                 value = group["parameters"].get(key, "")
                 if key in required and not value:
@@ -295,6 +371,7 @@ class WorkstationSettingsDialog(QDialog):
         self.tabs.setEnabled(False)
         self.apply_button.setEnabled(False)
         self.refresh_ports_button.setEnabled(False)
+        self.detect_environment_button.setEnabled(False)
         self.cancel_button.setText(tr('关闭'))
 
     def refresh_status(self):
@@ -311,6 +388,8 @@ class WorkstationSettingsDialog(QDialog):
         elif busy:
             self._set_status(state.get("detail") or tr('后台正在处理，请稍候。'))
         self.apply_button.setEnabled(not busy and not self._applying)
+        self.detect_environment_button.setEnabled(
+            not busy and not self._applying and callable(getattr(self.runtime, "detect_environment", None)))
 
     def closeEvent(self, event):
         self.timer.stop()

@@ -10,6 +10,8 @@ import uuid
 
 from vt_capture_core.workstation import validate_configuration
 
+from .environment_discovery import default_data_root, discover_configuration
+
 
 def repository_root():
     for parent in Path(__file__).resolve().parents:
@@ -68,40 +70,59 @@ def read_private_json(path):
 def default_configuration(repo_root=None):
     root = Path(repo_root).expanduser().absolute() if repo_root is not None else repository_root()
 
-    def existing(path):
-        return str(path) if path.exists() else ""
 
-    output = Path.home() / "visiontactile-data"
-    camera = root / "ros2_ws/src/vt_realsense_capture/config/cameras.yaml"
-    # Only concrete, familiar paths are suggested, without reading their
-    # contents. Ports and tracker startup bundles are never auto-assigned.
-    baseline = root / "artifacts/glove_hand_pose_live/upstream_baselines_20260930"
-    source = existing(baseline / "fsglove-a7988f0")
-    assets = existing(baseline / "mano-assets")
-    right_config = existing(root / ".runtime/recovery/right_current_live_20261005.json")
-    role_map = next((str(path) for path in (output / "tracker-validation/roles.yaml",
-                    root / "visiontactile-data/tracker-validation/roles.yaml") if path.is_file()), "")
-    tracker_local = root / ".local/share/visiontactile"
-    pyvut_source = existing(tracker_local / "pyvut-src/.worktrees/capture-locked-live-bootstrap")
-    pyvut_site = existing(tracker_local / "pyvut-venv/lib/python3.12/site-packages")
-    python = next((str(p) for p in (root / ".venv-fsglove-120hz/bin/python", root / ".venv-fsglove-restored/bin/python",
-                                   root / ".venv-glove/bin/python", root / "tools/fsglove12/.venv/bin/python") if p.is_file()), "")
     profiles = [dict(id="cameras", label="三相机与录制控制器", preset="cameras", enabled=False,
-                     startup_timeout_s=45., parameters=dict(config_path=existing(camera), output_root=existing(output))),
+                     startup_timeout_s=45., parameters=dict(config_path="", output_root="")),
                 dict(id="trackers", label="三 Tracker ROS 读取", preset="trackers", enabled=False,
-                     startup_timeout_s=30., parameters=dict(bundle_path="", role_map_path=role_map,
-                     pyvut_source=pyvut_source, pyvut_site_packages=pyvut_site))]
+                     startup_timeout_s=30., parameters=dict(bundle_path="", role_map_path="",
+                     pyvut_source="", pyvut_site_packages=""))]
     for hand, label in (("right", "右手"), ("left", "左手")):
         profiles.append(dict(id=hand + "_glove", label=label + "姿态与标定窗口", preset="glove", enabled=False,
-                             startup_timeout_s=120., parameters=dict(hand=hand, launch_gui="true", glove_python=python,
-                             fsglove_source=source, mano_assets=assets, port="",
-                             config=right_config if hand == "right" else "")))
+                             startup_timeout_s=120., parameters=dict(hand=hand, launch_gui="true", glove_python="",
+                             fsglove_source="", mano_assets="", port="", config="")))
     for hand, label in (("right", "右手"), ("left", "左手")):
         profiles.append(dict(id=hand + "_tactile", label=label + "触觉采集", preset="tactile", enabled=False,
                              startup_timeout_s=30., parameters=dict(hand=hand, port="")))
-    scene = existing(root / "ros2_ws/src/vt_capture_manager/config/scene.example.yaml")
-    return validate_configuration(dict(disk_path=existing(output) or str(root), quality_enabled=True,
-                                       process_groups=profiles, scene_config_path=scene))
+    draft = dict(disk_path="", quality_enabled=True, process_groups=profiles, scene_config_path="")
+    return validate_configuration(discover_configuration(draft, repo_root=root).configuration)
+
+
+def prepare_default_output(configuration):
+    """Create only the documented default, when committing settings, never on detection."""
+    try:
+        output = default_data_root()
+    except ValueError:
+        # An invalid environment default must not prevent saving an existing,
+        # explicit configuration. Discovery reports it when a default is needed.
+        return
+    uses_default = any(
+        group["preset"] == "cameras"
+        and group["parameters"].get("output_root")
+        and Path(group["parameters"]["output_root"]).expanduser().absolute() == output
+        for group in configuration.get("process_groups", ())
+    )
+    if not uses_default:
+        return
+    if output.is_symlink():
+        raise ValueError(f"默认数据目录不能是符号链接：{output}")
+    try:
+        # Create parents privately too; Path.mkdir(parents=True) otherwise uses
+        # the process umask rather than our requested mode for intermediate paths.
+        missing, parent = [], output
+        while not parent.exists() and not parent.is_symlink():
+            missing.append(parent)
+            parent = parent.parent
+        for directory in reversed(missing):
+            try:
+                directory.mkdir(mode=0o700)
+            except FileExistsError:
+                pass
+        if output.is_symlink() or not output.is_dir():
+            raise ValueError(f"默认数据目录必须为真实目录：{output}")
+        if not os.access(output, os.W_OK | os.X_OK):
+            raise ValueError(f"默认数据目录不可写：{output}")
+    except OSError as exc:
+        raise ValueError(f"无法创建默认数据目录：{output}；{exc}") from exc
 
 
 def serial_ports(dev_root=Path("/dev")):
@@ -146,8 +167,12 @@ class WorkstationSettings:
     def configuration(self):
         return deepcopy(self._configuration)
 
+    def detect_environment(self, configuration):
+        return discover_configuration(configuration, repo_root=self.repo_root, replace_missing=True)
+
     def save(self, configuration):
         value = validate_configuration(configuration)
+        prepare_default_output(value)
         atomic_json(self.path, value)
         self._configuration = value
         return self.configuration

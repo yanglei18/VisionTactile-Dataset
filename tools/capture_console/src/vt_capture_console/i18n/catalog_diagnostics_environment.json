@@ -1,0 +1,7 @@
+{
+  "VT_DATA_ROOT 必须是绝对目录路径；可使用 ~，不执行 shell 变量展开。": "VT_DATA_ROOT must be an absolute directory path. You may use ~; shell variables are not expanded.",
+  "默认数据目录不能是符号链接：{path}": "The default data directory must not be a symbolic link: {path}",
+  "默认数据目录必须为真实目录：{path}": "The default data directory must be a real directory: {path}",
+  "默认数据目录不可写：{path}": "The default data directory is not writable: {path}",
+  "无法创建默认数据目录：{path}；{detail}": "Could not create the default data directory: {path}; {detail}"
+}
