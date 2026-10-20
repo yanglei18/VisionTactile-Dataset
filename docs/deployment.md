@@ -240,6 +240,8 @@ bash tools/capture_deploy/start_demo.sh
 
 The installer creates an isolated Qt environment and desktop launcher. It **installs only the desktop component**; it does not install ROS or camera drivers, download models or start hardware. DEMO views should render and allow switching between Chinese and English. Demonstration recording does not produce a real bag.
 
+The installer records the actual workbench Python environment in the desktop launcher. Even when installation uses a custom `VT_CONSOLE_PYTHON`, desktop launches do not require setting that variable again. Other environment variables are not automatically saved in the launcher.
+
 Do not copy `.venv-*` directories from the old computer. ROS uses system Python, Qt uses `.venv-capture-console`, and calibration and gesture solving use their own environments. If the demonstration fails, fix fonts, Qt system libraries or graphics issues before connecting hardware.
 
 <a id="permissions"></a>
@@ -288,9 +290,11 @@ Edit the copy and enter each device's actual `serial`, `firmware` and `asic_seri
 <a id="local-paths"></a>
 ### 8.3 Default paths and local environment detection
 
-When no workstation configuration has been saved on the new computer, the application checks the current source directory and common local installation locations, then fills paths it can identify. The data output directory defaults to `~/visiontactile-data`; set `VT_DATA_ROOT` to an absolute path in the workbench's environment to choose another default. The default data directory need not exist yet: **Save and Apply** creates it. Opening the dialog or running detection does not create directories. An existing output path is preserved.
+Before starting each new local backend, the workbench checks the current source directory and common local installation locations, fills identifiable paths and saves them automatically. You do not need to open Configure Devices, run detection or manually save basic paths first. Fresh and migrated settings use the same preparation flow. Connecting to an existing backend leaves that backend's configuration unchanged.
 
-After section 8.2, open **Devices → Configure Devices → Detect Local Environment**. Detection fills empty fields and repairs missing software paths when exactly one valid candidate is available. Existing valid choices are preserved. Results remain in the form until you review them and click **Save and Apply**; Cancel discards the form changes. The status line shows the number of updated fields and required settings still missing from enabled modules. Hover over a field for missing-path or multiple-candidate details.
+The data output directory defaults to `~/visiontactile-data`; set `VT_DATA_ROOT` to an absolute path in the workbench's environment to choose another default. A missing default directory is created while preparing the new backend. An existing output path is preserved. Valid software paths are kept; missing software paths are repaired only when exactly one valid candidate is available.
+
+Use **Devices → Configure Devices** to change modules, device identities or custom locations. **Detect Local Environment** remains available for a manual recheck. Manual detection changes only the form; it does not create directories or restart the backend. Review and click **Save and Apply** to submit those changes, or Cancel to discard them. Saving also creates a missing default directory. The status line shows the number of updated fields and required settings still missing from enabled modules. Hover over a field for missing-path or multiple-candidate details.
 
 | Setting | Standard locations checked | Environment variable for a custom location |
 | --- | --- | --- |
@@ -318,8 +322,8 @@ cd "${VT_REPO}"
 bash tools/capture_deploy/start_workbench.sh
 ```
 
-1. Open **Devices → Configure Devices**, click **Detect Local Environment**, review the results and enable only the modules you need. Select the camera configuration containing this computer's device identities and the actual tactile serial port. See the [previous section](#local-paths) for default and custom paths.
-2. **Save and apply** saves configuration and reloads the **idle backend**; it does not restart the computer. When a reload is needed, finish recording and stop managed devices first, then restart the devices manually after applying changes.
+1. Wait for automatic path preparation and the backend-ready status. If device settings have already been saved and identities have not changed, select the required modules and start them directly; there is no need to detect or save paths again.
+2. For first-time device assignment or changes, open **Devices → Configure Devices**, enable only the required modules, check camera identities and actual serial ports, then click **Save and Apply**. This reloads the **idle backend**, not the computer; finish recording and stop managed devices before a reload. See the [previous section](#local-paths) for default locations and manual rechecks.
 3. Start the required devices and confirm that previews update continuously without a historical-frame notice. The absence of Tracker does not prevent recording the configured streams that are available.
 4. Review the recording plan and verify the topics you need. Enabling a preview does not automatically add new topics to the Recorder list.
 5. First record a test bag of approximately 10 seconds, then stop and wait for finalization. In **Archive**, inspect the topics, quality report and embedded playback. Available topics should play back.
@@ -364,7 +368,7 @@ With apt-installed drivers, record full installed package versions instead of co
 
 Before upgrading, stop recording, devices and the backend normally, then back up desktop mode's `~/.config/visiontactile/workbench/`, the actual state directory used by any standalone backend, and data configurations. Back up the database after stopping the backend, or use a consistent SQLite backup procedure; do not omit an active WAL. See the [workbench manual (Chinese)](../tools/capture_console/README.md) for paths.
 
-With a clean working tree, use `git pull --ff-only` to update this branch. Preserve and resolve local changes first; do not force an overwrite. As required by the changes, rebuild ROS, rerun the desktop installer and update tool environments, then repeat the short-recording checks. After moving directories or changing computers, recreate venvs and desktop launchers; do not copy virtual environments. Migrated workstation settings retain their old paths. Use **Configure Devices → Detect Local Environment** to fill missing fields and repair identifiable software paths, then manually check device configurations, serial ports and output directories before saving and applying. See [default paths and local environment detection](#local-paths) for the selection rules.
+With a clean working tree, use `git pull --ff-only` to update this branch. Preserve and resolve local changes first; do not force an overwrite. As required by the changes, rebuild ROS, rerun the desktop installer and update tool environments, then repeat the short-recording checks. After moving directories or changing computers, recreate venvs and desktop launchers; do not copy virtual environments. Before the next new local backend starts, the application automatically fills missing fields and repairs identifiable software paths while preserving valid settings and device identities. Open Configure Devices only for unresolved settings or changes to device identities, serial ports or output locations; Detect Local Environment is available for manual rechecks. See [default paths and local environment detection](#local-paths) for the selection rules.
 
 <a id="troubleshooting"></a>
 ## 11. Common first-deployment problems
@@ -376,7 +380,7 @@ With a clean working tree, use `git pull --ff-only` to update this branch. Prese
 | Wrapper version is not 4.58.1 | Check the driver source, `ros2 pkg prefix` and environment-loading order; sections 5–6 |
 | Build cannot find librealsense2 | Run `pkg-config --modversion realsense2`; confirm SDK installation completed and `ldconfig` ran |
 | `xcb`, EGL or Chinese-font errors | Install the Qt system libraries in section 2 and check the desktop graphics driver |
-| Configuration paths are empty or still point to the old computer | Click **Detect Local Environment** and inspect field tooltips; install missing dependencies, manually confirm device configurations and ports, then save and apply; section 8.3 |
+| Settings are still missing after automatic preparation | Open Configure Devices and inspect field tooltips; install missing dependencies or confirm device identities and ports, then manually recheck and save if needed; section 8.3 |
 | Serial permission denied | Check `dialout` and the active login session; changing groups without logging out of the desktop is insufficient |
 | Camera is enumerated but cannot stream | Rule out another process holding the device, then check RSUSB permissions/buffers, USB links and actual identities |
 | Tactile or image preview shows a historical frame | Current data is no longer fresh; check whether the source continues producing data, and do not treat cached frames as live |

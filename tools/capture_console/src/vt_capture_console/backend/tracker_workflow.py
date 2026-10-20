@@ -18,6 +18,8 @@ import subprocess
 import threading
 import time
 
+from .environment_discovery import discover_bootstrap_configuration
+
 
 COMPLETE_LINE = "status=COMPLETE failure=none context=none last_sequence=51 feature_out=51 feature_get=21 close=1"
 PROMPTS = (
@@ -65,18 +67,17 @@ def detect_defaults(repo_root=None, *, include_environment=True):
     """Inspect path existence only; never source shell or read private contents."""
     root = next((p for p in Path(__file__).resolve().parents if (p / "docs/tracker-ros2-publisher.md").is_file()), None)
     root = Path(repo_root if repo_root is not None else os.environ.get("VT_REPO", root or Path.home())).expanduser().absolute()
-    pyvut = root / ".local/share/visiontactile/pyvut-src/.worktrees/capture-locked-live-bootstrap"
-    venv = root / ".local/share/visiontactile/pyvut-venv"
     private = Path.home() / "visiontactile-data/private/vut"
     bundle = private / "live-bootstrap-2026-07-31.json"
     # The driver does not permit credential bundles in a checkout. Never
     # suggest the old repository-local copy, including through a symlink.
     bundle_allowed = not bundle.resolve().is_relative_to(root.resolve())
-    values = dict(python=str(venv / "bin/python"), script=str(pyvut / "scripts/live_windows_bootstrap.py"),
+    values = dict(python="", script="",
                   capture=str(private / "20260731_session01/01_cold_reconnect.pcapng"),
                   bundle=str(bundle) if bundle_allowed else "", expected_sha256="")
     values = {key: value if key == "expected_sha256" or value and Path(value).is_file() else ""
               for key, value in values.items()}
+    values = discover_bootstrap_configuration(values, repo_root=root, environ={}).configuration
     if include_environment:
         values.update(bootstrap_environment_overrides())
     return values

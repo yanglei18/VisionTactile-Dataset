@@ -164,6 +164,140 @@ def test_environment_detection_is_a_draft_without_starting_or_saving(runtime_fac
     assert not runtime_factory.children
 
 
+def test_new_backend_automatically_prepares_saved_empty_paths_before_launch(runtime_factory, tmp_path):
+    runtime = runtime_factory(start=False)
+    runtime.settings.save(runtime.configuration)
+    camera = tmp_path / "ros2_ws/src/vt_realsense_capture/config/cameras.yaml"
+    camera.parent.mkdir(parents=True)
+    camera.write_text("# synthetic template\n")
+    runtime.start()
+    eventually(lambda: runtime.status["state"] == "ready")
+    output = Path.home() / "visiontactile-data"
+    persisted = json.loads(runtime.settings_path.read_text())
+    assert persisted == runtime.configuration
+    assert persisted["process_groups"][0]["parameters"] == {
+        "config_path": str(camera), "output_root": str(output),
+    }
+    assert output.is_dir()
+    assert not any(group["enabled"] for group in persisted["process_groups"])
+    assert len(runtime_factory.children) == 1
+    assert runtime.status["detail"] == "本地路径已自动准备，后台已就绪；可启动需要的设备。"
+
+
+def test_slow_startup_discovery_keeps_status_and_complete_configuration_readable(
+        runtime_factory, monkeypatch):
+    runtime = runtime_factory(start=False)
+    before = runtime.configuration
+    entered, release, read_done = threading.Event(), threading.Event(), threading.Event()
+    observed = {}
+    original = runtime.settings.detect_environment
+    def detect(configuration):
+        entered.set()
+        if not release.wait(5.):
+            raise RuntimeError("synthetic discovery timed out")
+        return original(configuration)
+    def read_state():
+        observed["status"] = runtime.status
+        observed["configuration"] = runtime.configuration
+        read_done.set()
+    monkeypatch.setattr(runtime.settings, "detect_environment", detect)
+    runtime.start()
+    assert entered.wait(2.)
+    reader = threading.Thread(target=read_state)
+    reader.start()
+    try:
+        assert read_done.wait(.5), "UI state reads blocked behind filesystem discovery"
+        assert observed["status"]["state"] == "starting"
+        assert observed["configuration"] == before
+        assert not runtime.settings_path.exists()
+    finally:
+        release.set()
+        reader.join(timeout=2.)
+    eventually(lambda: runtime.status["state"] == "ready")
+    assert runtime.configuration["process_groups"][0]["parameters"]["output_root"]
+    assert runtime.configuration != before
+    assert json.loads(runtime.settings_path.read_text()) == runtime.configuration
+
+
+@pytest.mark.parametrize("saved", [False, True])
+def test_invalid_environment_is_reported_by_worker_without_launch_or_overwrite(
+        runtime_factory, monkeypatch, saved):
+    monkeypatch.setenv("VT_DATA_ROOT", "relative-data-root")
+    runtime = runtime_factory(start=False)
+    if saved:
+        runtime.settings.save(runtime.configuration)
+    before = runtime.settings_path.read_bytes() if saved else None
+    runtime.start()
+    eventually(lambda: runtime.status["state"] == "error")
+    assert "VT_DATA_ROOT" in runtime.status["detail"]
+    assert not runtime_factory.children
+    assert (runtime.settings_path.read_bytes() if runtime.settings_path.exists() else None) == before
+
+
+def test_default_output_preparation_failure_does_not_launch_or_replace_configuration(runtime_factory):
+    runtime = runtime_factory(start=False)
+    runtime.settings.save(runtime.configuration)
+    before = runtime.settings_path.read_bytes()
+    output = Path.home() / "visiontactile-data"
+    output.parent.mkdir(parents=True)
+    output.write_text("keep")
+    runtime.start()
+    eventually(lambda: runtime.status["state"] == "error")
+    assert "默认数据目录" in runtime.status["detail"]
+    assert runtime.settings_path.read_bytes() == before
+    assert output.read_text() == "keep"
+    assert not runtime_factory.children
+
+
+@pytest.mark.parametrize("external", [False, True])
+def test_reusing_backend_never_discovers_or_saves_new_environment_candidates(
+        runtime_factory, tmp_path, monkeypatch, external):
+    first = runtime_factory()
+    eventually(lambda: first.status["state"] == "ready")
+    before = first.settings_path.read_bytes()
+    first.close()
+    if external:
+        first._registry_path.unlink()
+    camera = tmp_path / "ros2_ws/src/vt_realsense_capture/config/cameras.yaml"
+    camera.parent.mkdir(parents=True)
+    camera.write_text("# appeared after backend startup\n")
+    replacement = runtime_factory(directory=first.settings.directory, source=first.source, start=False)
+    def forbidden():
+        pytest.fail("an existing backend must not trigger startup preparation")
+    monkeypatch.setattr(replacement.settings, "prepare_for_startup", forbidden)
+    replacement.start()
+    eventually(lambda: replacement.status["state"] == ("external" if external else "ready"))
+    assert replacement.settings_path.read_bytes() == before
+    assert len(runtime_factory.children) == 1
+    assert replacement.configuration["process_groups"][0]["parameters"]["config_path"] == ""
+
+
+def test_alive_backend_with_initial_probe_failure_does_not_prepare_again(
+        runtime_factory, monkeypatch):
+    first = runtime_factory()
+    eventually(lambda: first.status["state"] == "ready")
+    before = first.settings_path.read_bytes()
+    first.close()
+    replacement = runtime_factory(directory=first.settings.directory, source=first.source, start=False)
+    original = replacement._probe
+    calls = 0
+    def probe():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("synthetic initial unavailability")
+        return original()
+    def forbidden():
+        pytest.fail("a still-alive backend must not trigger startup preparation")
+    monkeypatch.setattr(replacement, "_probe", probe)
+    monkeypatch.setattr(replacement.settings, "prepare_for_startup", forbidden)
+    replacement.start()
+    eventually(lambda: replacement.status["state"] == "ready")
+    assert calls >= 2
+    assert replacement.settings_path.read_bytes() == before
+    assert len(runtime_factory.children) == 1
+
+
 def test_start_is_nonblocking_and_close_detaches(runtime_factory):
     runtime = runtime_factory(start=False)
     before = time.monotonic()

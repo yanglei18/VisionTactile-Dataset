@@ -1,4 +1,5 @@
 {
+  "本地路径已自动准备，后台已就绪；可启动需要的设备。": "Local paths prepared automatically; backend ready. You can start the devices you need.",
   "VT_DATA_ROOT 必须是绝对目录路径；可使用 ~，不执行 shell 变量展开。": "VT_DATA_ROOT must be an absolute directory path. You may use ~; shell variables are not expanded.",
   "默认数据目录不能是符号链接：{path}": "The default data directory must not be a symbolic link: {path}",
   "默认数据目录必须为真实目录：{path}": "The default data directory must be a real directory: {path}",

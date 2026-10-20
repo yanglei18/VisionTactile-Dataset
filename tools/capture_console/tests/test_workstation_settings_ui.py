@@ -457,6 +457,66 @@ def test_device_page_configuration_and_runtime_retry_are_explicit(qapp):
     assert backend.runtime.applications == []
 
 
+@pytest.mark.parametrize("state", ["starting", "applying", "saving", "restarting", "stopping"])
+def test_configuration_cannot_open_before_runtime_finishes_preparing_paths(qapp, state):
+    backend = DemoBackend()
+    backend.runtime = Runtime()
+    backend.runtime.status.update(state=state, detail="正在自动准备本地路径")
+    window = MainWindow(backend)
+    try:
+        window._refresh_desktop_runtime()
+        assert not window.configure_devices_button.isEnabled()
+        window._open_workstation_settings()
+        assert window.settings_dialog is None
+        assert "后台准备完成" in window.operation_notice.text()
+        backend.runtime.status.update(state="ready", detail="后台已就绪")
+        window._refresh_desktop_runtime()
+        assert window.configure_devices_button.isEnabled()
+        window._open_workstation_settings()
+        assert window.settings_dialog is not None
+    finally:
+        dispose(window, qapp)
+
+
+def test_device_page_explains_automatic_paths_without_claiming_hardware_started(qapp):
+    backend = DemoBackend()
+    backend.runtime = Runtime()
+    backend.runtime.status.update(state="ready", detail="")
+    window = MainWindow(backend)
+    try:
+        window._refresh_desktop_runtime()
+        text = window.setup_callout.text()
+        assert "自动准备" in text and "启用本次需要的模块" in text
+        assert backend.runtime.applications == [] and backend.runtime.starts == 0
+        backend.runtime.status["detail"] = "已连接现有后台；其配置保持不变。"
+        window._refresh_desktop_runtime()
+        assert "已连接现有后台" in window.setup_callout.text()
+        assert "自动准备" not in window.setup_callout.text()
+    finally:
+        dispose(window, qapp)
+
+
+def test_automatic_path_ready_status_translates_without_changing_runtime(qapp):
+    from vt_capture_console import i18n
+    backend = DemoBackend()
+    backend.runtime = Runtime()
+    backend.runtime.status.update(
+        state="ready", detail="本地路径已自动准备，后台已就绪；可启动需要的设备。")
+    original = deepcopy(backend.runtime.status)
+    previous = i18n.language()
+    window = MainWindow(backend)
+    try:
+        i18n.set_language("en", persist=False)
+        window._refresh_desktop_runtime()
+        assert "Local paths prepared automatically" in window.setup_callout.text()
+        assert "enable the modules" in window.setup_callout.text()
+        assert backend.runtime.status == original
+        assert backend.runtime.applications == [] and backend.runtime.starts == 0
+    finally:
+        dispose(window, qapp)
+        i18n.set_language(previous, persist=False)
+
+
 def test_non_desktop_and_demo_have_setup_callout_not_terminal_instructions(window):
     window.navigation.button(2).click()
     window.configure_devices_button.click()

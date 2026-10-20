@@ -180,12 +180,21 @@ class _Discovery:
         self.record(group_id, key, status, value)
         return path
 
-    def site_candidates(self):
+    def tracker_sources(self):
+        """Shared installation locations for the publisher and bootstrap UI."""
+        return (self.home / ".local/share/visiontactile/pyvut-src",
+                self.root / "external/pyvut")
+
+    def tracker_venv(self):
         explicit, venv = self._explicit(("VT_PYVUT_VENV",))
-        if explicit and venv is None:
-            return (), True
         if not explicit:
             venv = self.home / ".local/share/visiontactile/pyvut-venv"
+        return venv, explicit
+
+    def site_candidates(self):
+        venv, explicit = self.tracker_venv()
+        if venv is None:
+            return (), explicit
         try:
             # Bounded to the one documented venv, with no recursive traversal.
             return tuple(sorted((venv / "lib").glob("python*/site-packages"))), explicit
@@ -216,8 +225,7 @@ class _Discovery:
 
     def tracker(self, parameters, group_id, data):
         self.select(parameters, group_id, "pyvut_source", predicate=_markers(_PYVUT_MARKERS),
-                    repair=True, environment=("VT_PYVUT_ROOT",), candidates=(
-                        self.home / ".local/share/visiontactile/pyvut-src", self.root / "external/pyvut"))
+                    repair=True, environment=("VT_PYVUT_ROOT",), candidates=self.tracker_sources())
         sites, _ = self.site_candidates()
         self.select(parameters, group_id, "pyvut_site_packages", predicate=_directory,
                     repair=True, environment=("VT_PYVUT_SITE",), candidates=sites)
@@ -226,6 +234,30 @@ class _Discovery:
                     environment=("VT_BUNDLE",), manual=True)
         self.select(parameters, group_id, "role_map_path", environment=("VT_ROLE_MAP",),
                     candidates=(data / "tracker-validation/roles.yaml",), manual=True)
+
+
+def discover_bootstrap_configuration(configuration, *, repo_root, home=None, environ=None,
+                                     replace_missing=False) -> DiscoveryResult:
+    """Suggest only initialization software, leaving private inputs untouched.
+
+    Source candidates share the publisher's structural checks. Existing explicit
+    scripts remain valid without imposing our installation layout. Callers that
+    give environment overrides final precedence apply them after this proposal.
+    """
+    local_home = Path.home() if home is None else Path(home).expanduser().absolute()
+    root = Path(repo_root).expanduser().absolute()
+    environment = dict(os.environ if environ is None else environ)
+    discovery = _Discovery(configuration, root, local_home, environment, replace_missing)
+    venv, _ = discovery.tracker_venv()
+    discovery.select(discovery.configuration, "", "python", predicate=_python,
+                     repair=True, candidates=(venv / "bin/python",) if venv else ())
+    explicit, source = discovery._explicit(("VT_PYVUT_ROOT",))
+    sources = (source,) if explicit else discovery.tracker_sources()
+    scripts = tuple(path / "scripts/live_windows_bootstrap.py" for path in sources
+                    if _matches(path, _markers(_PYVUT_MARKERS)))
+    discovery.select(discovery.configuration, "", "script", repair=True, candidates=scripts)
+    return DiscoveryResult(discovery.configuration, tuple(discovery.findings),
+                           tuple(discovery.updated_fields))
 
 
 def discover_configuration(configuration, *, repo_root, home=None, environ=None,

@@ -67,9 +67,9 @@ def read_private_json(path):
         return json.load(stream)
 
 
-def default_configuration(repo_root=None):
+def default_configuration(repo_root=None, *, discover=True):
+    """Build disabled profiles, optionally suggesting paths without writing."""
     root = Path(repo_root).expanduser().absolute() if repo_root is not None else repository_root()
-
 
     profiles = [dict(id="cameras", label="三相机与录制控制器", preset="cameras", enabled=False,
                      startup_timeout_s=45., parameters=dict(config_path="", output_root="")),
@@ -84,7 +84,9 @@ def default_configuration(repo_root=None):
         profiles.append(dict(id=hand + "_tactile", label=label + "触觉采集", preset="tactile", enabled=False,
                              startup_timeout_s=30., parameters=dict(hand=hand, port="")))
     draft = dict(disk_path="", quality_enabled=True, process_groups=profiles, scene_config_path="")
-    return validate_configuration(discover_configuration(draft, repo_root=root).configuration)
+    if discover:
+        draft = discover_configuration(draft, repo_root=root).configuration
+    return validate_configuration(draft)
 
 
 def prepare_default_output(configuration):
@@ -161,7 +163,11 @@ class WorkstationSettings:
         self.repo_root = Path(repo_root).expanduser().absolute() if repo_root is not None else repository_root()
         self.directory = private_directory(settings_dir or Path.home() / ".config/visiontactile/workbench")
         self.path = self.directory / "workstation.json"
-        self._configuration = validate_configuration(read_private_json(self.path)) if self.path.exists() or self.path.is_symlink() else default_configuration(self.repo_root)
+        # Loading settings must not depend on optional software or prepare a
+        # new launch while an existing backend may still be running.
+        self._configuration = (validate_configuration(read_private_json(self.path))
+                               if self.path.exists() or self.path.is_symlink()
+                               else default_configuration(self.repo_root, discover=False))
 
     @property
     def configuration(self):
@@ -169,6 +175,12 @@ class WorkstationSettings:
 
     def detect_environment(self, configuration):
         return discover_configuration(configuration, repo_root=self.repo_root, replace_missing=True)
+
+    def prepare_for_startup(self):
+        """Persist discovered paths only after the caller confirms no backend is alive."""
+        result = self.detect_environment(self.configuration)
+        self.save(result.configuration)
+        return result
 
     def save(self, configuration):
         value = validate_configuration(configuration)

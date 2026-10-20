@@ -10,6 +10,11 @@ release or a completed hardware acceptance run.
 
 ### Added
 
+- Automatic local-path preparation before starting a new desktop backend,
+  including saved empty fields and moved software installations. Existing
+  backend sessions keep their active settings. Tracker initialization shares the
+  same software discovery, and desktop installation remembers its Python
+  environment without requiring shell configuration on each launch.
 - Portable device-configuration defaults and a bilingual Detect Local Environment
   action. The workbench finds installed dependencies in documented locations,
   reports missing or ambiguous paths, and creates the default data directory

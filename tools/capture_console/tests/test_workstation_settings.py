@@ -82,9 +82,9 @@ def test_default_data_directory_is_created_only_when_settings_are_saved(tmp_path
     settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
     output = Path.home() / "visiontactile-data"
     assert not output.exists()
-    settings.detect_environment(settings.configuration)
+    detected = settings.detect_environment(settings.configuration)
     assert not output.exists() and not settings.path.exists()
-    settings.save(settings.configuration)
+    settings.save(detected.configuration)
     assert output.is_dir() and not output.is_symlink()
     assert output.stat().st_mode & 0o777 == 0o700
     assert settings.configuration["disk_path"] == str(output)
@@ -92,7 +92,7 @@ def test_default_data_directory_is_created_only_when_settings_are_saved(tmp_path
 
 def test_default_output_file_or_symlink_cannot_replace_saved_configuration(tmp_path):
     settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
-    settings.save(settings.configuration)
+    settings.prepare_for_startup()
     before = settings.path.read_bytes()
     output = Path.home() / "visiontactile-data"
     output.rmdir()
@@ -122,9 +122,10 @@ def test_data_root_override_is_created_on_save(tmp_path, monkeypatch):
     output = tmp_path / "data-volume/new-user/datasets"
     monkeypatch.setenv("VT_DATA_ROOT", str(output))
     settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
-    assert settings.configuration["process_groups"][0]["parameters"]["output_root"] == str(output)
+    detected = default_configuration(tmp_path / "repo")
+    assert detected["process_groups"][0]["parameters"]["output_root"] == str(output)
     assert not output.exists()
-    settings.save(settings.configuration)
+    settings.save(detected)
     assert output.is_dir() and output.stat().st_mode & 0o777 == 0o700
 
 
@@ -155,6 +156,106 @@ def test_existing_settings_wait_for_explicit_environment_detection(tmp_path):
     assert detected.configuration["process_groups"][0]["parameters"]["config_path"] == str(camera)
     assert loaded.path.read_bytes() == before
     assert loaded.configuration["process_groups"][0]["parameters"]["config_path"] == ""
+
+
+def test_constructor_defers_environment_discovery_and_output_creation(tmp_path, monkeypatch):
+    monkeypatch.setenv("VT_DATA_ROOT", "invalid-relative-default")
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    assert settings.configuration["disk_path"] == ""
+    assert settings.configuration["scene_config_path"] == ""
+    assert all(not group["enabled"] for group in settings.configuration["process_groups"])
+    assert settings.configuration["process_groups"][0]["parameters"]["output_root"] == ""
+    assert not settings.path.exists()
+    assert not (Path.home() / "visiontactile-data").exists()
+    with pytest.raises(ValueError, match="VT_DATA_ROOT"):
+        settings.prepare_for_startup()
+    assert not settings.path.exists()
+
+
+def test_first_startup_prepares_and_persists_paths_without_enabling_modules(tmp_path):
+    root = tmp_path / "repo"
+    camera = root / "ros2_ws/src/vt_realsense_capture/config/cameras.yaml"
+    camera.parent.mkdir(parents=True)
+    camera.write_text("# test template\n")
+    settings = WorkstationSettings(root, tmp_path / "private")
+    result = settings.prepare_for_startup()
+    output = Path.home() / "visiontactile-data"
+    assert output.is_dir() and output.stat().st_mode & 0o777 == 0o700
+    assert result.configuration == settings.configuration == json.loads(settings.path.read_text())
+    assert settings.configuration["process_groups"][0]["parameters"] == {
+        "config_path": str(camera), "output_root": str(output),
+    }
+    assert ("cameras", "config_path") in result.updated_fields
+    assert not any(group["enabled"] for group in settings.configuration["process_groups"])
+    assert settings.prepare_for_startup().updated_fields == ()
+
+
+def test_next_startup_fills_saved_empty_paths_and_preserves_existing_settings(tmp_path):
+    root = tmp_path / "repo"
+    settings = WorkstationSettings(root, tmp_path / "private")
+    value = settings.configuration
+    value["quality_enabled"] = False
+    value["process_groups"][2]["label"] = "保留名称"
+    value["process_groups"][2]["parameters"]["config"] = "/chosen/calibration.json"
+    settings.save(value)
+    before = settings.path.read_bytes()
+    local = Path.home() / "visiontactile-data/config/cameras.yaml"
+    local.parent.mkdir(parents=True)
+    local.write_text("# operator config\n")
+    loaded = WorkstationSettings(root, settings.directory)
+    assert loaded.path.read_bytes() == before and loaded.configuration == value
+    loaded.prepare_for_startup()
+    actual = loaded.configuration
+    assert actual["process_groups"][0]["parameters"]["config_path"] == str(local)
+    assert actual["quality_enabled"] is False
+    assert actual["process_groups"][2]["label"] == "保留名称"
+    assert actual["process_groups"][2]["parameters"]["config"] == "/chosen/calibration.json"
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_startup_repairs_only_unique_software_candidates_and_keeps_valid_choice(tmp_path, ambiguous):
+    root = tmp_path / "repo"
+    replacement = root / ".venv-glove/bin/python"
+    replacement.parent.mkdir(parents=True)
+    replacement.write_text("fixture")
+    replacement.chmod(0o700)
+    chosen = tmp_path / "chosen/bin/python"
+    chosen.parent.mkdir(parents=True)
+    chosen.write_text("fixture")
+    chosen.chmod(0o700)
+    if ambiguous:
+        other = root / ".venv-fsglove/bin/python"
+        other.parent.mkdir(parents=True)
+        other.write_text("fixture")
+        other.chmod(0o700)
+    settings = WorkstationSettings(root, tmp_path / "private")
+    value = settings.configuration
+    old = str(tmp_path / "old-machine/bin/python")
+    value["process_groups"][2]["parameters"]["glove_python"] = old
+    value["process_groups"][3]["parameters"]["glove_python"] = str(chosen)
+    settings.save(value)
+    result = settings.prepare_for_startup()
+    assert settings.configuration["process_groups"][2]["parameters"]["glove_python"] == (
+        old if ambiguous else str(replacement))
+    assert settings.configuration["process_groups"][3]["parameters"]["glove_python"] == str(chosen)
+    assert any(item.group_id == "right_glove" and item.key == "glove_python"
+               and item.status == ("ambiguous" if ambiguous else "ready")
+               for item in result.findings)
+
+
+def test_failed_startup_preparation_does_not_replace_previous_configuration(tmp_path):
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    settings.save(settings.configuration)
+    before = settings.path.read_bytes()
+    original = settings.configuration
+    output = Path.home() / "visiontactile-data"
+    output.parent.mkdir(parents=True)
+    output.write_text("unrelated")
+    with pytest.raises(ValueError, match="真实目录"):
+        settings.prepare_for_startup()
+    assert settings.path.read_bytes() == before
+    assert settings.configuration == original
+    assert output.read_text() == "unrelated"
 
 
 def test_private_atomic_save_roundtrip_and_copy_isolation(tmp_path):

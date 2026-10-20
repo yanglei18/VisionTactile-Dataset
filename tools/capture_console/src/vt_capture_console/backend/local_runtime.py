@@ -506,10 +506,12 @@ class DesktopRuntime:
                         self._status_update("ready", "已连接原有工作台后台；设备不会自动启动。")
                     return
                 self._clean_owned_socket(record)
-                with self._lock:
-                    self.settings.save(self.settings.configuration)
+                # The task queue serializes configuration writers. Settings
+                # publishes a new value only after atomic persistence, so UI
+                # reads keep the previous complete value during slow discovery.
+                self.settings.prepare_for_startup()
                 if self._launch():
-                    self._status_update("ready", "本地后台已就绪；请配置并手动启动需要的设备。")
+                    self._status_update("ready", "本地路径已自动准备，后台已就绪；可启动需要的设备。")
             else:
                 if self._is_owned(record, snapshot, pid):
                     self._remember_ready(record, snapshot)

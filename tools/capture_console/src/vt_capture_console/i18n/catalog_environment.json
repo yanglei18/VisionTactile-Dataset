@@ -1,5 +1,8 @@
 {
   "检测本机环境": "Detect Local Environment",
+  "请等待后台准备完成，再打开设备配置。": "Wait for backend preparation to finish before opening device settings.",
+  "新后台启动前会自动准备本地路径；需要时可调整配置，再按需启动设备。": "Local paths are prepared automatically before a new backend starts. Adjust settings if needed, then start the devices you need.",
+  "在“配置设备”启用本次需要的模块，再选择模块启动。": "In Configure Devices, enable the modules needed for this session, then select a module to start.",
   "补全本机路径，仅修改当前表单；保存并应用后生效。不会连接设备。": "Fill local paths in this form. Changes take effect after Save and Apply. No devices are connected.",
   "已找到本机路径：{path}": "Found locally: {path}",
   "请核对配置中的相机序列号与本机设备一致。": "Check that the camera serial numbers in the configuration match this computer's devices.",

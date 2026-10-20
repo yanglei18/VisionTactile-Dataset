@@ -85,13 +85,13 @@ Chinese mode uses Chinese action labels, built-in device categories, Tracker rol
 
 也可以通过 `vt-capture-console --desktop --language en` 或 `vt-capture-console --demo --language en` 指定本次新窗口的语言；中文使用 `--language zh_CN`。工作台外部独立启动的原标定工具保留其自身的语言设置。
 
-一次性部署完成后，在应用菜单或桌面双击 **Vision Tactile 采集工作台**。不用先打开终端、启动后台或手改 YAML。桌面入口会连接本工作台已有后台，或启动一个新的本机后台；**不会自动启动传感器、初始化 Tracker 或录制**。
+一次性部署完成后，在应用菜单或桌面双击 **Vision Tactile 采集工作台**。不用先打开终端、启动后台或手改 YAML。每次启动新的本机后台前，程序自动检测、补全并保存可确定的本地路径；连接已有后台时保持其配置不变。**不会自动启动传感器、初始化 Tracker 或录制**。
 
 第一次使用按下面的顺序操作：
 
-1. 进入 **设备 → 配置设备**。只勾选需要的模块；未使用的左手、触觉或 Tracker 可以保持禁用。
-2. 点击 **检测本机环境**，核对自动补全的路径。在“相机”页选择已填写本机设备身份的配置和数据输出目录；在“追踪器”页确认启动 bundle、角色映射、扩展 PyVUT 源码与其 `site-packages` 目录。在“右手／左手”页选择各自的 IMU、触觉串口及手套模型、Python 和配置路径。**刷新串口列表只枚举端口，不会连接；不会猜测某个串口属于哪只手。**
-3. 点击 **保存并应用**，等待提示配置已应用。它只更新并重启空闲管理后台，不会启动设备。已有工作台设备运行或录制未结束时，先停录、停止相关模块，再应用配置。
+1. 等待本地路径自动准备、后台就绪。设备配置已经保存且身份未变时，可以直接到第 4 步启动设备，无需重复检测或保存路径。
+2. 首次绑定设备或需要调整时，进入 **设备 → 配置设备**，只启用本次需要的模块。在“相机”页核对本机设备配置；在“追踪器”页确认启动 bundle 和角色映射；在“右手／左手”页选择各自的 IMU、触觉串口。软件路径自动填入，仍有缺项时查看字段提示；**检测本机环境** 可手动复检。**刷新串口列表只枚举端口，不会连接；不会猜测某个串口属于哪只手。**
+3. 修改后点击 **保存并应用**，等待配置已应用。它只更新并重启空闲管理后台，不会启动设备。已有工作台设备运行或录制未结束时，先停录、停止相关模块，再应用配置。
 4. 回到设备页，选择模块，点击 **启动**。相机组启动三相机和录制控制器；触觉组启动指定手的采集节点；手套组同时打开原 FSGlove 标定窗口并启动 ROS 桥接。在原窗口中完成连接、归零和标定。
 5. Tracker 尚未初始化时，先用 **标定与离线工具 → Tracker 初始化向导**；完成后点击 **启动读取并查看 Tracker**。已有连续有效位姿时，不需要为了使用工作台而重做初始化或配对。
 6. 在“预览”查看所需数据源。然后进入 **录制**，创建或选择批次，填写试次名称、录制时长，点击 **开始录制**。等待结束或在录制页手动停止。
@@ -102,13 +102,13 @@ Chinese mode uses Chinese action labels, built-in device categories, Tracker rol
 
 ### 默认路径与迁移配置
 
-首次创建工作台配置时，程序会从当前仓库和标准本机目录发现可用路径，数据输出默认为 `~/visiontactile-data`，也可用启动环境中的 `VT_DATA_ROOT` 指定默认目录。默认目录在 **保存并应用** 时创建；打开表单或检测时不创建。已有有效选择不会被默认值或环境变量覆盖。
+每次启动新的本机后台前，程序会从当前仓库和标准本机目录发现可用路径并保存，无需先进入配置窗口。数据输出默认为 `~/visiontactile-data`，也可用启动环境中的 `VT_DATA_ROOT` 指定默认目录；缺少的默认目录在后台准备阶段创建。已有有效选择不会被默认值或环境变量覆盖，连接已有后台不会改写其配置。
 
-迁移旧配置后，点击 **检测本机环境** 可补齐空项，并在候选唯一时修复失效的软件路径。检测只修改当前表单，核对后保存；取消不写配置。相机配置、Tracker 启动包、角色映射和标定配置若已填写但失效，会保留原值并提示手动选择。多个候选不会自动取第一个，串口不会自动分配。底部只汇总已启用模块的必需缺项；悬停字段可查看详情。
+迁移旧配置也使用上述自动准备流程，在候选唯一时修复失效的软件路径。**检测本机环境** 保留为手动复检：只修改当前表单，核对后保存；取消不写配置。相机配置、Tracker 启动包、角色映射和标定配置若已填写但失效，会保留原值并提示手动选择。多个候选不会自动取第一个，串口不会自动分配。底部只汇总已启用模块的必需缺项；悬停字段可查看详情。
 
 检测只检查路径和文件结构，不安装依赖、不连接硬件。缺少 FSGlove、扩展 PyVUT 或获准使用的 MANO 时，仍需完成对应模块部署。标准目录、环境变量与新机操作步骤见[中文部署指南](../../docs/deployment.zh-CN.md#local-paths)。
 
-On a fresh workstation, known local paths are discovered automatically. The default data directory is `~/visiontactile-data`, or `VT_DATA_ROOT` from the launch environment; **Save and Apply** creates that default directory. For migrated settings, use **Detect Local Environment** to fill empty fields and repair missing software paths when one valid candidate exists. Review and save the form to persist changes. Valid selections, device configuration identities and manual serial assignments remain under your control. Detection checks filesystem metadata without installing dependencies or connecting hardware. See the [English deployment guide](../../docs/deployment.md#local-paths) for standard locations, environment variables and migration steps.
+Before each new local backend starts, local paths are discovered, filled and saved automatically, including for migrated settings. The default data directory, `~/visiontactile-data` or `VT_DATA_ROOT`, is created if needed. Connecting to an existing backend preserves its configuration. **Detect Local Environment** remains a manual recheck; its form changes require **Save and Apply**. Valid selections, device identities and manual serial assignments are preserved. Detection does not install dependencies or connect hardware, and devices still start through an explicit action. See the [English deployment guide](../../docs/deployment.md#local-paths) for standard locations, environment variables and migration steps.
 
 ### 采集计划与录前核对
 
@@ -352,6 +352,8 @@ bash tools/capture_deploy/install.sh
 ```
 
 安装器创建独立 `.venv-capture-console`，安装 PySide6、共享协议、触觉包和工作台，并添加当前用户的应用菜单／桌面入口。GUI 仅导入触觉包的纯 Python 布局模块和 JSON 资源，不加载其 ROS 节点、串口驱动或 PyQt5 窗口。不修改手套虚拟环境，不安装开机服务，不连接传感器。首次安装需要联网下载依赖。ROS 与硬件专用环境仍需按对应手册完成部署。
+
+桌面入口会记住安装时实际使用的工作台 Python，包括通过 `VT_CONSOLE_PYTHON` 选择的已有环境；以后双击启动无需重复设置该变量。其他 `VT_*` 变量不会一并写入桌面入口。
 
 迁移仓库后重新运行安装器可更新桌面入口路径。也可从文件管理器运行 `tools/capture_deploy/start_workbench.sh`；相同入口的维护命令为 `bash tools/capture_deploy/start_workbench.sh`。
 

@@ -63,8 +63,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 12968,
-      "sha256": "f36148cb354b332e7f9bdd1e7af82533875d0fde182bc4fad72ee0ecdb1c2e54"
+      "bytes": 13338,
+      "sha256": "c722ec2851696f74c23d016dde4a36d92e614d023039e18c6b18d27670c6e2de"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -133,13 +133,13 @@
     },
     {
       "path": "docs/deployment.md",
-      "bytes": 31754,
-      "sha256": "f03009fc1318cb2a8fc61775e6a7a38ad5c6ac0356078b3a496885fee1407c2e"
+      "bytes": 32505,
+      "sha256": "6c6f17333f25bf6c20fa7bd679b579cc440c3ec21993df1acfc4a125ca33ee83"
     },
     {
       "path": "docs/deployment.zh-CN.md",
-      "bytes": 26828,
-      "sha256": "88af928fa0c54957720f2ca3b5b50f4b9af38ccc3c6271203b3a865f9449a00c"
+      "bytes": 27529,
+      "sha256": "f062ec902d0a5a2e1fef35620c33574127ddd7768588a670f9618098be7841fd"
     },
     {
       "path": "docs/hardware-reference.md",
@@ -1943,8 +1943,8 @@
     },
     {
       "path": "tools/capture_console/README.md",
-      "bytes": 83338,
-      "sha256": "fb91560c9b6743f937d7e3344e4d2ac6dd22f8853563fabca73a949280b77696"
+      "bytes": 83729,
+      "sha256": "804160993dc4f977d46a518f5ede3c3e7942b7e3312941ebe8162d7a6332c9bc"
     },
     {
       "path": "tools/capture_console/THIRD_PARTY_NOTICES.md",
@@ -2008,8 +2008,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/environment_discovery.py",
-      "bytes": 12684,
-      "sha256": "df97906185f7a9fc7432350dcd4e9da7b41181222655acac3776314b7927f2fa"
+      "bytes": 14430,
+      "sha256": "fa7ee3a7a4781eb3cf51807c80356fd795fe3025999447d8ec327ce9c4a14d81"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/glove_calibration.py",
@@ -2023,8 +2023,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/local_runtime.py",
-      "bytes": 32410,
-      "sha256": "c353d73b43a8e6e6f817f72fec8f967e68ee7e4b62ed403d49c6b18bec4a1f22"
+      "bytes": 32603,
+      "sha256": "056239d388b525aceb2ff01d87b2a188c4f6995405642ded4c130c18d091366e"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/operation_receipts.py",
@@ -2088,23 +2088,23 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/tracker_settings.py",
-      "bytes": 8480,
-      "sha256": "915dfc0b1fac61402b0fce9d20f2d5dfac84b4d13c8a5d93eaac079df5363a34"
+      "bytes": 8759,
+      "sha256": "50f8209ab52ac3cb2ef78a91fbd16d0c83eac9efba25aad8570f637c55a073d0"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/tracker_workflow.py",
-      "bytes": 19268,
-      "sha256": "884acebaf77c076a321c1e7f14d4898b48d13057ed77524d99539a6c9f699a53"
+      "bytes": 19208,
+      "sha256": "4f18c695b5cefb978b4734975c2090028c7325c19620ee255b1002d98907c504"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/workstation_settings.py",
-      "bytes": 7742,
-      "sha256": "5fbec011dfd9b754b416231895cd21afeeb7e868c0b1f5772538f2d6de86c769"
+      "bytes": 8354,
+      "sha256": "7bff864a167ce958ec732c54014402f1ca1cab08438eda988c2db94c00ea76ca"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/desktop_entry.py",
-      "bytes": 3278,
-      "sha256": "ac59c28af568b5baa30915541729b1c2148fd598fc8207cf493425b8bbffa2bc"
+      "bytes": 4080,
+      "sha256": "ebf4b7bd72d31000f26213ae04458777a9e69908e427189a067cdae9e8303ad6"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/i18n/__init__.py",
@@ -2153,8 +2153,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_diagnostics_environment.json",
-      "bytes": 652,
-      "sha256": "4c8aa96bd59f80ded9ef58c8de486e2427c8fb6fd4d2c27917bb72d84019f3f4"
+      "bytes": 823,
+      "sha256": "569ff2e4919199ed5d127fb2f7a9641774ed5f5dd79d4be3c742c6a3f65aabd1"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_diagnostics_management.json",
@@ -2168,8 +2168,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_environment.json",
-      "bytes": 1296,
-      "sha256": "84c9ac5d9990860d089bfb6795b61a2d9deddfc5f42471fb412e1dd5fd898fbc"
+      "bytes": 1847,
+      "sha256": "eed8374aa553fe1c0d882ef834f9c44ea42f4bd642d0834e4079a6598af2c47c"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_extra.json",
@@ -2333,8 +2333,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/main_window.py",
-      "bytes": 62930,
-      "sha256": "d61b258c862e89cc04a8d4ef5c6648b510e9965057c4695bcfd16083c778e3e3"
+      "bytes": 63163,
+      "sha256": "f40d831341a60814a2242579ef14dfd8ae0e16c39d95b660b95c539300079ac7"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/tactile_window.py",
@@ -2588,8 +2588,8 @@
     },
     {
       "path": "tools/capture_console/tests/test_desktop_entry.py",
-      "bytes": 1711,
-      "sha256": "e1b9a89f78b70f4b9d31bbfc7e209d1f27107c0646fdbfd5a6921830f49a65e3"
+      "bytes": 4704,
+      "sha256": "1b580311c5849fe3d2848acece83b6f7a4a0cf6d7383beccc4f61e74fe7728ab"
     },
     {
       "path": "tools/capture_console/tests/test_desktop_tools.py",
@@ -2618,8 +2618,8 @@
     },
     {
       "path": "tools/capture_console/tests/test_environment_diagnostics.py",
-      "bytes": 5215,
-      "sha256": "eccfc76c894188e44ae4e56c23b31e65de406f8d2236734e8f2ad9b60deb968e"
+      "bytes": 5205,
+      "sha256": "82ca8e0a1f5aca0828ddb6cb489e11520e0c1258a00694c36e09256eae69b355"
     },
     {
       "path": "tools/capture_console/tests/test_environment_discovery.py",
@@ -2698,8 +2698,8 @@
     },
     {
       "path": "tools/capture_console/tests/test_local_runtime.py",
-      "bytes": 35688,
-      "sha256": "308bca1ed8c55ccb212731704c59be7ecb52740084be9612a4f9367e99dc339a"
+      "bytes": 41700,
+      "sha256": "87b0692a6d7b8efa8d57463e89253b87516162988479a1b12435af395111b914"
     },
     {
       "path": "tools/capture_console/tests/test_managed_workflow.py",
@@ -2892,6 +2892,11 @@
       "sha256": "9d314139eecf80f309f067b6980591c50a08da589f1987e6be1efd86f2d54806"
     },
     {
+      "path": "tools/capture_console/tests/test_tracker_environment.py",
+      "bytes": 8911,
+      "sha256": "4a975c09d8c1119b6182b2ac47a2dca112b94d95027ed4112c3cbf51dbb1e898"
+    },
+    {
       "path": "tools/capture_console/tests/test_tracker_settings.py",
       "bytes": 10626,
       "sha256": "293fa63fa10d3bb21b296b0a129cc597081df98eedc2270f17f452f9929976fb"
@@ -2938,13 +2943,13 @@
     },
     {
       "path": "tools/capture_console/tests/test_workstation_settings.py",
-      "bytes": 12366,
-      "sha256": "5ebea343e5a3ca9df4df24dab71a3ef59e7bdc84514db9fc189fc0932beca5dc"
+      "bytes": 17319,
+      "sha256": "4cfa96ac7b85ea85722a139a42172e4579f3e760be3128d1ee694da4addae81a"
     },
     {
       "path": "tools/capture_console/tests/test_workstation_settings_ui.py",
-      "bytes": 22664,
-      "sha256": "442855ec7e7904913c50764cb601a322d715a9e7189381465c385abaa836db20"
+      "bytes": 25347,
+      "sha256": "052c68a94e189623c0df94280613a6ad53f1dfecb4e9c44a18dae3548b395740"
     },
     {
       "path": "tools/capture_deploy/REALSENSE_USB.md",
@@ -2958,8 +2963,8 @@
     },
     {
       "path": "tools/capture_deploy/install.sh",
-      "bytes": 973,
-      "sha256": "ae3024072c9fe9d247da6dbf7f5e35eeba1f7305b9545d2558493f29ffc21d0b"
+      "bytes": 1217,
+      "sha256": "98ddb602b3e060b2d5d832033094b1d1b85e6f2a0aa96e2d8e7bfedf05a8182e"
     },
     {
       "path": "tools/capture_deploy/run_alignment.sh",
@@ -2995,6 +3000,11 @@
       "path": "tools/capture_deploy/tests/test_configure_realsense_usb.py",
       "bytes": 5260,
       "sha256": "01914bff01aeff105ecf89cfcbc37f5a3026047fa195be75192129c2877001ab"
+    },
+    {
+      "path": "tools/capture_deploy/tests/test_install_console.py",
+      "bytes": 1679,
+      "sha256": "72bbdd4f4128946323d27818586cc623274d0dc247ec50022cef80b1dd7dac7c"
     },
     {
       "path": "tools/capture_deploy/tests/test_serial_session.py",

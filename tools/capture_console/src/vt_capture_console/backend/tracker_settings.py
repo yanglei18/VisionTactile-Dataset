@@ -3,7 +3,8 @@
 Only file locations and the explicit capture digest are persisted. Credential
 contents, command results and execution-approval checkboxes are not settings.
 Opening/saving does not hash a capture, launch a process, read a bundle, access
-HID, or use the network. Missing model/input paths remain visible for repair.
+HID, or use the network. Missing private inputs remain visible for repair;
+missing software paths can use a unique standard local installation.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import uuid
 
 from .tracker_workflow import (BootstrapConfig, bootstrap_environment_overrides,
                                detect_defaults)
+from .environment_discovery import discover_bootstrap_configuration
 from .workstation_settings import repository_root
 
 FIELDS = frozenset(("python", "script", "capture", "bundle", "expected_sha256"))
@@ -183,5 +185,7 @@ class TrackerBootstrapSettings:
         if workstation_bundle:
             values["bundle"] = workstation_bundle
         values.update(saved)
+        values = discover_bootstrap_configuration(
+            values, repo_root=self.repo_root, environ={}, replace_missing=True).configuration
         values.update(bootstrap_environment_overrides())
         return values

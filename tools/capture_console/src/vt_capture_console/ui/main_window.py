@@ -471,6 +471,9 @@ class MainWindow(QMainWindow):
             self._notice(tr('演示模式只模拟流程，不保存设备配置；请从桌面工作台入口打开配置。') if self.demo else
                          tr('请从桌面工作台入口打开配置；此连接不拥有本地后台，不能修改其设置。'))
             return
+        if runtime_busy(runtime):
+            self._notice(tr('请等待后台准备完成，再打开设备配置。'))
+            return
         if self.settings_dialog is not None and self.settings_dialog.isVisible():
             self.settings_dialog.raise_()
             self.settings_dialog.activateWindow()
@@ -507,15 +510,16 @@ class MainWindow(QMainWindow):
         runtime = getattr(self.backend, "runtime", None)
         self.retry_backend_button.setVisible(runtime is not None)
         self.backend_log_button.setVisible(runtime is not None)
+        self.configure_devices_button.setEnabled(runtime is None or not runtime_busy(runtime))
         if runtime is None:
             text = (tr('演示设备控制仅在内存中运行，不保存设置。真实配置请从桌面工作台入口打开。') if self.demo else
                     tr('从桌面工作台入口打开配置。当前连接仅展示已有后台；进程启停与数据有效性分开判断。'))
         else:
             status = runtime.status or {}
-            text = diagnostic(status.get("detail", "")) or tr('先配置设备，再按需启动进程组；保存配置不会自动连接设备。')
+            text = diagnostic(status.get("detail", "")) or tr('新后台启动前会自动准备本地路径；需要时可调整配置，再按需启动设备。')
             if status.get("state") == "ready" and not any(
                     group.get("enabled") for group in runtime.configuration.get("process_groups", ())):
-                text = tr('后台已就绪。先点击“配置设备”启用本次需要的模块，再选择模块启动。')
+                text += " " + tr('在“配置设备”启用本次需要的模块，再选择模块启动。')
             self.retry_backend_button.setEnabled(not runtime_busy(runtime))
         self.setup_callout.setText(text)
         self.setup_callout.setToolTip(text + tr('\n相机标定在本窗口内进行；关闭旧手套标定窗口可能停止其解算。'))
