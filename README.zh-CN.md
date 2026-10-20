@@ -4,7 +4,7 @@
 ![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-22314E.svg)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 
-[English](README.md) · [桌面工作台](tools/capture_console/README.md) ·
+[English](README.md) · [新电脑部署](docs/deployment.zh-CN.md) · [桌面工作台](tools/capture_console/README.md) ·
 [用户手册](docs/user-manual.md) · [接口参考](docs/interface-reference.md)
 
 VisionTactile-Dataset 提供 ROS 2 采集、桌面工作台和离线对齐，面向两台 D405、
@@ -45,7 +45,7 @@ VisionTactile-Dataset 提供 ROS 2 采集、桌面工作台和离线对齐，面
 - 手势与触觉支持左右手独立启用，保留单手、仅手势、仅触觉与混合模式；操作见
   [双手启动说明](ros2_ws/src/vt_glove_bridge/README.md#22-单手双手和仅触觉统一入口)。
   左手硬件映射/精度仍待实测，未配置左触觉布局时默认显示原始矩阵。
-- 新增联合空间页面：三个 Tracker 在原生公共坐标系中显示；相机身份和外参核验通过后显示三维机身与视锥，支持轨迹、图层、冻结与独立窗口。见[空间配置与操作](tools/capture_console/README.md#联合空间可视化)。
+- 新增联合空间页面：三个 Tracker 在原生公共坐标系中显示；相机身份和外参核验通过后显示三维机身与视锥，支持轨迹、图层、冻结与独立窗口。见[空间配置与操作](tools/capture_console/README.md#三维联合可视化)。
 - [档案兼容回放](tools/capture_console/README.md#档案兼容回放)直接嵌入档案页，默认进入“空间”，不设独立“预览”页；在“话题详情”按包内实际 Topic 浏览图像、位姿、触觉或消息字段。缺失数据与质量告警保留提示，不阻断已有数据；切换话题保留播放时间。
 - [采集计划](tools/capture_console/README.md#采集计划与录前核对)通过 IPC v5 展示当前实际录制清单，
   默认按可用数据录制，未连接 Tracker 等设备不阻止开始；启动时冻结已接收流供质检检查缺失。
@@ -98,7 +98,7 @@ CameraInfo、时序、Tracker 及可选数据源保留 **best_effort** 默认值
 工作台与直接启动三相机共用包内 Fast DDS 传输配置，每个 participant 使用有界的
 64 MiB 共享内存段；用户显式指定的中间件和传输配置优先。更新后需要停止设备、
 重载后台再启动设备，已运行进程不会自动重载 DDS 配置。可靠传输和缓冲不能代替
-实际图像完整性验收，见[采集指南](docs/capture-guide.md#camera-image-transport)。
+实际图像完整性验收，见[采集指南](docs/capture-guide.zh-CN.md#相机图像传输)。
 
 `COMPLETE = Recorder process lifecycle complete; it is not a data-quality claim.`
 也就是说，`COMPLETE` 只表示 Recorder 进程生命周期完整，不是数据质量声明。
@@ -131,14 +131,14 @@ session 描述不在 bag 中。
 这是六路图像流的算术规划值。控制器启动录制前另按计划时长、10% 消息／容器
 余量与停止预留检查可用容量；录制中空间过低或查询失败时提前停止并收尾。
 默认 300 秒需要约 129.73 GiB，追加 Topic 的容量估计需显式配置。
-容量保护不代表写入吞吐量或录制质量已通过验证，详见[采集指南](docs/capture-guide.md)。
+容量保护不代表写入吞吐量或录制质量已通过验证，详见[采集指南](docs/capture-guide.zh-CN.md)。
 
 ## 快速开始
 
 ### 1. 获取源码和固定版本的 submodule
 
 ```bash
-git clone --recurse-submodules \
+git clone --branch source-preview-20261019 --recurse-submodules \
   https://github.com/yanglei18/VisionTactile-Dataset.git
 cd VisionTactile-Dataset
 export VT_REPO="$(pwd -P)"
@@ -154,28 +154,9 @@ checkout；许可边界见[第三方说明](THIRD_PARTY_NOTICES.md)。数据和�
 
 ### 2. 安装依赖并构建 ROS 工作区
 
-使用 Ubuntu 24.04，先完成 ROS 2 Jazzy 安装，再运行：
+新电脑请先完成[部署指南第 2–6 节](docs/deployment.zh-CN.md#ubuntu)：包含 ROS 官方软件源、Jazzy、固定的 RealSense wrapper `4.58.1` / SDK `2.58.1`、驱动工作区、主系统构建和验证。不要用未锁版本的 apt 包替代固定驱动。本文克隆命令明确选择当前预览分支，保留的 `main` 不代表本次源码。
 
-```bash
-sudo apt update
-sudo apt install -y git python3-colcon-common-extensions python3-venv \
-  python3-yaml python3-tk libegl1 libgl1 libxkbcommon0 libxcb-cursor0 \
-  fonts-noto-cjk ros-jazzy-realsense2-camera ros-jazzy-ros2bag \
-  librealsense2-utils fio
-source /opt/ros/jazzy/setup.bash
-# 若本机尚未初始化 rosdep，先执行一次 sudo rosdep init。
-rosdep update
-rosdep install --from-paths "${VT_WS}/src" --ignore-src -r -y --rosdistro jazzy
-cd "${VT_WS}"
-colcon build --event-handlers console_direct+
-source install/setup.bash
-colcon test --event-handlers console_direct+
-colcon test-result --all --verbose
-```
-
-ROS 使用系统 Python，不在 Conda 中构建或运行。桌面 Qt 和手势模型各自使用独立
-环境，不要把 PySide6、PyQt5、PyTorch 混装到 ROS Python。软件测试通过后，仍需针对
-自己的硬件完成采集和数据质量验收。
+已有匹配环境时，按[构建步骤](docs/deployment.zh-CN.md#build)重新构建。ROS 使用系统 Python，桌面 Qt 与手势模型分别使用独立环境。首次安装、权限检查和迁移以部署指南为统一入口，避免拼接不同版本的安装命令。
 
 ### 3. 安装桌面入口并先运行无硬件演示
 
@@ -187,7 +168,7 @@ bash tools/capture_deploy/start_demo.sh
 
 安装器建立 `.venv-capture-console` 和当前用户的应用菜单／桌面入口，不连接传感器、
 不下载许可模型，也不注册开机服务。仅看演示时可先不安装或构建 ROS，只需上一步的
-Python venv 与 Qt 系统依赖；演示数据是合成数据，不录制 bag。
+[基础 Python／Qt 系统依赖](docs/deployment.zh-CN.md#ubuntu)；演示数据是合成数据，不录制 bag。
 
 真实工作台需要已构建的 ROS 工作区。关闭演示后运行：
 
@@ -230,6 +211,7 @@ Tracker 向导仅保存本机输入路径与抓包指纹，不保存批准勾选
 source /opt/ros/jazzy/setup.bash
 source "${VT_WS}/install/setup.bash"
 ros2 launch vt_realsense_capture triple_realsense.launch.py \
+  config_path:="${VT_DATA_ROOT}/config/cameras.yaml" \
   output_root:="${VT_DATA_ROOT}"
 ```
 
@@ -240,7 +222,7 @@ Recorder allowlist 和对齐输入。离线工具已有手套／触觉专用校�
 
 ## 测试与公开发布准备
 
-按 [CONTRIBUTING.md](CONTRIBUTING.md) 建立隔离环境，分别运行 ROS、工作台和离线
+按 [中文开发指南](CONTRIBUTING.zh-CN.md) 建立隔离环境，分别运行 ROS、工作台和离线
 pytest 测试；Tk GUI 测试需要桌面或 Xvfb，Qt 无硬件测试使用 `offscreen`。
 合成数据测试和界面测试不是整套真实硬件已经验收的证据。
 
@@ -256,13 +238,16 @@ python3 tools/release/prepare_release.py check
 
 ## 文档
 
+- [新电脑部署指南（Ubuntu 主系统／Windows 独立工具）](docs/deployment.zh-CN.md) · [English](docs/deployment.md)
+- [相机 USB 权限、缓冲检查与撤销](tools/capture_deploy/REALSENSE_USB.md)
+
 - [桌面安装、设备配置、预览、试次与质检](tools/capture_console/README.md)
 - [最终用户手册](docs/user-manual.md)
 - [启动参数、Topic、QoS 与命令行接口参考](docs/interface-reference.md)
 - [架构与统一 21 topic 契约](docs/architecture.md)
-- [采集指南](docs/capture-guide.md)
+- [采集指南](docs/capture-guide.zh-CN.md)
 - [硬件参考](docs/hardware-reference.md)
-- [故障排查](docs/troubleshooting.md)
+- [故障排查](docs/troubleshooting.zh-CN.md)
 - [VIVE Tracker ROS 2 发布与验收](docs/tracker-ros2-publisher.md)
 - [Tracker 与 RealSense 离线外参标定](docs/tracker-camera-calibration.md)
 - [Tracker–RealSense 外参标定一本式产品操作手册](tools/tracker_camera_calibration/README.md)
@@ -274,7 +259,7 @@ python3 tools/release/prepare_release.py check
 - [独立双语触觉可视化工具与 Windows 源码构建](tools/tactile_viewer_windows/README.md)
 - [维护者发布检查表](docs/release-checklist.md)
 - [源码检查与导出](tools/release/README.md)
-- [开发与测试](CONTRIBUTING.md) · [变更记录](CHANGELOG.md) · [安全报告](SECURITY.md)
+- [开发与测试](CONTRIBUTING.zh-CN.md) · [变更记录](CHANGELOG.md) · [安全报告](SECURITY.md)
 
 ## 范围与限制
 
@@ -295,7 +280,7 @@ FSGlove 的 ROS 桥接和工作台显示已接入，但不能据此宣称原型�
 
 ## 贡献
 
-软件测试和文档要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。敏感缺陷请按
+软件测试和文档要求见 [中文开发指南](CONTRIBUTING.zh-CN.md)。敏感缺陷请按
 [SECURITY.md](SECURITY.md) 中的私密流程报告。
 
 ## 许可证

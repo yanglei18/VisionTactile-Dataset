@@ -144,6 +144,8 @@ Recorder 生命周期仍可能进入 `COMPLETE`，但 `inspect` 会明确拒绝�
 
 ## 5. 安装
 
+新电脑先完成[主系统部署与构建](../../docs/deployment.zh-CN.md#build)（[English](../../docs/deployment.md#build)）。下文加载已构建的工作区，只安装独立对齐环境；重建工作区时遵循部署指南的驱动加载顺序。
+
 从仓库根目录执行：
 
 ```bash
@@ -153,9 +155,7 @@ export VT_DATA_ROOT="${HOME}/visiontactile-data"
 
 test -z "${CONDA_PREFIX:-}"
 source /opt/ros/jazzy/setup.bash
-cd "${VT_WS}"
-colcon build --event-handlers console_direct+
-source install/setup.bash
+source "${VT_WS}/install/setup.bash"
 
 python3 -m venv --system-site-packages "${VT_REPO}/.venv-alignment"
 source "${VT_REPO}/.venv-alignment/bin/activate"
@@ -203,6 +203,7 @@ done
 
 ```bash
 ros2 launch vt_realsense_capture triple_realsense.launch.py \
+  config_path:="${VT_DATA_ROOT}/config/cameras.yaml" \
   output_root:="${VT_DATA_ROOT}"
 ```
 

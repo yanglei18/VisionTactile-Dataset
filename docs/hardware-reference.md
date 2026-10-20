@@ -18,6 +18,8 @@ d405_2 | D405 | 260322276463 | 5.15.1.55 | 255323071742
 d436   | D436 | 408322071716 | 5.17.0.213 | 343123151280
 ```
 
+See the [deployment guide](deployment.md#permissions) and [RealSense USB access procedure](../tools/capture_deploy/REALSENSE_USB.md) for permissions and RSUSB buffer checks.
+
 ## USB topology
 
 Three 1280x720x30 cameras place sustained load on the host USB topology. Connect

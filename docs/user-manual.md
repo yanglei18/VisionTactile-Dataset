@@ -85,66 +85,18 @@ Tracker 启动。
 
 ## 3. 首次安装
 
-### 3.1 获取源码
+新电脑按[部署指南](deployment.zh-CN.md)连续完成以下步骤；该指南集中维护环境安装命令，本手册从第 4 节开始负责日常运行。
 
-```bash
-git clone --recurse-submodules \
-  https://github.com/yanglei18/VisionTactile-Dataset.git
-cd VisionTactile-Dataset
-export VT_REPO="$(pwd -P)"
-export VT_WS="${VT_REPO}/ros2_ws"
-export VT_DATA_ROOT="${HOME}/visiontactile-data"
-mkdir -p "${VT_DATA_ROOT}"
-```
+1. [准备 Ubuntu 与获取当前分支](deployment.zh-CN.md#ubuntu)：确认 Ubuntu 24.04，克隆 `source-preview-20261019`，建立仓库外的数据目录。
+2. [安装 ROS 2 Jazzy](deployment.zh-CN.md#ros)：配置官方软件源，安装系统包、MCAP 与 rosdep。
+3. [固定 RealSense 版本](deployment.zh-CN.md#realsense)：wrapper `4.58.1` + SDK `2.58.1`，检查实际加载的版本与路径。
+4. [构建并测试](deployment.zh-CN.md#build)：先加载驱动工作区，再构建主工作区；测试无失败后继续。
+5. [安装工作台并运行演示](deployment.zh-CN.md#desktop)。
+6. [配置权限与设备、完成短包验收](deployment.zh-CN.md#permissions)。
 
-`VT_DATA_ROOT` 必须是已存在、可写、非符号链接的绝对路径。不要把 bag、图像、
-日志、抓包、bundle 或角色映射写入 `VT_REPO`。
+每个新终端重新设置实际的 `VT_REPO`、`VT_WS`、`VT_DATA_ROOT`，先 source ROS，再 source 主工作区的 `install/setup.bash`。同次运行使用相同 `ROS_DOMAIN_ID`；不要在 Conda 中运行 ROS。
 
-### 3.2 安装依赖
-
-```bash
-sudo apt update
-sudo apt install -y \
-  git \
-  python3-colcon-common-extensions \
-  ros-jazzy-realsense2-camera \
-  ros-jazzy-ros2bag \
-  librealsense2-utils \
-  fio \
-  python3-yaml \
-  python3-venv \
-  python3-tk
-```
-
-构建和运行 shell 中不得激活 Conda：
-
-```bash
-test -z "${CONDA_PREFIX:-}"
-source /opt/ros/jazzy/setup.bash
-test "${ROS_DISTRO}" = jazzy
-```
-
-安装过 ROS 2 并初始化过 `rosdep` 的主机还应同步解析 package dependencies：
-
-```bash
-cd "${VT_REPO}"
-rosdep update
-rosdep install --from-paths ros2_ws/src --ignore-src -r -y \
-  --rosdistro jazzy
-```
-
-### 3.3 构建并测试
-
-```bash
-cd "${VT_WS}"
-colcon build --event-handlers console_direct+
-source install/setup.bash
-colcon test --event-handlers console_direct+
-colcon test-result --all --verbose
-```
-
-只有零失败时才进入真机流程。每个新终端都要依次 source ROS 2 和同一个
-workspace；同一次运行的所有终端必须使用同一个 `ROS_DOMAIN_ID`。
+如果只用 Windows 独立触觉工具，直接执行[安装包使用流程](deployment.zh-CN.md#windows)，不部署本节的 ROS 系统。
 
 ## 4. 每次运行前检查
 
@@ -181,6 +133,7 @@ ros2 run vt_realsense_capture storage_bench \
 source /opt/ros/jazzy/setup.bash
 source "${VT_WS}/install/setup.bash"
 ros2 launch vt_realsense_capture triple_realsense.launch.py \
+  config_path:="${VT_DATA_ROOT}/config/cameras.yaml" \
   output_root:="${VT_DATA_ROOT}"
 ```
 
@@ -276,7 +229,7 @@ ros2 bag info "${VT_DATA_ROOT}/<session-id>/bag"
 必须在线。每台相机的彩色/原始深度内参和深度→彩色机内外参直接来自官方驱动，
 不依赖 Tracker 或空间配置，也不表示获得了相机与外界的安装外参。
 新 Recipe v2 使用 `unified-dataset-v2`，历史 v1 Recipe 与冻结合同保持原样。完整操作细节见
-[相机采集指南](capture-guide.md)。
+[相机采集指南](capture-guide.zh-CN.md)。
 
 录制后必须按[离线对齐手册](../tools/multisensor_alignment/README.md)依次执行
 `inspect`、`align` 和 `validate`。Recorder 的 `COMPLETE` 与离线质量
@@ -420,7 +373,7 @@ session，并单独检查旧 bag 是否可读。
 3. 检查进程、节点、topic、QoS 和唯一硬件所有者；
 4. 检查 `lsusb -t`、供电、线材、设备序列号与内核 USB 日志；
 5. 区分“Recorder 生命周期”“数据质量”“可视化显示”三个不同问题；
-6. 按[故障排查](troubleshooting.md)中的症状表执行。
+6. 按[故障排查](troubleshooting.zh-CN.md)中的症状表执行。
 
 公开 issue 应包含版本/commit、环境、硬件/固件、USB 拓扑、执行命令、发生时间、
 预期和实际结果以及脱敏日志。安全问题按 [SECURITY.md](../SECURITY.md) 私密提交。
@@ -454,4 +407,4 @@ session，并单独检查旧 bag 是否可读。
 版本变更、行为变更与迁移信息见 [CHANGELOG](../CHANGELOG.md)。接口细节见
 [接口参考](interface-reference.md)，第三方许可边界见
 [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md)，贡献规范见
-[CONTRIBUTING](../CONTRIBUTING.md)。
+[中文开发指南](../CONTRIBUTING.zh-CN.md)。

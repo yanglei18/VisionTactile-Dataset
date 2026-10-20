@@ -2,6 +2,11 @@
 
 简体中文
 
+本说明在源码中名为 USER_GUIDE.txt，安装后名为“使用说明.txt”。
+GitHub 当前源码预览分支不提供可公开下载的安装包或模型；请向交付方取得
+获准分发的 Windows 安装包，再按以下步骤使用。维护人员构建方法见同目录
+README.md；新电脑部署指南见仓库 docs/deployment.zh-CN.md。
+
 安装包包含运行环境和静态右手模型，无需安装 Python、ROS、PyTorch，安装和使用均不需要联网。
 
 安装向导可选择简体中文或 English；默认跟随 Windows 界面语言。
@@ -13,9 +18,16 @@
 3. 点击连接，在固定右手模型上查看触觉信息。左键拖动旋转，滚轮缩放。
 4. 点击断开后，可以退出或改选串口。不要同时让其他程序打开同一串口。
 
-颜色表示原始 ADC，并非已标定的实际压力。显示规则与主采集程序一致。
-数据中断时，上一次画面会标记为历史；历史画面不代表当前测量值。
-此工具显示固定手形，不进行手指姿态解算。
+颜色表示原始 ADC，并非已标定的实际压力。显示规则与主采集程序一致：
+- 首次有效数据的最小值和最大值确定本次连接的色标，最小跨度为 100 ADC，
+  此后固定不变；实际范围显示在预览下方。不同连接的颜色不能直接对比。
+- 重新连接会清除旧画面和色标，再用新数据确定范围。没有额外归零或灵敏度设置。
+- 灰色表示无效采样；手模型没有映射触觉的部位保留模型底色。
+- 触觉数据逐块更新，每块数据的显示有效期为 100 ms，不是 400 点同步采样。
+  断流、无效样本或断开时保留的画面会标记为“历史保持”，不代表当前测量值。
+- 状态行的 Hz 表示送入显示的不同源快照频率，不是硬件扫描频率。
+  数据年龄表示距离主机收到源数据已经经过的时间。
+此工具显示固定右手形状，不进行手指姿态解算。拔插或读取错误后需要手动重新连接。
 
 没有串口：请确认 USB 线支持数据传输，在 Windows 设备管理器中检查设备。
 若设备没有识别成 COM 串口，请使用设备厂商为该硬件提供的驱动。
@@ -33,6 +45,13 @@ dependencies.json 与 build-manifest.json 记录版本和文件校验值，供�
 
 
 English
+
+This document is named USER_GUIDE.txt in the source tree and 使用说明.txt in the
+installed application directory. The current GitHub source-preview branch does
+not offer a publicly downloadable installer or hand model. Obtain an authorized
+Windows installer from your supplier before following these instructions.
+Maintainers can find build instructions in README.en.md and new-computer
+deployment instructions in docs/deployment.md in the repository.
 
 Tactile 3D Viewer includes its runtime and static right-hand model. You do not
 need Python, ROS or PyTorch. Installation and use work entirely offline.
@@ -52,9 +71,24 @@ saved preference. Installer language does not override this preference.
    serial port in another application at the same time.
 
 Colors represent raw ADC values, not calibrated physical pressure. The display
-uses the same rules as the main capture application. If data stops, the last
-frame is marked as historical; it is not a current measurement. This viewer
-uses a fixed hand shape and does not estimate finger poses.
+uses the same rules as the main capture application:
+- The first valid data sets the color scale from its minimum and maximum, with
+  a minimum span of 100 ADC. That range stays fixed for the connection and is
+  shown below the preview. Colors from separate connections are not directly
+  comparable.
+- Reconnecting clears the old frame and range, then sets the scale from new
+  data. There are no additional zeroing or sensitivity settings.
+- Gray means an invalid sample. Unmapped parts of the hand keep the model's
+  base color.
+- Tactile data updates in blocks. Each block remains valid for display for
+  100 ms; the 400 points are not sampled simultaneously. On interrupted data,
+  invalid samples or disconnection, a retained frame is marked as historical
+  and does not represent a current measurement.
+- The status-line Hz measures distinct source snapshots delivered to the
+  display, not the hardware scan rate. Data age is the time elapsed since the
+  host received the source data.
+This viewer uses a fixed right-hand shape and does not estimate finger poses.
+Reconnect manually after unplugging the device or a serial read error.
 
 No serial port: check that the USB cable supports data, and check Windows
 Device Manager. If the device is not recognized as a COM port, obtain the

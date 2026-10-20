@@ -37,7 +37,7 @@ package version `0.5.0` identifies that component; it does not mean that these
 changes have been published under a matching project tag. See
 [Unreleased changes](CHANGELOG.md#unreleased) for the candidate scope.
 The independent tactile viewer has its own version, `0.5.1`, and bilingual
-Chinese/English UI. Its [Windows installer build tooling](tools/tactile_viewer_windows/README.md)
+Chinese/English UI. Its [Windows installer build tooling](tools/tactile_viewer_windows/README.en.md)
 is included as source; this public source preparation does not include a
 redistribution-authorized model or a public Windows installer download.
 
@@ -75,7 +75,7 @@ project makes those boundaries explicit:
 | Capability | Status | Entry point |
 | --- | --- | --- |
 | Integrated desktop capture console | v0.5 development preview: graphical setup, explicit device control, persistent Tracker setup inputs, four device preview types with enlarged views, trials and post-record reports; full hardware acceptance pending | [Capture console](tools/capture_console/README.md) |
-| Joint spatial visualization | Common-world Tracker poses, calibrated camera frusta, synchronized RGB-D preview clouds, and closed-bag playback; hardware/GL acceptance pending | [Spatial view](tools/capture_console/README.md#联合空间可视化) |
+| Joint spatial visualization | Common-world Tracker poses, calibrated camera frusta, synchronized RGB-D preview clouds, and closed-bag playback; hardware/GL acceptance pending | [Spatial view](tools/capture_console/README.md#三维联合可视化) |
 | Partial-bag playback in Archives | Opens in Space, with individual images and messages in Topic details; one shared bag-time playhead, no separate Preview page. Missing streams and quality warnings do not block available data | [Archive playback](tools/capture_console/README.md#档案兼容回放) |
 | Explicit capture plans | IPC v5 records available configured streams, freezes receiving sources for quality checks, and allows absent devices such as Trackers | [Capture plans](tools/capture_console/README.md#采集计划与录前核对) |
 | Two D405 + one D436 capture | Available | `vt_realsense_capture` |
@@ -89,7 +89,7 @@ project makes those boundaries explicit:
 | Official FSGlove core / 12-IMU adapter | Original public calibration/inference and shape optimizer connected; physical accuracy unverified | `tools/fsglove12/` |
 | Glove ROS bridge and workbench hand preview | Published MANO poses or skeleton fallback; requires external model/runtime for 3D; calibration remains in the original glove window | [Glove bridge](ros2_ws/src/vt_glove_bridge/README.md) |
 | Independent left/right pose and tactile modes | Per-hand models, calibration, ROS topics and optional GUIs; left hardware mapping/accuracy still requires validation | [Single/dual-hand guide](ros2_ws/src/vt_glove_bridge/README.md#22-单手双手和仅触觉统一入口) |
-| Independent tactile viewer | v0.5.1 Chinese/English UI, serial selection and fixed-hand 3D tactile display; Windows x64 source build; native Windows hardware acceptance pending | [Viewer and Windows build](tools/tactile_viewer_windows/README.md) |
+| Independent tactile viewer | v0.5.1 Chinese/English UI, serial selection and fixed-hand 3D tactile display; Windows x64 source build; native Windows hardware acceptance pending | [Viewer and Windows build](tools/tactile_viewer_windows/README.en.md) |
 | Tactile ROS 2 acquisition and heatmap | 20×20 rolling states, 2D/3D display and offline export; original wire samples retained for bag compatibility | [Tactile guide](ros2_ws/src/vt_tactile_capture/README.md) |
 | Glove, tactile, and auxiliary bag extensions | Typed glove/tactile validation and configurable generic selection; exact recording allowlist required | `recording.additional_streams` |
 | Cross-camera hardware exposure sync | Not claimed | — |
@@ -237,10 +237,12 @@ unvalidated hardware combination until the acceptance procedure is repeated.
 
 ## Quick start
 
+For a new computer, use the [deployment guide](docs/deployment.md) ([简体中文](docs/deployment.zh-CN.md)). It separates Windows viewer installation, Ubuntu demos, and the complete capture stack.
+
 ### 1. Clone the repository
 
 ```bash
-git clone --recurse-submodules \
+git clone --branch source-preview-20261019 --recurse-submodules \
   https://github.com/yanglei18/VisionTactile-Dataset.git
 cd VisionTactile-Dataset
 
@@ -262,47 +264,13 @@ see [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ### 2. Install the public dependencies
 
-Install ROS 2 Jazzy before running the following commands:
+Complete [deployment sections 2–5](docs/deployment.md#ubuntu) on a new Ubuntu 24.04 computer. They configure the official ROS repository, install Jazzy, and build the fixed RealSense wrapper `4.58.1` / SDK `2.58.1` pair. An unversioned apt installation does not reproduce that pair. The clone command above selects this preview branch; the preserved `main` is a different version.
 
-```bash
-sudo apt update
-sudo apt install -y \
-  git \
-  python3-colcon-common-extensions \
-  python3-venv \
-  python3-yaml \
-  python3-tk \
-  libegl1 libgl1 libxkbcommon0 libxcb-cursor0 fonts-noto-cjk \
-  ros-jazzy-realsense2-camera \
-  ros-jazzy-ros2bag \
-  librealsense2-utils \
-  fio
-
-source /opt/ros/jazzy/setup.bash
-# Run `sudo rosdep init` once if rosdep has not been initialized on this host.
-rosdep update
-rosdep install --from-paths ros2_ws/src --ignore-src -r -y \
-  --rosdistro jazzy
-```
-
-Use the system Python for ROS builds and nodes. The desktop installer creates
-a separate Qt environment; FSGlove/MANO has its own optional environment.
-Do not combine their Qt or model dependencies into the ROS environment. An
-active Conda environment is not a supported build or runtime configuration.
+Use system Python for ROS, a separate Qt environment for the workbench, and a separate optional model environment. The deployment guide is the maintained source for system installation and permissions.
 
 ### 3. Build and test
 
-```bash
-source /opt/ros/jazzy/setup.bash
-cd "${VT_WS}"
-colcon build --event-handlers console_direct+
-source install/setup.bash
-colcon test --event-handlers console_direct+
-colcon test-result --all --verbose
-```
-
-Proceed to hardware operation only when the test result contains zero errors
-and zero failures.
+Follow the [workspace build and import checks](docs/deployment.md#build), sourcing the fixed driver workspace before building the project. Keep that driver directory in place: the project's install setup records it as an underlay. Only continue to hardware operation after the tests report zero failures.
 
 ### 4. Install and open the desktop workbench
 
@@ -317,7 +285,7 @@ bash tools/capture_deploy/start_demo.sh
 The installer creates `.venv-capture-console` and current-user desktop/menu
 entries. It does not connect sensors, download licensed models, or install a
 boot service. For a hardware-free demo, only the Python venv and Qt system
-dependencies from step 2 are needed; the ROS installation and build can be
+dependencies in [deployment section 2](docs/deployment.md#ubuntu) are needed; the ROS installation and build can be
 deferred. Demo readings are synthetic and do not record a bag.
 
 After building the ROS workspace, close the demo and open the real workbench:
@@ -372,6 +340,7 @@ workflow; do not launch a second owner of a device already started in the GUI.
 source /opt/ros/jazzy/setup.bash
 source "${VT_WS}/install/setup.bash"
 ros2 launch vt_realsense_capture triple_realsense.launch.py \
+  config_path:="${VT_DATA_ROOT}/config/cameras.yaml" \
   output_root:="${VT_DATA_ROOT}"
 ```
 
@@ -577,6 +546,9 @@ files and must not be committed.
 
 ## Documentation
 
+- [New computer deployment](docs/deployment.md) · [简体中文](docs/deployment.zh-CN.md)
+- [RealSense USB access, buffer checks, and rollback](tools/capture_deploy/REALSENSE_USB.md)
+
 ### Operate the system
 
 - [Desktop installation, device setup, previews, and trials](tools/capture_console/README.md)
@@ -606,7 +578,7 @@ files and must not be committed.
 - [Official FSGlove core, 12-IMU adaptation, calibration and prerequisites (Chinese)](tools/fsglove12/README.md)
 - [Glove ROS bridge and independent left/right operation](ros2_ws/src/vt_glove_bridge/README.md)
 - [Tactile acquisition, layouts, replay, and reconstruction](ros2_ws/src/vt_tactile_capture/README.md)
-- [Independent bilingual tactile viewer and Windows source build](tools/tactile_viewer_windows/README.md)
+- [Independent bilingual tactile viewer and Windows source build](tools/tactile_viewer_windows/README.en.md)
 
 The older `glove_hand_pose` prototype is separate from ROS recording and
 alignment; `fsglove12` has a ROS bridge. Sparse-input hand reconstruction remains

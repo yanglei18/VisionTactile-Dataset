@@ -63,13 +63,18 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 12332,
-      "sha256": "be266d8fa63530604143713042640f4abcee7fded345c6b3c07ce759e6fa6fa0"
+      "bytes": 12649,
+      "sha256": "b819c9dd2abf7cf8b7594343876410791102c822a9b68331a0cc2214902ccf09"
     },
     {
       "path": "CONTRIBUTING.md",
-      "bytes": 9359,
-      "sha256": "7a077b514995534cc0a0257991b29fa6b460080f04aff63c6de601b301c5571f"
+      "bytes": 10048,
+      "sha256": "00496620cbed184900aaaad6b68cb678fb6d91de0e093a890c90e6d6d185c40a"
+    },
+    {
+      "path": "CONTRIBUTING.zh-CN.md",
+      "bytes": 9343,
+      "sha256": "ebc83ff0edba1e6f1e4a135c20f61252c8e6a214dfb45abe768dbf2eb55ea586"
     },
     {
       "path": "Glove.py",
@@ -88,13 +93,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 36802,
-      "sha256": "45bbd75cab45f29329909ff23fa2e8d1fed8eef3be7c0837f83eb792d2a35e3c"
+      "bytes": 37046,
+      "sha256": "6d4a30c75b86838457ff36e23a0e57b839d6e8a164b3f7610b3d3d4aa21075c0"
     },
     {
       "path": "README.zh-CN.md",
-      "bytes": 20716,
-      "sha256": "f5cf5a32a236b8a5a052edef9a54a184e14cd2bf29430784697a8d043e40455a"
+      "bytes": 20834,
+      "sha256": "8221326336a152245e8e3f58a6d613cf0b735833147db18d4840c80cfdd2617d"
     },
     {
       "path": "SECURITY.md",
@@ -118,13 +123,28 @@
     },
     {
       "path": "docs/capture-guide.md",
-      "bytes": 16822,
-      "sha256": "09119f9fb1b9cd15657cf25abb7732d6ecf6379b3efce4494d47d29f5e98f8cd"
+      "bytes": 18654,
+      "sha256": "0a8f9dd838e002789cce01a8ecb8f175ac5e577ec68ca34fbeff8b60ab245966"
+    },
+    {
+      "path": "docs/capture-guide.zh-CN.md",
+      "bytes": 17440,
+      "sha256": "23bfae8d7846b9fc4608bf0850b461a180e3a59b0a40325163d1220262436b88"
+    },
+    {
+      "path": "docs/deployment.md",
+      "bytes": 27086,
+      "sha256": "751430adafd0978926085ad85af7f9b9d1c5abaa86882f852a124fb6a4454a56"
+    },
+    {
+      "path": "docs/deployment.zh-CN.md",
+      "bytes": 22853,
+      "sha256": "dff10d9eb80398c999555243badd63108979dd5ae4a6670ad36a43c512032b8b"
     },
     {
       "path": "docs/hardware-reference.md",
-      "bytes": 3391,
-      "sha256": "a9098872f8f064287f68a1b3d84aa40264bc552418ae1b99e883de87719aec72"
+      "bytes": 3566,
+      "sha256": "413d211023bf9a843df9ac54582902b182836f3be599c08cf4a4dd3b580972b5"
     },
     {
       "path": "docs/interface-reference.md",
@@ -168,13 +188,18 @@
     },
     {
       "path": "docs/troubleshooting.md",
-      "bytes": 7110,
-      "sha256": "9870b8080caacd9083b97add766f36b379a62188e07fac42a14f7bcfb55919cc"
+      "bytes": 8482,
+      "sha256": "0bd2ff27759f410d76f707e380172b4ee53fedb80c09cdf0f3cc7ba9c91e57a1"
+    },
+    {
+      "path": "docs/troubleshooting.zh-CN.md",
+      "bytes": 8179,
+      "sha256": "e72542b9266e4c28e3d80101d84d0b9735bc2803db82311a2cda486f564b163a"
     },
     {
       "path": "docs/user-manual.md",
-      "bytes": 20679,
-      "sha256": "6f24242836757d9f6e57c2f25838c879ea70d69854e672f44dee3ba0cbb86a2e"
+      "bytes": 20523,
+      "sha256": "03cbd521a468b754afd4afa2633629ef91c2e16673e671fd0094786df683467e"
     },
     {
       "path": "ros2_ws/src/vt_camera_msgs/CMakeLists.txt",
@@ -1348,8 +1373,8 @@
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/README.md",
-      "bytes": 28094,
-      "sha256": "4e9641f8075da74d779d2fcaf21624a0a528d01f7d46bb2eebcbadfd72229411"
+      "bytes": 28337,
+      "sha256": "5c6ad218bad5ffc88b046173f1aee5cba2fd9a17855c78dbb1de33f50567aa7e"
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/config/left_tactile.yaml",
@@ -1918,8 +1943,8 @@
     },
     {
       "path": "tools/capture_console/README.md",
-      "bytes": 81304,
-      "sha256": "e68f120a29f93846a176ad5d86d23e37665bb2fefe148e9faf631791cba9573b"
+      "bytes": 81371,
+      "sha256": "4c679784cdfc620399be1d64bc025da8667796cb5f776406a5c20b75c8f37025"
     },
     {
       "path": "tools/capture_console/THIRD_PARTY_NOTICES.md",
@@ -4558,8 +4583,8 @@
     },
     {
       "path": "tools/multisensor_alignment/README.md",
-      "bytes": 40420,
-      "sha256": "816b88968584bac8474bf70fac60166ccd2bfbf1ebaf799c2f7b885eeb39110a"
+      "bytes": 40686,
+      "sha256": "fbf044256c582d4a3ab34e2264aae82d961c70707774ca3763416ff5dfb054b4"
     },
     {
       "path": "tools/multisensor_alignment/config/alignment.both_gloves.yaml",
@@ -4898,8 +4923,8 @@
     },
     {
       "path": "tools/release/prepare_release.py",
-      "bytes": 9685,
-      "sha256": "d2491b20a1c522f6ffbe482e727bf020356bef738858176daa2f74b81d573add"
+      "bytes": 9710,
+      "sha256": "3b5d546bbf241a91566906cfa73bb068d2016a4061bed732224c29ca9ed94461"
     },
     {
       "path": "tools/release/tests/test_package_licenses.py",
@@ -4922,14 +4947,19 @@
       "sha256": "be588e94094d9afb543ec4e09515e5b0cf4b6dce31841a8c599658d4ab564d33"
     },
     {
+      "path": "tools/tactile_viewer_windows/README.en.md",
+      "bytes": 12566,
+      "sha256": "93e4de583793e09b0077cf43eb26fdc599e236f6042950563f89944ac2a5f2ec"
+    },
+    {
       "path": "tools/tactile_viewer_windows/README.md",
-      "bytes": 9867,
-      "sha256": "44618e4d558820e53d05e2224ad6913d5c07f3e782345d700e52ce3bdbdc2aff"
+      "bytes": 10718,
+      "sha256": "bf23e275db25e74e85a8f0ffb58dfe079fdbe9525395e5984361a52a9751e89e"
     },
     {
       "path": "tools/tactile_viewer_windows/USER_GUIDE.txt",
-      "bytes": 4184,
-      "sha256": "93579ce9dfba93d48f27c5507ea06ae71afe00e4b339a15c821ddcf935d7cdaa"
+      "bytes": 6673,
+      "sha256": "f13fb8652b68f1688c5dc2f9517a14611e12afd90fb7e1239181998d10012e35"
     },
     {
       "path": "tools/tactile_viewer_windows/build.ps1",
@@ -5018,8 +5048,8 @@
     },
     {
       "path": "tools/tracker_camera_calibration/README.md",
-      "bytes": 39924,
-      "sha256": "d47353ad5495c2a85a11bb0070f0975fb50d6fe6fbcb3e42e7aaba639e20f579"
+      "bytes": 40346,
+      "sha256": "8d2f1fe9af5a799189c489adec570ec870008e7de0b54044266f4a781dbf3137"
     },
     {
       "path": "tools/tracker_camera_calibration/config/calibration.example.yaml",

@@ -1,5 +1,7 @@
 # Contributing
 
+[简体中文](CONTRIBUTING.zh-CN.md) · [New computer deployment](docs/deployment.md)
+
 Thank you for helping keep the public capture contract small, testable, and
 truthfully documented.
 
@@ -14,9 +16,13 @@ truthfully documented.
 - Work on a focused feature branch. Do not develop directly on a release
   branch.
 
-Start from a recursive clone, or run `git submodule update --init --recursive`
-in an existing clone. Preserve the pinned submodule revision. See the
-[quick start](README.md#quick-start) for system packages and workspace setup.
+Start from a recursive clone of `source-preview-20261019`, or run
+`git submodule update --init --recursive` in an existing clone of that branch.
+Preserve the pinned submodule revision. Follow the
+[deployment guide](docs/deployment.md) for system packages, [ROS initialization](docs/deployment.md#ros),
+[RealSense wrapper version selection](docs/deployment.md#realsense), USB access and workspace setup; it includes
+the exact clone command. The [quick start](README.md#quick-start) provides the
+shorter route for a prepared host.
 Public software tests must not require local Tracker credentials, a physical
 sensor, external FSGlove source, or licensed MANO assets. Keep optional tests
 for those prerequisites explicit and report skips separately from passes.
@@ -31,10 +37,15 @@ Before opening a pull request:
 
 1. Build and run the software tests:
 
+   These commands use the deployment guide's source-built driver workspace.
+   If using its separately verified APT route, omit the driver workspace
+   `source` command.
+
    ```bash
    export VT_REPO="$(git rev-parse --show-toplevel)"
    test -z "${CONDA_PREFIX:-}"
    source /opt/ros/jazzy/setup.bash
+   source "${HOME}/visiontactile-drivers_ws/install/setup.bash"
    cd "${VT_REPO}/ros2_ws"
    colcon build --event-handlers console_direct+
    source install/setup.bash
@@ -124,7 +135,7 @@ bash tools/capture_deploy/install.sh
 .venv-capture-console/bin/python -m pip install \
   -e ros2_ws/src/vt_capture_manager -e tools/multisensor_alignment \
   'opencv-python-headless>=4.9,<4.12'
-env PYTHONPATH=ros2_ws/src/vt_realsense_capture \
+env PYTHONPATH=ros2_ws/src/vt_realsense_capture:tools/multisensor_alignment/src \
   QT_QPA_PLATFORM=offscreen PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
   .venv-capture-console/bin/python -m pytest -q \
   ros2_ws/src/vt_capture_core/test ros2_ws/src/vt_capture_manager/test \
@@ -139,10 +150,11 @@ synthetic publishers and dedicated test domains; follow the
 [workbench test guide](tools/capture_console/README.md#测试与截图) and keep them
 separate from a live acquisition domain. Pure software tests and offscreen
 rendering are not hardware, OpenGL-driver, pose-accuracy, or endurance acceptance.
-The explicit source path above exposes the CMake package's pure-Python capture
-controller for controller/manager fault-recovery tests; it neither imports ROS
-nodes nor starts a Recorder. Keep these cross-component tests enabled when
-changing either side of the managed recording contract.
+The explicit source paths above expose the CMake package's pure-Python capture
+controller and the offline replay parser for controller/manager fault-recovery
+and replay tests; they do not start ROS nodes or a Recorder. Keep these
+cross-component tests enabled when changing either side of the managed recording
+contract.
 For changes to a specific adapter, also run the tests in its linked
 [hand](tools/fsglove12/README.md), [bridge](ros2_ws/src/vt_glove_bridge/README.md),
 or [tactile](ros2_ws/src/vt_tactile_capture/README.md) guide.

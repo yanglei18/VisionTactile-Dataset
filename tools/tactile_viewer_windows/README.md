@@ -1,20 +1,26 @@
 # 触觉三维预览 Windows 安装包
 
+[English](README.en.md) · [新电脑部署指南](../../docs/deployment.zh-CN.md) · [中英文用户说明（源码）](USER_GUIDE.txt)
+
+**本分支公开提供源码，不提供可公开下载的 `.exe` 安装包或静态手模型。** 只使用小工具的新用户，请先向交付方取得获准分发的安装包；从源码制作安装包的维护人员按下文准备构建环境和模型输入。完整采集系统与独立 Windows 小工具的部署步骤分别见[新电脑部署指南](../../docs/deployment.zh-CN.md)。
+
 该目录维护独立触觉工具的 Windows x64 构建流程。最终用户只需运行安装程序，不需要安装 Python、ROS、PyTorch 或配置模型路径。安装包完全离线，默认安装到当前用户目录，安装向导和应用均支持简体中文、English，提供桌面/开始菜单入口、覆盖升级和卸载。
 
 安装后的应用只有串口选择、连接/断开、语言选择和固定右手触觉三维显示。共享预览组件的主程序设置、相机预览、手势解算、采集核心模块不进入冻结包；资源按明确清单收集，不包含其他手势工具的配置或启动入口。构建会检查实际模块归档和资源目录，发现额外业务模块就停止发布。
 
 目标系统为 Windows 10 1809 及以上、Windows 11 的 x64 版本，且具有可用的桌面 OpenGL。最低版本与 [Qt 6.11 支持范围](https://doc.qt.io/qt-6.11/supported-platforms.html) 一致；这不代替本应用的 Windows 实机验收。构建脚本必须由 Windows x64 Python 执行。Linux 维护者可以在隔离 Wine 环境调用相同的 Windows 工具链；Wine 检查与真正 Windows 硬件验收应分别记录。
 
-## 使用与语言选择 / Getting started
+## 使用与语言选择
 
 安装时可选择简体中文或 English；默认跟随 Windows 界面语言，覆盖安装默认使用上次安装语言。安装向导语言用于安装页面、快捷方式和卸载入口。切换安装语言会更新本产品的已知快捷方式，不产生中英两套桌面入口。
 
 应用顶部的语言选项可即时切换界面并保存选择，切换时保持当前连接和数据状态。首次启动采用系统语言，后续优先使用已保存的选择。安装程序不会覆盖应用语言设置；安装向导和应用的语言可以不同。命令行 `--language zh_CN` / `--language en` 仅覆盖本次运行，适用于检查或临时使用。
 
-Choose Simplified Chinese or English in the installer. The application includes its Python/Qt runtime and static right-hand model; installation and use require no internet connection. Start **Tactile 3D Viewer**, select the glove's COM port, then connect. Change the language at the top of the application without interrupting the active connection. Your choice is remembered independently of the installer language. `--language en` or `--language zh_CN` overrides the language for that launch only.
+安装后启动 **触觉三维预览**，选择触觉板的 COM 串口，确认波特率（默认 115200），点击 **连接**。只刷新端口列表不会连接设备。同一串口不要同时交给主采集程序或其他工具使用。拖动旋转模型，滚轮缩放；结束时断开或关闭窗口即可释放串口。拔插或读取错误后需手动重新连接。
 
-The viewer displays raw tactile ADC values on a fixed hand shape, not calibrated pressure or estimated finger poses. Close the viewer before upgrading. Uninstall through Windows Settings; user preferences are retained. See `USER_GUIDE.txt` for bilingual usage and troubleshooting.
+固定右手上的颜色表示原始 ADC，不是已标定的压力，也不跟随手指姿态。首次有效数据确定色标范围（最小跨度 100 ADC），本次连接中保持固定；重新连接清除旧画面和范围。状态行的 Hz 是不同源快照进入显示的频率，不能用作硬件扫描频率或 400 点同步采样频率。单块数据有效期为 100 ms；断流后保留的画面会标记为历史。完整显示含义和排障方法见[中英文用户说明](USER_GUIDE.txt)。
+
+升级前关闭应用。卸载时在 Windows 设置中操作，用户偏好保留。用户说明在源码中名为 `USER_GUIDE.txt`，安装后位于程序目录的 **`使用说明.txt`**，同一文件包含中英文内容。
 
 ## 构建机准备
 

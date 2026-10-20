@@ -23,7 +23,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 ROOT_FILES = {".gitignore", ".gitmodules", ".gitattributes", ".editorconfig",
               "README.md", "README.zh-CN.md", "LICENSE", "THIRD_PARTY_NOTICES.md",
-              "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "Glove.py", "Ploy_IMU.py",
+              "CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md", "SECURITY.md", "CHANGELOG.md", "Glove.py", "Ploy_IMU.py",
               "WINDOWS_USBPcap_CAPTURE_GUIDE.md"}
 PREFIXES = (".github/", "docs/", "ros2_ws/src/", "tools/")
 SECRET_PATTERNS = (

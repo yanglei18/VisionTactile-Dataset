@@ -133,7 +133,7 @@ CameraInfo、机内外参和 frame timing 尚无实时观测，但有图像接�
 
 空间点云按每个窗口的实际需求运行：隐藏、最小化或冻结的窗口撤销自身需求，其他仍在查看的窗口继续获取数据。相机数据源退出或切换后释放对应点云对象，持续存在的相机复用对象；关闭窗口释放其显示资源。这只影响可视化，不启停相机或录制。
 
-预览的 **接收 Hz** 是后台最近一秒收到的消息数，不能作为相机硬件输出或 bag 写入帧率。录制结束后在 **档案 → 试次详情 → 质量报告** 查看实际检查结果；未执行或执行失败均不表示质量合格。当前实时落盘吞吐、逐 Topic 写入丢帧统计仍未提供，详见[采集状态与指标说明](../../docs/capture-guide.md#8-observe-status)。
+预览的 **接收 Hz** 是后台最近一秒收到的消息数，不能作为相机硬件输出或 bag 写入帧率。录制结束后在 **档案 → 试次详情 → 质量报告** 查看实际检查结果；未执行或执行失败均不表示质量合格。当前实时落盘吞吐、逐 Topic 写入丢帧统计仍未提供，详见[采集状态与指标说明](../../docs/capture-guide.zh-CN.md#8-观察状态)。
 
 ### 预览小图放大
 
@@ -333,6 +333,8 @@ Page changes preserve the session; reopening the workspace restores the manager'
 
 ## 安装
 
+新电脑先按[中文部署指南](../../docs/deployment.zh-CN.md)（[English](../../docs/deployment.md)）准备系统依赖、选择实际需要的功能；本节安装器只负责桌面部分。
+
 在仓库根目录执行：
 
 ```bash
@@ -371,13 +373,7 @@ bash tools/capture_deploy/start_demo.sh
 
 ### 构建 ROS 包
 
-在已安装 ROS 2 Jazzy 的终端中执行：
-
-```bash
-source /opt/ros/jazzy/setup.bash
-cd ros2_ws  # 从仓库根目录进入
-colcon build --packages-up-to vt_capture_manager vt_realsense_capture
-```
+按[部署指南的主系统构建](../../docs/deployment.zh-CN.md#build)完成依赖、驱动 underlay 和 ROS 工作区构建。已有工作区更新时沿用该加载顺序；本页后续只启动已构建的程序，不再提供另一套安装命令。
 
 ### 启动后台
 
@@ -436,7 +432,7 @@ bash tools/capture_deploy/start_manager.sh --config /绝对路径/workstation.ya
 
 ### 准备录制控制器
 
-先完成上述 ROS 构建，并按[采集指南](../../docs/capture-guide.md)启动需要采集的节点。当前相机启动文件 `triple_realsense.launch.py` 已包含 `capture_controller`，**不要再启动第二个控制器**。已运行的旧版控制器不会随源码更新自动升级；须在没有录制时，按原流程重启为新构建版本。
+先完成上述 ROS 构建，并按[采集指南](../../docs/capture-guide.zh-CN.md)启动需要采集的节点。当前相机启动文件 `triple_realsense.launch.py` 已包含 `capture_controller`，**不要再启动第二个控制器**。已运行的旧版控制器不会随源码更新自动升级；须在没有录制时，按原流程重启为新构建版本。
 
 如果传感器节点是分别启动的，且当前没有录制控制器，可以单独启动它：
 
@@ -444,6 +440,7 @@ bash tools/capture_deploy/start_manager.sh --config /绝对路径/workstation.ya
 source /opt/ros/jazzy/setup.bash
 source ros2_ws/install/setup.bash
 ros2 run vt_realsense_capture capture_controller --ros-args \
+  -p config_path:="${HOME}/visiontactile-data/config/cameras.yaml" \
   -p output_root:="${HOME}/visiontactile-data"
 ```
 
@@ -702,24 +699,13 @@ v0.3 将 SQLite 从 schema 1 事务迁移到 schema 2，保留旧批次和试次
 
 ## 测试与截图
 
-GUI 和核心测试不需要硬件：
+GUI、核心和后台的无硬件测试统一按[中文开发指南](../../CONTRIBUTING.zh-CN.md#无需硬件的工具测试)（[English](../../CONTRIBUTING.md#hardware-free-tool-tests)）安装测试环境并运行。该入口包含后台与离线模块依赖和两个跨组件源码路径，避免依赖开发机偶然已有的安装。
+
+安装后可单独运行合成界面截图检查：
 
 ```bash
-env -u PYTHONPATH QT_QPA_PLATFORM=offscreen PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-  .venv-capture-console/bin/python -m pytest -q \
-  ros2_ws/src/vt_capture_core/test tools/capture_console/tests tools/capture_deploy/tests
-
 QT_QPA_PLATFORM=offscreen bash tools/capture_deploy/start_demo.sh \
   --size 1366x768 --smoke-seconds 2 --screenshot /tmp/capture-console.png
-```
-
-后台的模型、持久化管理、质检、图像编解码和 socket 测试还需要安装该包、NumPy、OpenCV、PyYAML：
-
-```bash
-.venv-capture-console/bin/python -m pip install \
-  -e ros2_ws/src/vt_capture_manager numpy opencv-python-headless PyYAML
-env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-  .venv-capture-console/bin/python -m pytest -q ros2_ws/src/vt_capture_manager/test
 ```
 
 ROS 端到端测试默认跳过，需要显式启用并在系统 Python 下运行：

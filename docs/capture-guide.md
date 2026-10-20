@@ -1,5 +1,7 @@
 # Unified capture guide
 
+[简体中文](capture-guide.zh-CN.md) · [New computer deployment](deployment.md)
+
 This guide records the three cameras and three Tracker sample streams in one
 explicit unified bag. Commands assume Ubuntu 24.04, ROS 2 Jazzy, RealSense ROS
 4.58.1, a working read-only Tracker Publisher, and an output directory outside
@@ -17,24 +19,23 @@ export VT_DATA_ROOT="${HOME}/visiontactile-data"
 
 ## 1. Install and verify dependencies
 
-Install the RealSense wrapper, the Jazzy `ros2bag` CLI, librealsense tools,
-and the Python YAML dependency:
+On a new computer, first complete the
+[deployment guide](deployment.md). It covers Ubuntu and [ROS 2 Jazzy setup](deployment.md#ros),
+`rosdep` initialization, [RealSense ROS 4.58.1 installation](deployment.md#realsense) and what to do when
+the APT candidate differs, USB access, and the workbench environment. Return
+here for the command-line capture workflow after that setup is verified.
 
-```bash
-sudo apt update
-sudo apt install -y \
-  python3-colcon-common-extensions \
-  ros-jazzy-realsense2-camera \
-  ros-jazzy-ros2bag \
-  librealsense2-utils fio python3-yaml
-```
+The deployment guide installs the Jazzy `ros2bag` command and required storage
+plugins, including MCAP. No rosbag or MCAP compression plugin is needed.
 
-The `ros2bag` package supplies the Jazzy `ros2 bag` command and its default
-storage plugins, including MCAP. No rosbag or MCAP compression plugin is needed.
+The commands below use the deployment guide's source-built driver workspace.
+If you use its separately verified APT route, omit the driver workspace
+`source` command and keep the version checks.
 
 ```bash
 test -z "${CONDA_PREFIX:-}"
 source /opt/ros/jazzy/setup.bash
+source "${HOME}/visiontactile-drivers_ws/install/setup.bash"
 test "$ROS_DISTRO" = jazzy
 ros2 pkg xml realsense2_camera |
   sed -n 's:.*<version>\(.*\)</version>.*:\1:p'
@@ -43,9 +44,10 @@ ros2 bag --help
 rs-enumerate-devices -s
 ```
 
-The RealSense package version command must print `4.58.1`. Use the system
-Python environment rather than Conda for project build, test, and runtime
-commands.
+The RealSense package version command must print `4.58.1`. If it differs, follow
+the version selection procedure in the [deployment guide](deployment.md#realsense);
+do not silently substitute a newer wrapper. Use the system Python environment
+rather than Conda for project build, test, and runtime commands.
 
 Resolve declared ROS package dependencies on a host where `rosdep` has already
 been initialized:
@@ -54,8 +56,12 @@ been initialized:
 cd "${VT_REPO}"
 rosdep update
 rosdep install --from-paths ros2_ws/src --ignore-src -r -y \
-  --rosdistro jazzy
+  --rosdistro jazzy \
+  --skip-keys "librealsense2 realsense2_camera realsense2_camera_msgs"
 ```
+
+These skipped dependencies are already supplied by the verified driver
+installation; the skip list does not make them optional.
 
 ## 2. Build and test
 
@@ -64,15 +70,19 @@ Build the workspace normally. Do not use a symlinked install:
 ```bash
 test -z "${CONDA_PREFIX:-}"
 source /opt/ros/jazzy/setup.bash
+source "${HOME}/visiontactile-drivers_ws/install/setup.bash"
 cd "${VT_WS}"
 colcon build --event-handlers console_direct+
 source install/setup.bash
-colcon test --event-handlers console_direct+
+PYTHONPATH="${VT_REPO}/tools/multisensor_alignment/src:${VT_REPO}/ros2_ws/src/vt_realsense_capture${PYTHONPATH:+:$PYTHONPATH}" \
+  colcon test --event-handlers console_direct+
 colcon test-result --all --verbose
 ```
 
 Proceed only after the software tests report zero failures. Keep `build/`,
-`install/`, and `log/` out of Git.
+`install/`, and `log/` out of Git. The main workspace's `install/setup.bash`
+retains the driver underlay selected at build time, so keep that driver
+workspace in place for the later launch commands.
 
 ## 3. Prepare storage and USB topology
 
@@ -122,6 +132,18 @@ Move the D436 to an independent USB root bus if `lsusb -t` shows it sharing
 the same constrained root path as the two D405 cameras. Different physical
 sockets do not necessarily mean different host controllers.
 
+Check USB access and the RSUSB buffer budget without opening any camera:
+
+```bash
+python3 tools/capture_deploy/configure_realsense_usb.py check
+```
+
+If correction is needed, follow the
+[RealSense USB check/apply/rollback guide](../tools/capture_deploy/REALSENSE_USB.md).
+Stop camera processes before applying changes. The helper's buffer setting
+lasts for the current boot; run `check` again after reboot. The RSUSB buffer
+requirement does not diagnose V4L2 frame loss.
+
 Optionally measure the target filesystem before a formal run. This writes a
 dedicated 16 GiB test file, removes that data file, and leaves a JSON report;
 it is not a Recorder lifecycle gate:
@@ -153,12 +175,15 @@ configured allowlist are still recorded.
 
 ## 5. Launch the cameras and controller
 
+First create the machine-specific `config/cameras.yaml` described in the
+[deployment guide](deployment.md#permissions), including your actual camera identities.
 Keep the launch process in the foreground:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source "${VT_WS}/install/setup.bash"
 ros2 launch vt_realsense_capture triple_realsense.launch.py \
+  config_path:="${VT_DATA_ROOT}/config/cameras.yaml" \
   output_root:="${VT_DATA_ROOT}"
 ```
 

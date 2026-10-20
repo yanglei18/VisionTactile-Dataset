@@ -327,27 +327,19 @@ chmod 700 "${CAL_ROOT}"
 
 ### 4.2 安装依赖并构建消息包
 
-```bash
-sudo apt update
-sudo apt install -y \
-  python3-colcon-common-extensions \
-  python3-venv \
-  python3-tk \
-  python3-yaml \
-  ros-jazzy-realsense2-camera \
-  ros-jazzy-ros2bag \
-  ros-jazzy-rosbag2-storage-mcap
+新电脑先完成[部署指南的 ROS、固定驱动与主工作区构建](../../docs/deployment.zh-CN.md#ros)（[English](../../docs/deployment.md#ros)）。它提供 wrapper `4.58.1` / SDK `2.58.1` 的可复现源码路径，以及测试所需环境。不要在这里再次用未锁版本的 apt 包覆盖相机驱动。
 
+已有匹配环境且工作区已构建时，只需加载并检查消息包：
+
+```bash
 test -z "${CONDA_PREFIX:-}"
 source /opt/ros/jazzy/setup.bash
-cd "${VT_WS}"
-colcon build --event-handlers console_direct+
 source "${VT_WS}/install/setup.bash"
-colcon test --event-handlers console_direct+
-colcon test-result --all --verbose
+ros2 pkg xml realsense2_camera | sed -n 's:.*<version>\(.*\)</version>.*:\1:p'
+/usr/bin/python3 -c 'from vt_camera_msgs.msg import CameraFrameTiming; from vt_tracker_msgs.msg import TrackerSample; print("messages=OK")'
 ```
 
-只有零失败才继续。
+wrapper 版本应为 `4.58.1`。主工作区测试无失败后再继续；重建时保留部署指南的驱动 underlay。
 
 ### 4.3 安装 CLI 与 GUI 共用依赖
 
@@ -521,6 +513,7 @@ stat -c '%a %n' "${CAL_ROOT}"/config/*.yaml
 source /opt/ros/jazzy/setup.bash
 source "${VT_WS}/install/setup.bash"
 ros2 launch vt_realsense_capture triple_realsense.launch.py \
+  config_path:="${VT_DATA_ROOT}/config/cameras.yaml" \
   output_root:="${VT_DATA_ROOT}"
 ```
 

@@ -25,7 +25,7 @@ ROS `state`、二维热图、三维手表面叠加、显示参考及离线导出
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source "$HOME/Vision-Tactile-Dataset/ros2_ws/install/setup.bash"
+source "$HOME/VisionTactile-Dataset/ros2_ws/install/setup.bash"
 ros2 launch vt_tactile_capture tactile_display_bridge.launch.py
 ```
 
@@ -35,16 +35,18 @@ GUI 必须带上匹配的 `--tactile-socket`，详见链接。显示的仍是有
 
 ## 1. 安装与编译
 
+新电脑或主工作台用户先按[部署指南](../../../docs/deployment.zh-CN.md)构建主工作区；后续增加包时继续采用普通安装方式，不在已有构建目录切换 `--symlink-install`。下文的 `VT_REPO` 必须指向实际克隆路径。
+
 以下命令在 Ubuntu 24.04 桌面终端中执行。不要使用手势的 Conda/PyTorch 环境
 编译 ROS 包。依赖已安装时不必重复安装：
 
 ```bash
 sudo apt install python3-serial python3-numpy python3-pyqt5 python3-pyqtgraph \
   ros-jazzy-diagnostic-msgs ros-jazzy-rosbag2-storage-mcap
-export VT_REPO="$HOME/Vision-Tactile-Dataset"
+export VT_REPO="$HOME/VisionTactile-Dataset"
 source /opt/ros/jazzy/setup.bash
 cd "$VT_REPO/ros2_ws"
-colcon build --symlink-install --packages-select vt_tactile_msgs vt_tactile_capture
+colcon build --packages-select vt_tactile_msgs vt_tactile_capture
 source install/setup.bash
 ```
 
@@ -88,7 +90,7 @@ cd "$VT_REPO"
 每个新终端先 source ROS 和本仓库的 workspace：
 
 ```bash
-export VT_REPO="$HOME/Vision-Tactile-Dataset"
+export VT_REPO="$HOME/VisionTactile-Dataset"
 source /opt/ros/jazzy/setup.bash
 source "$VT_REPO/ros2_ws/install/setup.bash"
 ros2 launch vt_tactile_capture tactile.launch.py \
@@ -216,7 +218,7 @@ ADC 仍完整保留。超出色限的值使用端点颜色，但悬停数值和�
 在新的桌面终端仅启动订阅窗口：
 
 ```bash
-export VT_REPO="$HOME/Vision-Tactile-Dataset"
+export VT_REPO="$HOME/VisionTactile-Dataset"
 source /opt/ros/jazzy/setup.bash
 source "$VT_REPO/ros2_ws/install/setup.bash"
 "$VT_REPO/.venv-tactile/bin/python" \

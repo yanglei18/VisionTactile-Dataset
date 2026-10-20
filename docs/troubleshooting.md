@@ -1,5 +1,7 @@
 # Troubleshooting
 
+[简体中文](troubleshooting.zh-CN.md) · [New computer deployment](deployment.md)
+
 Run diagnostics from a non-Conda shell after sourcing ROS 2 Jazzy and the same
 workspace install used to launch the stack. Diagnostics help an operator assess
 the system and data; they do not add quality gates to the Recorder lifecycle.
@@ -9,7 +11,7 @@ the system and data; they do not add quality gates to the Recorder lifecycle.
 | Symptom | Checks | Interpretation and action |
 | --- | --- | --- |
 | `ros2 topic list` shows no camera topics | Confirm that the three RealSense processes, `timing_normalizer`, and `capture_controller` are running. Check `ROS_DOMAIN_ID`, `ros2 node list`, USB visibility, and launch logs. | Source ROS 2 before the workspace overlay, use the same domain in every shell, restart discovery if necessary, and relaunch after all three cameras are visible. |
-| RViz has no Color image | Add an RViz **Image** display for one exact `*/color/image_raw` topic. Set reliability to **Best Effort** and inspect `ros2 topic info -v`. | A best-effort publisher can be invisible to an incompatible reliable subscriber. An Image display does not require a TF fixed frame. During formal recording, do not run three high-resolution RViz Image displays; their extra subscriptions and rendering load can distort the observation. |
+| RViz has no Color image | Add an RViz **Image** display for one exact `*/color/image_raw` topic and inspect `ros2 topic info -v`. For managed RealSense image publishers, use **Reliable** reliability and **Volatile** durability. For external publishers, match their advertised QoS. | The managed color/depth publishers explicitly use reliable QoS. A best-effort-only external publisher cannot serve a reliable subscriber. An Image display does not require a TF fixed frame. During formal recording, do not run three high-resolution RViz Image displays; their extra subscriptions and rendering load can distort the observation. |
 | `Incomplete timing group ... missing color observation` or `Incomplete timing group ... missing depth observation` | Compare color/depth metadata rates, the per-camera `/frame_timing` rate, endpoint QoS, launch logs, and `lsusb -t`. | One color/depth metadata pair did not complete within 150,000,000 ns or four newer stamps, so that timing group was logged and omitted. Isolated or recurring messages are informational Recorder diagnostics: they do not mark a recording failed or prevent `COMPLETE`. Investigate source, QoS, driver, and USB load, then judge data fitness separately. |
 | D436 clock reset or timestamp discontinuity | Check the D436 driver log, reconnect history, kernel USB messages, and adjacent `CameraFrameTiming` device timestamps. | A D436 clock reset is an informational diagnostic and does not mark the recording failed. It can make timing unsuitable for a particular analysis, so preserve the log context and inspect the affected interval independently. |
 | Recorder stays in `FINALIZING` | Inspect `recorder.log`, process state, filesystem errors, and available space. | The controller has not confirmed Recorder termination. Do not kill the launch shell blindly; allow its stop/kill escalation to finish, then investigate the filesystem or process problem. |
@@ -43,13 +45,14 @@ must source `/opt/ros/jazzy/setup.bash` before the selected workspace install.
 
 ## Image and timing topic commands
 
-Use sensor-data QoS for image and timing diagnostics:
+Use reliable, volatile QoS for managed image diagnostics and sensor-data QoS
+for timing diagnostics:
 
 ```bash
 ros2 topic info -v /d405_1/color/image_raw
 timeout 10 ros2 topic hz /d405_1/color/image_raw
 ros2 topic echo --once /d405_1/color/image_raw sensor_msgs/msg/Image \
-  --qos-profile sensor_data --no-arr
+  --qos-reliability reliable --qos-durability volatile --no-arr
 
 ros2 topic info -v /d405_1/frame_timing
 timeout 10 ros2 topic hz /d405_1/frame_timing
@@ -62,10 +65,15 @@ ros2 topic info -v /d405_1/depth/metadata
 timeout 10 ros2 topic hz /d405_1/depth/metadata
 ```
 
-Repeat for `d405_2` and `d436`. Image and timing publishers use
-best-effort, volatile sensor-data QoS. A lower timing rate indicates that some
-color/depth metadata observations did not form complete groups; the Recorder
-continues independently.
+Repeat for `d405_2` and `d436`. Managed image publishers use the RealSense
+wrapper's `DEFAULT` QoS: reliable, volatile, keep-last depth 10. The Recorder's
+managed image subscriptions request reliable, volatile, keep-last depth 30.
+Timing publishers remain best-effort, volatile sensor-data QoS. A lower timing
+rate indicates that some color/depth metadata observations did not form complete
+groups; the Recorder continues independently. `ros2 topic hz` measures its own
+subscriber's reception, not messages written to the bag. See the
+[capture guide](capture-guide.md#camera-image-transport) for the managed
+transport and recording configuration.
 
 ## USB identity and profile commands
 
@@ -92,6 +100,20 @@ journalctl -k -b --no-pager | tail -n 200
 Use `lsusb -t` to confirm `5000M` links and place the D436 on an independent
 root bus. A USB path is transient diagnostic evidence; the configured serial
 number binds a launch instance to a camera.
+
+For access errors or RSUSB buffer exhaustion, run this read-only check from
+the repository root:
+
+```bash
+python3 tools/capture_deploy/configure_realsense_usb.py check
+```
+
+Use the [USB check/apply/rollback guide](../tools/capture_deploy/REALSENSE_USB.md)
+for any correction. Stop camera processes before applying changes; permissions
+cannot release an interface owned by another process. The buffer change lasts
+for the current boot, and RSUSB buffer requirements do not diagnose V4L2 frame
+loss. For missing packages or a wrapper version other than 4.58.1, follow the
+[deployment guide](deployment.md) before changing device settings.
 
 ## Session inspection
 

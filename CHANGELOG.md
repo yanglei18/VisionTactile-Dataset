@@ -10,6 +10,8 @@ release or a completed hardware acceptance run.
 
 ### Added
 
+- Matching Chinese/English new-computer deployment guides with explicit preview-branch checkout, ROS setup, fixed RealSense source dependencies, USB/serial permissions, first recording checks, and migration steps. Complete Chinese capture, troubleshooting and contributor guides, and an English Windows build guide.
+
 - Chinese/English switching in the independent tactile viewer, with separate
   saved preferences and no serial or renderer restart. The Windows installer
   and usage guide are bilingual; standalone release versions now come from
