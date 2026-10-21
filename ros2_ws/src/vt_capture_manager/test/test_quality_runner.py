@@ -339,7 +339,9 @@ def test_real_child_validates_late_camera_calibration_content_and_missing_option
                 "/cam/depth/camera_info", "/cam/extrinsics/depth_to_color"]
     result = QualityRunner(timeout_s=10).run(directory, tmp_path / "quality.json", expected_topics=[],
                                            optional_topics=optional)
-    assert result["topics"]["/cam/color/camera_info"]["invalid_calibration_messages"] == 1
+    calibration = result["topics"]["/cam/color/camera_info"]
+    assert calibration["inspection"] == "calibration_messages", calibration
+    assert calibration["invalid_calibration_messages"] == 1
     assert {(item["code"], item.get("topic")) for item in result["warnings"]} == {
         ("invalid_camera_calibration", "/cam/color/camera_info"),
         ("camera_calibration_missing", "/cam/depth/camera_info"),

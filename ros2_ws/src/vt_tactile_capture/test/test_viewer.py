@@ -145,7 +145,7 @@ def test_csv_and_metadata_preserve_missing_zero_and_historical_provenance(tmp_pa
 def test_offscreen_window_range_and_png_csv_export(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("pyqtgraph")
-    QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+    QtWidgets = pytest.importorskip("pyqtgraph.Qt").QtWidgets
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     model = ViewerModel()
     message = state()
@@ -153,6 +153,9 @@ def test_offscreen_window_range_and_png_csv_export(tmp_path):
     model.observe(message)
     window = create_window(model)
     try:
+        assert isinstance(window, QtWidgets.QMainWindow)
+        assert isinstance(window.hand_graphics, QtWidgets.QWidget)
+        assert isinstance(window.graphics, QtWidgets.QWidget)
         window.show()
         app.processEvents()
         window.bounds[("Row", "start")].setValue(4)
@@ -179,7 +182,7 @@ def test_hand_view_signed_reference_mapping_and_raw_export(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     np = pytest.importorskip("numpy")
     pytest.importorskip("pyqtgraph")
-    QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+    QtWidgets = pytest.importorskip("pyqtgraph.Qt").QtWidgets
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     reference = tmp_path / "baseline.npz"
     np.savez(reference, adc=np.full((12, 20, 20), 18000, dtype=np.uint16),
@@ -261,7 +264,7 @@ def test_hand_view_signed_reference_mapping_and_raw_export(tmp_path):
 def test_hand_manual_reference_finishes_in_observe_and_switches_mode(monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("pyqtgraph")
-    QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+    QtWidgets = pytest.importorskip("pyqtgraph.Qt").QtWidgets
     from vt_tactile_capture import viewer
     clock = [1_000_000_000]
     monkeypatch.setattr(viewer.time, "monotonic_ns", lambda: clock[0])
@@ -308,7 +311,7 @@ def test_hand_manual_reference_finishes_in_observe_and_switches_mode(monkeypatch
 def test_left_stream_is_not_silently_drawn_as_right_hand():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("pyqtgraph")
-    QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+    QtWidgets = pytest.importorskip("pyqtgraph.Qt").QtWidgets
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     model = ViewerModel()
     message = state()
@@ -345,7 +348,7 @@ def test_left_default_window_is_raw_matrix_without_anatomical_claim(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     np = pytest.importorskip("numpy")
     pytest.importorskip("pyqtgraph")
-    QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+    QtWidgets = pytest.importorskip("pyqtgraph.Qt").QtWidgets
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     model = ViewerModel(expected_hand="left")
     message = state()
@@ -374,7 +377,7 @@ def test_explicit_left_candidate_window_labels_unverified_and_keeps_raw_addresse
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("pyqtgraph")
-    QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+    QtWidgets = pytest.importorskip("pyqtgraph.Qt").QtWidgets
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     layout = layout_module.load_layout(Path(layout_module.__file__).parent / "layouts/left_glove_unverified_candidate.json")
     model = ViewerModel(expected_hand="left")

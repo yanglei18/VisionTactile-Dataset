@@ -56,7 +56,7 @@ def test_capture_main_does_not_hide_startup_errors(monkeypatch, module_name, nod
 
 def test_viewer_main_signals_quit_qt_and_cleanup_is_shielded(monkeypatch):
     pytest.importorskip("pyqtgraph")
-    QtWidgets = pytest.importorskip("PyQt5.QtWidgets")
+    QtWidgets = pytest.importorskip("pyqtgraph.Qt").QtWidgets
     from rclpy.signals import SignalHandlerOptions
     from vt_tactile_capture import viewer
 

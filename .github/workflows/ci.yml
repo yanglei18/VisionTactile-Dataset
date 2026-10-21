@@ -118,8 +118,14 @@ jobs:
       VT_CAPTURE_MANAGER_ROS_TEST: "1"
       VT_GLOVE_ROS_INTEGRATION: "1"
     steps:
+      - name: Check out standalone tools used by ROS integration tests
+        uses: actions/checkout@v6
       - name: Build and test ROS 2 packages
         uses: ros-tooling/action-ros-ci@v0.4
+        env:
+          # ROS packages remain installed by colcon; expose only the separate
+          # alignment tool also provided by the application launcher.
+          PYTHONPATH: ${{ github.workspace }}/tools/multisensor_alignment/src
         with:
           import-token: ${{ secrets.GITHUB_TOKEN }}
           package-name: vt_camera_msgs vt_realsense_capture vt_tracker_msgs vt_vive_tracker vt_vive_tracker_gui vt_tactile_msgs vt_tactile_capture vt_glove_msgs vt_glove_bridge vt_capture_core vt_capture_manager

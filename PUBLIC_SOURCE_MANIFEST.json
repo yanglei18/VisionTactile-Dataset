@@ -38,8 +38,8 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "bytes": 5437,
-      "sha256": "a970d71d8a15360f67e38d61d15eefb07d52f147035031217e46274d48b5ca30"
+      "bytes": 5781,
+      "sha256": "9b526e721c9173580189833a55451fa94a3795d3d643093cfde25b3a99eb1c72"
     },
     {
       "path": ".github/workflows/distributions.yml",
@@ -573,8 +573,8 @@
     },
     {
       "path": "ros2_ws/src/vt_capture_manager/package.xml",
-      "bytes": 976,
-      "sha256": "21ce350a8abcbfe6ef56887f7efa211b0d56533c4074e8f517716bc5c546b338"
+      "bytes": 1092,
+      "sha256": "faa85ee7f5c9dd174942f2784c23abd764b73707c021786227eb87d675439b3e"
     },
     {
       "path": "ros2_ws/src/vt_capture_manager/resource/vt_capture_manager",
@@ -693,8 +693,8 @@
     },
     {
       "path": "ros2_ws/src/vt_capture_manager/test/test_quality_runner.py",
-      "bytes": 36113,
-      "sha256": "7d71106b9360f39caa2dad6e2b94b83d6c8f9cef9a6118b7ae6add281dc355a4"
+      "bytes": 36219,
+      "sha256": "c7a85956f89303aba8e544434f7e284f67e8b761f5c9099ef5f5c77b01d74cc5"
     },
     {
       "path": "ros2_ws/src/vt_capture_manager/test/test_quality_scheduler_recovery.py",
@@ -1493,8 +1493,8 @@
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/test/test_lifecycle.py",
-      "bytes": 3611,
-      "sha256": "c5a122ce08f61b58d58c9e9163748878a2c27e01316e79545333baf0403dabdf"
+      "bytes": 3618,
+      "sha256": "9f665605e23ac79b9ff8565dcd3bc1192263de80970f7bb93dc4d3d87214e3db"
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/test/test_node.py",
@@ -1518,8 +1518,8 @@
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/test/test_viewer.py",
-      "bytes": 16412,
-      "sha256": "dbe163363d681c8cb9194e650f67030476faf1728d4ae151b19a696a1fb78b98"
+      "bytes": 16640,
+      "sha256": "f92c08623b2ff85691b81ffea3338fecf139b89274d3b89d4b131719bf442748"
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/__init__.py",
@@ -1608,8 +1608,8 @@
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/vt_tactile_capture/viewer.py",
-      "bytes": 46539,
-      "sha256": "60da2b785d6bf46bb3e058da7003b57cfbab00836f5aa92f5682787dbdbe7cb6"
+      "bytes": 46755,
+      "sha256": "7275834e530c4c4c65fc811f2358c4daed6dd3f846c0ffddf51dc509331db96c"
     },
     {
       "path": "ros2_ws/src/vt_tactile_msgs/CMakeLists.txt",
@@ -1878,8 +1878,8 @@
     },
     {
       "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_product_surface.py",
-      "bytes": 5726,
-      "sha256": "7c7db3301d2a23cd264574c73db9264b9f857c3ad0b53d44c6f59e8d889e36ff"
+      "bytes": 5745,
+      "sha256": "fe5790f5427df5f063dc1f94f59aa05b909672cdd5463405c81a52e085246b1b"
     },
     {
       "path": "ros2_ws/src/vt_vive_tracker_gui/test/test_projection.py",

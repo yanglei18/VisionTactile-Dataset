@@ -58,6 +58,7 @@ def test_setup_exports_and_installs_gui_product(monkeypatch):
     }
     assert installed["share/vt_vive_tracker_gui"] == (
         "package.xml",
+        "LICENSE",
         "README.md",
     )
     assert installed["share/vt_vive_tracker_gui/launch"] == (

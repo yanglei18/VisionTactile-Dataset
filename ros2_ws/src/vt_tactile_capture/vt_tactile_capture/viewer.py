@@ -190,7 +190,9 @@ def create_window(model: ViewerModel, node=None, *, hand_layout=None,
     import numpy as np
     import pyqtgraph as pg
     import pyqtgraph.exporters
-    from PyQt5 import QtCore, QtGui, QtWidgets
+    # Widgets and plots must share pyqtgraph's selected Qt binding. Importing a
+    # second binding fails when ROS also installs another supported Qt version.
+    from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
     from .display_baseline import DisplayBaseline
     from .hand_layout import load_layout, unmapped_layout
     from .presentation import delta_color_stops, region_summaries
@@ -246,8 +248,8 @@ def create_window(model: ViewerModel, node=None, *, hand_layout=None,
             self.colors = np.asarray(colors, dtype=np.uint8).copy()
             self.picture = QtGui.QPicture()
             painter = QtGui.QPainter(self.picture)
-            painter.setRenderHint(QtGui.QPainter.Antialiasing)
-            painter.setPen(QtCore.Qt.NoPen)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
             for path, color in zip(self.paths, self.colors):
                 painter.setBrush(pg.mkBrush(*map(int, color)))
                 painter.drawPath(path)
@@ -395,9 +397,9 @@ def create_window(model: ViewerModel, node=None, *, hand_layout=None,
             sidebar_layout.addWidget(self.legend)
             sidebar_layout.addStretch()
             sidebar_scroll = QtWidgets.QScrollArea()
-            sidebar_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+            sidebar_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
             sidebar_scroll.setWidgetResizable(True)
-            sidebar_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+            sidebar_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             sidebar_scroll.setWidget(sidebar)
             sidebar_scroll.setMinimumWidth(235)
             sidebar_scroll.setMaximumWidth(285)
@@ -811,7 +813,7 @@ def create_window(model: ViewerModel, node=None, *, hand_layout=None,
 def main(args=None):
     try:
         import pyqtgraph  # noqa: F401
-        from PyQt5 import QtWidgets
+        from pyqtgraph.Qt import QtWidgets
     except ImportError as error:
         raise SystemExit("Viewer needs python3-pyqt5 and python3-pyqtgraph (capture works without GUI).") from error
     import rclpy

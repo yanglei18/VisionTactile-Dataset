@@ -9,6 +9,8 @@
   <exec_depend>realsense2_camera_msgs</exec_depend>
   <exec_depend>vt_capture_core</exec_depend><exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-opencv</exec_depend><exec_depend>python3-numpy</exec_depend>
+  <!-- Dynamic message lookup in the post-record quality worker. -->
+  <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>launch_ros</exec_depend><exec_depend>ament_index_python</exec_depend>
   <test_depend>python3-pytest</test_depend>
   <test_depend>vt_realsense_capture</test_depend>
