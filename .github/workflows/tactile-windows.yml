@@ -52,7 +52,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -I -m vt_capture_console.tactile_app --help
+          # Isolated mode ignores PYTHONUTF8; Chinese help requires an explicit flag.
+          python -I -X utf8 -m vt_capture_console.tactile_app --help
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test native COM compatibility and shared data pipeline
         # Only fake serial devices are opened. Linux /proc and PTY tests have

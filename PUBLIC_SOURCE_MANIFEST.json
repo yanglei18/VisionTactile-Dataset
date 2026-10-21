@@ -48,8 +48,8 @@
     },
     {
       "path": ".github/workflows/tactile-windows.yml",
-      "bytes": 3891,
-      "sha256": "23f3566c1e2c6240f95514c71e3cfe671a7535b652517fbbb541ba610eac771d"
+      "bytes": 3985,
+      "sha256": "52729309b47cdc2b9513f0178a107161bb36e0b37c6df57fef9a0f3478d7e965"
     },
     {
       "path": ".gitignore",
