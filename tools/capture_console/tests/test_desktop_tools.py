@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 
 from vt_capture_console.backend.demo_backend import DemoBackend
@@ -16,6 +17,7 @@ def test_menu_construction_and_tracker_reopen_do_not_start_processes(qapp, tmp_p
     runtime = SimpleNamespace(repo_root=Path(__file__).resolve().parents[3],
                               state_dir=tmp_path, admission_path=tmp_path / "gate",
                               settings_path=tmp_path / "workstation.json",
+                              status={"state": "ready"},
                               fresh_snapshot=backend.snapshot)
     window = MainWindow(backend)
     tools = DesktopTools(window, backend, runtime)
@@ -31,6 +33,45 @@ def test_menu_construction_and_tracker_reopen_do_not_start_processes(qapp, tmp_p
         assert tools.tracker_dialog.timer.isActive()
         tools.tracker_dialog.reject()
     finally:
+        window.close()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
+
+
+@pytest.mark.parametrize("state", ["starting", "applying"])
+def test_tracker_open_waits_for_prepared_configuration(qapp, tmp_path, monkeypatch, state):
+    from vt_capture_console.backend.tracker_settings import TrackerBootstrapSettings
+
+    calls = []
+
+    def defaults(_settings):
+        calls.append(True)
+        return {}
+
+    def no_spawn(*args, **kwargs):
+        pytest.fail("Opening the wizard must not create a process")
+
+    monkeypatch.setattr(TrackerBootstrapSettings, "defaults", defaults)
+    monkeypatch.setattr("subprocess.Popen", no_spawn)
+    backend = DemoBackend()
+    runtime = SimpleNamespace(repo_root=Path(__file__).resolve().parents[3],
+                              status={"state": state}, settings_path=tmp_path / "workstation.json",
+                              admission_path=tmp_path / "gate", fresh_snapshot=backend.snapshot)
+    window = MainWindow(backend)
+    tools = DesktopTools(window, backend, runtime)
+    try:
+        tools.open_tracker()
+        assert tools.tracker_dialog is None and not calls
+        assert "后台" in window.operation_notice.text() and "稍候" in window.operation_notice.text()
+        runtime.status["state"] = "ready"
+        tools.open_tracker()
+        assert tools.tracker_dialog.isVisible() and calls == [True]
+        assert not tools.tracker_dialog.settings.path.exists()
+        assert not tools.tracker_dialog.approval.isChecked()
+    finally:
+        if tools.tracker_dialog is not None:
+            tools.tracker_dialog.reject()
         window.close()
         window.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

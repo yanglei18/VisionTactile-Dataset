@@ -37,6 +37,14 @@ The independent Windows tactile viewer does not require this tool.
 
 The original Windows pairing, map, and physical role assignments must still be valid. This transfers an existing device set's runtime materials; it does not infer wrist or torso roles for new Trackers. Successful import establishes software and input validation, not real 6DOF quality, frequency, or sustained operation. Follow the [Tracker acceptance procedure](tracker-ros2-publisher.md).
 
+## Defaults in the initialization wizard
+
+Wait for backend preparation or configuration application to finish before opening the wizard. It resolves confirmed Python, initialization script, and bundle paths from the workstation's Tracker configuration or an installed deployment package. The capture and approved digest come only from saved local settings or a package manifest matching the selected bundle. One status line reports the filled settings or missing items, so paths need not be copied on each use.
+
+After changing device configuration or importing a package, close and reopen the wizard, or click **Reload Configuration**. This reloads the current configuration sources, replaces unsaved window inputs, and clears initialization approval. It does not save settings, compute a digest, or start hardware. If the workstation's selected bundle has changed, reopening or reloading does not reuse the previous device set's capture and digest; only matching inputs are filled. Editing the bundle field directly clears approval, but you must still check the capture and digest yourself; the initialization script also checks that the input evidence matches. Automatic filling does not approve device writes: review the inputs and explicitly approve each initialization.
+
+Without matching private inputs, the relevant fields stay empty and identify what is missing. Public code contains the resolution rules, not developer-machine absolute paths, dated capture filenames, or private input contents. Those materials remain in local private settings or deployment packages.
+
 ## Import from an existing workstation
 
 Under **Devices → Configure Devices → Trackers**, click **Import Tracker Package…**. The module need not be enabled. Select the local `.vttracker`, click **Install Package**, and follow the single validation or installation status.

@@ -1,6 +1,9 @@
 """Tracker publisher and initialization paths share read-only local discovery."""
 from copy import deepcopy
+import json
+import os
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -44,6 +47,29 @@ def installed(home):
     root = source(home / ".local/share/visiontactile/pyvut-src")
     python = file(home / ".local/share/visiontactile/pyvut-venv/bin/python", executable=True)
     return python, root / "scripts/live_windows_bootstrap.py"
+
+
+def workstation(settings, *, source, site, bundle):
+    document = {"process_groups": [{"id": "custom_trackers", "label": "Tracker",
+        "preset": "trackers", "enabled": False, "parameters": {
+            "pyvut_source": str(source), "pyvut_site_packages": str(site), "bundle_path": str(bundle)}}]}
+    settings.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = settings.directory / "workstation.json"
+    path.write_text(json.dumps(document))
+    path.chmod(0o600)
+    return path
+
+
+def custom_software(tmp_path):
+    checkout = source(tmp_path / "configured/source")
+    venv = tmp_path / "configured/venv"
+    file(venv / "pyvenv.cfg")
+    python = venv / "bin/python"
+    python.parent.mkdir()
+    python.symlink_to(sys.executable)
+    site = venv / "lib/python3.12/site-packages"
+    site.mkdir(parents=True)
+    return checkout, python, site
 
 
 def saved(settings, tmp_path):
@@ -199,12 +225,89 @@ def test_bootstrap_discovery_preserves_all_inputs_without_reading_or_executing(m
     assert {item.key for item in result.findings} == {"python", "script"}
 
 
-def test_default_discovery_keeps_dated_private_resource_choices_and_empty_digest(machine):
+def test_default_discovery_does_not_guess_legacy_private_resource_choices(machine):
     home, root, _ = machine
     private = home / "visiontactile-data/private/vut"
     bundle = file(private / "live-bootstrap-2026-07-31.json")
     capture = file(private / "20260731_session01/01_cold_reconnect.pcapng")
     defaults = detect_defaults(root, include_environment=False)
-    assert defaults["capture"] == str(capture)
-    assert defaults["bundle"] == str(bundle)
+    assert defaults["capture"] == ""
+    assert defaults["bundle"] == ""
     assert defaults["expected_sha256"] == ""
+
+
+def test_workstation_custom_software_fills_empty_initialization_fields_readonly(machine, tmp_path, monkeypatch):
+    home, _, settings = machine
+    checkout, python, site = custom_software(tmp_path)
+    bundle = file(tmp_path / "private/selected.json")
+    path = workstation(settings, source=checkout, site=site, bundle=bundle)
+    before = path.read_bytes()
+    installed(home)  # Explicit workstation software wins over generic locations.
+    original_open = os.open
+    def guarded_open(path, *args, **kwargs):
+        assert Path(path).name not in {"python", "pyvenv.cfg", "live_windows_bootstrap.py", "selected.json"}
+        return original_open(path, *args, **kwargs)
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("opening defaults must not read private inputs, execute, or persist")
+    with monkeypatch.context() as guard:
+        guard.setattr(Path, "read_text", forbidden)
+        guard.setattr(Path, "read_bytes", forbidden)
+        guard.setattr(os, "open", guarded_open)
+        guard.setattr("subprocess.Popen", forbidden)
+        guard.setattr(settings, "save", forbidden)
+        values = settings.defaults()
+    assert values == {"python": str(python), "script": str(checkout / "scripts/live_windows_bootstrap.py"),
+                      "bundle": str(bundle), "capture": "", "expected_sha256": ""}
+    assert path.read_bytes() == before
+    assert not settings.path.exists()
+
+
+def test_workstation_custom_software_repairs_missing_saved_software_without_changing_capture(machine, tmp_path):
+    _, _, settings = machine
+    values = saved(settings, tmp_path)
+    before = settings.path.read_bytes()
+    checkout, python, site = custom_software(tmp_path)
+    workstation(settings, source=checkout, site=site, bundle=values["bundle"])
+    Path(values["python"]).unlink()
+    Path(values["script"]).unlink()
+    assert settings.defaults() == dict(values, python=str(python),
+                                      script=str(checkout / "scripts/live_windows_bootstrap.py"))
+    assert settings.path.read_bytes() == before
+
+
+def test_valid_saved_software_remains_authoritative_over_workstation_software(machine, tmp_path):
+    _, _, settings = machine
+    values = saved(settings, tmp_path)
+    checkout, _, site = custom_software(tmp_path)
+    workstation(settings, source=checkout, site=site, bundle=values["bundle"])
+    assert settings.defaults() == values
+
+
+def test_workstation_bundle_alias_keeps_the_existing_capture_group(machine, tmp_path):
+    _, _, settings = machine
+    values = saved(settings, tmp_path)
+    checkout, _, site = custom_software(tmp_path)
+    alias = tmp_path / "same-bundle.json"
+    alias.symlink_to(values["bundle"])
+    workstation(settings, source=checkout, site=site, bundle=alias)
+    assert settings.defaults() == dict(values, bundle=str(alias))
+
+
+@pytest.mark.parametrize("fault", ["no_config", "no_python", "not_executable", "wrong_layout", "not_directory"])
+def test_workstation_site_does_not_imply_an_unverified_python(machine, tmp_path, fault):
+    _, _, settings = machine
+    checkout, python, site = custom_software(tmp_path)
+    if fault == "no_config":
+        (python.parent.parent / "pyvenv.cfg").unlink()
+    elif fault in {"no_python", "not_executable"}:
+        python.unlink()
+        if fault == "not_executable":
+            file(python)
+    elif fault == "wrong_layout":
+        site = tmp_path / "configured/venv/custom-site-packages"
+        site.mkdir()
+    else:
+        site.rmdir()
+        site.touch()
+    workstation(settings, source=checkout, site=site, bundle="")
+    assert settings.defaults()["python"] == ""

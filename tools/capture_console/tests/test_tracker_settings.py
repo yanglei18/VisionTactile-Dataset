@@ -204,7 +204,7 @@ def test_failed_atomic_replace_preserves_old_store_and_removes_temp(settings, va
     assert not list(settings.directory.glob(".*.tmp"))
 
 
-def test_defaults_prefer_external_capture_and_never_repository_bundle(settings):
+def test_defaults_do_not_guess_dated_private_inputs(settings):
     private = Path.home() / "visiontactile-data/private/vut"
     capture = private / "20260731_session01/01_cold_reconnect.pcapng"
     capture.parent.mkdir(parents=True)
@@ -213,11 +213,11 @@ def test_defaults_prefer_external_capture_and_never_repository_bundle(settings):
     old_bundle.parent.mkdir(parents=True)
     old_bundle.touch()
     values = detect_defaults(settings.repo_root)
-    assert values["capture"] == str(capture)
+    assert values["capture"] == ""
     assert values["bundle"] == values["expected_sha256"] == ""
     external_bundle = private / "live-bootstrap-2026-07-31.json"
     external_bundle.touch()
-    assert detect_defaults(settings.repo_root)["bundle"] == str(external_bundle)
+    assert detect_defaults(settings.repo_root)["bundle"] == ""
     external_bundle.unlink()
     external_bundle.symlink_to(old_bundle)
     assert detect_defaults(settings.repo_root)["bundle"] == ""
@@ -229,7 +229,11 @@ def test_current_workstation_bundle_saved_settings_and_environment_priority(sett
     workstation(settings, current_bundle)
     assert settings.defaults()["bundle"] == str(current_bundle)
     settings.save(values)
-    assert settings.defaults()["bundle"] == values["bundle"]
+    changed = settings.defaults()
+    assert changed["bundle"] == str(current_bundle)
+    assert changed["capture"] == changed["expected_sha256"] == ""
+    assert changed["python"] == values["python"]
+    assert changed["script"] == values["script"]
     monkeypatch.setenv("VT_CAPTURE", "/explicit/missing/capture.pcapng")
     monkeypatch.setenv("VT_BUNDLE", "/explicit/missing/bundle.json")
     monkeypatch.setenv("VT_CAPTURE_SHA256", "c" * 64)

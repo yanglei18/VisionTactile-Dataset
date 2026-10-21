@@ -15,7 +15,7 @@ from ...i18n.widgets import (
 
 from ...backend.tracker_workflow import (
     BootstrapConfig, PROMPTS, TrackerWorkflow, capture_sha256,
-    detect_defaults, initialization_blocker,
+    bootstrap_input_issues, detect_defaults, initialization_blocker,
 )
 
 
@@ -95,12 +95,15 @@ class TrackerSetupDialog(QDialog):
         self.hash_note = _label(tr('文件指纹用于核对既有抓包文件与启动包；计算指纹不会访问追踪器，也不代表批准。'))
         layout.addWidget(self.hash_note)
         saved_row = QHBoxLayout()
+        self.reload_button = QPushButton(tr('重新读取配置'))
+        self.reload_button.setToolTip(tr('从设备配置与本机部署重新载入，替换本窗口尚未保存的输入。'))
+        self.reload_button.clicked.connect(self._reload_defaults)
         self.save_button = QPushButton(tr('保存本机初始化配置'))
         self.save_button.clicked.connect(self._save_settings)
-        self.save_note = _label(tr('已填入本机配置；保存后重启仍保留。每次初始化仍需手动确认。')
-                                if settings is not None else tr('此窗口未配置本机存储；可直接完成本次初始化。'))
+        self.save_note = _label(self._input_status())
         if self._settings_error:
             self.save_note.setText(tr('本机配置读取失败，未覆盖原文件：') + display_message(self._settings_error))
+        saved_row.addWidget(self.reload_button)
         saved_row.addWidget(self.save_button)
         saved_row.addWidget(self.save_note, 1)
         layout.addLayout(saved_row)
@@ -154,12 +157,59 @@ class TrackerSetupDialog(QDialog):
         if hasattr(self, "approval"):
             self.approval.setChecked(False)
         if hasattr(self, "save_note") and self.settings is not None and not self._settings_error:
-            self.save_note.setText(tr('配置已修改；点击保存，或在开始初始化时保存。'))
+            self.save_note.setText(self._input_status(modified=True))
         if had_submission_error:
             self.refresh()
 
     def _values(self):
         return {key: edit.text().strip() for key, edit in self.fields.items()}
+
+    def _input_status(self, *, modified=False):
+        issues = bootstrap_input_issues(self._values())
+        if issues:
+            labels = {
+                "python": tr('Python 环境'), "script": tr('初始化脚本'),
+                "capture": tr('抓包文件'), "bundle": tr('启动包'),
+                "expected_sha256": tr('抓包指纹'),
+            }
+            fields = tr('、').join(labels[key] for key in issues)
+            return (tr('配置已修改；请补全或检查：{fields}', fields=fields) if modified
+                    else tr('请补全或检查：{fields}', fields=fields))
+        if modified:
+            return tr('配置已修改；点击保存，或在开始初始化时保存。')
+        return tr('已自动填入本机配置；每次初始化仍需手动确认。')
+
+    def _reload_defaults(self):
+        active = self.workflow.snapshot()["state"] in {"RUNNING", "WAITING", "CANCELLING"}
+        hashing = self._hash_thread is not None and self._hash_thread.is_alive()
+        if active or hashing:
+            return
+        self.approval.setChecked(False)
+        try:
+            defaults = self.settings.defaults() if self.settings is not None else detect_defaults()
+        except (ValueError, OSError, TypeError) as exc:
+            self._settings_error = str(exc)
+            self.save_note.setText(tr('本机配置读取失败，未覆盖原文件：') + display_message(self._settings_error))
+            self.refresh()
+            return
+        # A finished digest worker can still have an unconsumed result. A reload
+        # must not replace the freshly loaded approved digest with that result.
+        while True:
+            try:
+                self._hash_results.get_nowait()
+            except queue.Empty:
+                break
+        for name, field in self.fields.items():
+            blocked = field.blockSignals(True)
+            try:
+                field.setText(defaults.get(name, ""))
+                field.setCursorPosition(0)
+            finally:
+                field.blockSignals(blocked)
+        self._settings_error = self._submission_error = ""
+        self.save_note.setText(self._input_status())
+        self.hash_note.setText(tr('文件指纹用于核对既有抓包文件与启动包；计算指纹不会访问追踪器，也不代表批准。'))
+        self.refresh()
 
     def _save_settings(self):
         # Preferences do not carry consent. Opening the next dialog always
@@ -266,6 +316,7 @@ class TrackerSetupDialog(QDialog):
         for button in self.browse_buttons:
             button.setEnabled(not active)
         self.hash_button.setEnabled(not active and not hashing)
+        self.reload_button.setEnabled(not active and not hashing)
         self.save_button.setEnabled(self.settings is not None and not self._settings_error and not active and not hashing)
         self.approval.setEnabled(not active and not hashing)
         self.reading_button.setVisible(view["state"] == "COMPLETE")

@@ -15,8 +15,7 @@ import re
 import stat
 import uuid
 
-from .tracker_workflow import (BootstrapConfig, bootstrap_environment_overrides,
-                               detect_defaults)
+from .tracker_workflow import BootstrapConfig, bootstrap_environment_overrides
 from .environment_discovery import discover_bootstrap_configuration, managed_tracker_installation
 from .workstation_settings import repository_root
 
@@ -158,29 +157,32 @@ class TrackerBootstrapSettings:
                 pass
             os.close(descriptor)
 
-    def _workstation_bundle(self):
+    def _workstation_parameters(self):
         descriptor = self._directory_fd()
         if descriptor is None:
-            return ""
+            return {}
         try:
             document = self._document(descriptor, "workstation.json")
         finally:
             os.close(descriptor)
         if document is _MISSING:
-            return ""
+            return {}
         from vt_capture_core.workstation import validate_configuration
 
         configuration = validate_configuration(document)
         for group in configuration["process_groups"]:
             if group.get("preset") == "trackers":
-                value = group.get("parameters", {}).get("bundle_path", "")
-                if value and not Path(value).expanduser().resolve().is_relative_to(self.repo_root.resolve()):
-                    return value
-        return ""
+                parameters = dict(group.get("parameters", {}))
+                bundle = parameters.get("bundle_path", "")
+                if bundle and Path(bundle).expanduser().resolve().is_relative_to(self.repo_root.resolve()):
+                    parameters["bundle_path"] = ""
+                return parameters
+        return {}
 
     def defaults(self):
         saved = self.load()
-        workstation_bundle = self._workstation_bundle()
+        workstation = self._workstation_parameters()
+        workstation_bundle = workstation.get("bundle_path", "")
         # The publisher's explicitly selected managed bundle pins all initializer
         # inputs. An older saved initializer cannot silently select another rig.
         managed = (managed_tracker_installation(workstation_bundle, current=False)
@@ -189,17 +191,17 @@ class TrackerBootstrapSettings:
         if managed is not None:
             values["bundle"] = str(managed.bundle)
         else:
-            if workstation_bundle:
-                values["bundle"] = workstation_bundle
             values.update(saved)
+            if workstation_bundle:
+                # A newly selected device set cannot inherit the previous set's
+                # capture or approved digest. Software paths are independent.
+                previous = values.get("bundle")
+                if previous and (Path(previous).expanduser().resolve()
+                                 != Path(workstation_bundle).expanduser().resolve()):
+                    values["capture"] = values["expected_sha256"] = ""
+                values["bundle"] = workstation_bundle
         values = discover_bootstrap_configuration(
-            values, repo_root=self.repo_root, environ={}, replace_missing=True).configuration
-        if not any(values.get(key) for key in ("bundle", "capture", "expected_sha256")):
-            # Keep the old, bounded local suggestions only when no explicit or
-            # managed private input group has already been selected.
-            legacy = detect_defaults(self.repo_root, include_environment=False)
-            for key, value in legacy.items():
-                if not values.get(key):
-                    values[key] = value
+            values, repo_root=self.repo_root, environ={}, replace_missing=True,
+            workstation_parameters=workstation).configuration
         values.update(bootstrap_environment_overrides())
         return values

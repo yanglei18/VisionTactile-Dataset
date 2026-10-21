@@ -1,0 +1,13 @@
+{
+  "重新读取配置": "Reload Configuration",
+  "从设备配置与本机部署重新载入，替换本窗口尚未保存的输入。": "Reload device settings and the local deployment, replacing unsaved inputs in this window.",
+  "请补全或检查：{fields}": "Complete or check: {fields}",
+  "配置已修改；请补全或检查：{fields}": "Settings changed; complete or check: {fields}",
+  "已自动填入本机配置；每次初始化仍需手动确认。": "Local settings filled automatically. Confirm each initialization manually.",
+  "Python 环境": "Python environment",
+  "初始化脚本": "Initialization script",
+  "抓包文件": "Capture file",
+  "启动包": "Bootstrap bundle",
+  "抓包指纹": "Capture fingerprint",
+  "、": ", "
+}

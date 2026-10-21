@@ -199,7 +199,9 @@ def test_explicit_workstation_managed_bundle_takes_precedence_over_previous_save
                        script=str(Path(previous["source"]) / "scripts/live_windows_bootstrap.py"),
                        bundle=previous["bundle"], capture=previous["capture"], expected_sha256=previous["digest"]))
     before = settings.path.read_bytes()
-    value = config({"bundle_path": current["bundle"]})
+    value = config({"bundle_path": current["bundle"],
+                    "pyvut_source": previous["source"],
+                    "pyvut_site_packages": previous["site_packages"]})
     value["process_groups"][0]["label"] = "Trackers"
     path = settings.directory / "workstation.json"
     path.write_text(json.dumps(value))
@@ -209,6 +211,29 @@ def test_explicit_workstation_managed_bundle_takes_precedence_over_previous_save
                           script=str(Path(current["source"]) / "scripts/live_windows_bootstrap.py"),
                           bundle=current["bundle"], capture=current["capture"], expected_sha256=current["digest"])
     assert settings.path.read_bytes() == before
+
+
+def test_manual_workstation_bundle_uses_its_selected_software_before_another_active_deployment(machine):
+    previous = install(machine[0], "a")
+    install(machine[0], "b")
+    venv = Path(previous["python"]).parent.parent
+    (venv / "pyvenv.cfg").touch()
+    bundle = machine[0] / "manual-bundle.json"
+    bundle.touch()
+    settings = TrackerBootstrapSettings(machine[1], machine[0] / "settings")
+    settings.directory.mkdir(mode=0o700)
+    value = config({"bundle_path": str(bundle), "pyvut_source": previous["source"],
+                    "pyvut_site_packages": previous["site_packages"]})
+    value["process_groups"][0]["label"] = "Trackers"
+    path = settings.directory / "workstation.json"
+    path.write_text(json.dumps(value))
+    path.chmod(0o600)
+    actual = settings.defaults()
+    assert actual["bundle"] == str(bundle)
+    assert actual["python"] == previous["python"]
+    assert actual["script"] == str(Path(previous["source"]) / "scripts/live_windows_bootstrap.py")
+    assert actual["capture"] == actual["expected_sha256"] == ""
+    assert not settings.path.exists()
 
 
 def test_complete_manual_configuration_does_not_depend_on_broken_activation_metadata(machine):

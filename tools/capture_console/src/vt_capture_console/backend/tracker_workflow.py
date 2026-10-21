@@ -34,6 +34,38 @@ _ACTIVE = {"RUNNING", "WAITING", "CANCELLING"}
 _LOCAL_OWNER = threading.Lock()
 
 
+def _bootstrap_inputs(values):
+    """Validate file metadata once for both the GUI summary and process argv."""
+    paths, errors = {}, {}
+    for name in ("python", "script", "capture", "bundle"):
+        value = values.get(name)
+        if not isinstance(value, str) or not value or len(value) > 4096 or any(c in value for c in "\0\r\n"):
+            errors[name] = f"{name} 需要明确的本地文件路径"
+            continue
+        try:
+            path = Path(value).expanduser()
+            valid = path.is_absolute() and path.is_file()
+        except (OSError, RuntimeError, ValueError):
+            valid = False
+        if not valid:
+            errors[name] = f"{name} 必须是现有的绝对文件路径"
+        elif name == "python" and not os.access(path, os.X_OK):
+            errors[name] = "Python 文件不可执行"
+        elif name == "script" and path.name != "live_windows_bootstrap.py":
+            errors[name] = "只接受经批准的 live_windows_bootstrap.py 脚本"
+        else:
+            paths[name] = str(path)
+    digest = values.get("expected_sha256")
+    if not isinstance(digest, str) or re.fullmatch(r"[a-fA-F0-9]{64}", digest) is None:
+        errors["expected_sha256"] = "必须明确提供经批准 capture 的 64 位 SHA-256；不会自动计算替代批准值"
+    return paths, errors
+
+
+def bootstrap_input_issues(values) -> tuple[str, ...]:
+    """Return invalid field keys in form order; never read, hash, or run inputs."""
+    return tuple(_bootstrap_inputs(values)[1])
+
+
 @dataclass(frozen=True)
 class BootstrapConfig:
     python: str
@@ -43,23 +75,12 @@ class BootstrapConfig:
     expected_sha256: str
 
     def argv(self):
-        paths = []
-        for name in ("python", "script", "capture", "bundle"):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value or len(value) > 4096 or any(c in value for c in "\0\r\n"):
-                raise ValueError(f"{name} 需要明确的本地文件路径")
-            path = Path(value).expanduser()
-            if not path.is_absolute() or not path.is_file():
-                raise ValueError(f"{name} 必须是现有的绝对文件路径")
-            paths.append(str(path))
-        if not os.access(paths[0], os.X_OK):
-            raise ValueError("Python 文件不可执行")
-        if Path(paths[1]).name != "live_windows_bootstrap.py":
-            raise ValueError("只接受经批准的 live_windows_bootstrap.py 脚本")
-        if not isinstance(self.expected_sha256, str) or re.fullmatch(r"[a-fA-F0-9]{64}", self.expected_sha256) is None:
-            raise ValueError("必须明确提供经批准 capture 的 64 位 SHA-256；不会自动计算替代批准值")
-        return [paths[0], "-u", paths[1], "--capture", paths[2],
-                "--expected-sha256", self.expected_sha256.lower(), "--bundle", paths[3],
+        paths, errors = _bootstrap_inputs({name: getattr(self, name) for name in (
+            "python", "script", "capture", "bundle", "expected_sha256")})
+        if errors:
+            raise ValueError(next(iter(errors.values())))
+        return [paths["python"], "-u", paths["script"], "--capture", paths["capture"],
+                "--expected-sha256", self.expected_sha256.lower(), "--bundle", paths["bundle"],
                 "--startup-mode", "host-then-clients", "--execute-feature-writes"]
 
 
@@ -67,16 +88,9 @@ def detect_defaults(repo_root=None, *, include_environment=True):
     """Inspect path existence only; never source shell or read private contents."""
     root = next((p for p in Path(__file__).resolve().parents if (p / "docs/tracker-ros2-publisher.md").is_file()), None)
     root = Path(repo_root if repo_root is not None else os.environ.get("VT_REPO", root or Path.home())).expanduser().absolute()
-    private = Path.home() / "visiontactile-data/private/vut"
-    bundle = private / "live-bootstrap-2026-07-31.json"
-    # The driver does not permit credential bundles in a checkout. Never
-    # suggest the old repository-local copy, including through a symlink.
-    bundle_allowed = not bundle.resolve().is_relative_to(root.resolve())
-    values = dict(python="", script="",
-                  capture=str(private / "20260731_session01/01_cold_reconnect.pcapng"),
-                  bundle=str(bundle) if bundle_allowed else "", expected_sha256="")
-    values = {key: value if key == "expected_sha256" or value and Path(value).is_file() else ""
-              for key, value in values.items()}
+    # Private inputs come only from an explicit saved/environment choice or a
+    # coherent deployment manifest, never a guessed historical filename.
+    values = dict(python="", script="", capture="", bundle="", expected_sha256="")
     values = discover_bootstrap_configuration(values, repo_root=root, environ={}).configuration
     if include_environment:
         values.update(bootstrap_environment_overrides())

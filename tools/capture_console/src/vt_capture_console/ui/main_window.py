@@ -469,11 +469,11 @@ class MainWindow(QMainWindow):
     def _open_workstation_settings(self):
         runtime = getattr(self.backend, "runtime", None)
         if runtime is None:
-            self._notice(tr('演示模式只模拟流程，不保存设备配置；请从桌面工作台入口打开配置。') if self.demo else
+            self.show_operation_notice(tr('演示模式只模拟流程，不保存设备配置；请从桌面工作台入口打开配置。') if self.demo else
                          tr('请从桌面工作台入口打开配置；此连接不拥有本地后台，不能修改其设置。'))
             return
         if runtime_busy(runtime):
-            self._notice(tr('请等待后台准备完成，再打开设备配置。'))
+            self.show_operation_notice(tr('请等待后台准备完成，再打开设备配置。'))
             return
         if self.settings_dialog is not None and self.settings_dialog.isVisible():
             self.settings_dialog.raise_()
@@ -485,7 +485,7 @@ class MainWindow(QMainWindow):
             self.settings_dialog = WorkstationSettingsDialog(runtime, lambda: self.last_snapshot, self)
             self.settings_dialog.show()
         except (ValueError, RuntimeError, OSError) as exc:
-            self._notice(tr('配置暂不可打开：{v0}', v0=exc))
+            self.show_operation_notice(tr('配置暂不可打开：{v0}', v0=exc))
 
     def _retry_desktop_backend(self):
         runtime = getattr(self.backend, "runtime", None)
@@ -494,7 +494,7 @@ class MainWindow(QMainWindow):
         try:
             runtime.start()
         except (ValueError, RuntimeError, OSError) as exc:
-            self._notice(tr('后台暂不可启动：{v0}', v0=exc))
+            self.show_operation_notice(tr('后台暂不可启动：{v0}', v0=exc))
         self._refresh_desktop_runtime()
 
     def _open_backend_log(self):
@@ -660,7 +660,8 @@ class MainWindow(QMainWindow):
         self.detail_state.setText(STATUS.get(device["status"], STATUS["unknown"])[0] + "\n" + freshness)
         self.detail_text.setText(diagnostic(device.get("detail", "")))
 
-    def _notice(self, message, *, page=None):
+    def show_operation_notice(self, message, *, page=None):
+        """Present a tool or workstation result through the shared notice area."""
         self._notice_page = page
         self.operation_notice.setText(diagnostic(message)[:180])
         self.operation_notice.setToolTip(diagnostic(message))
@@ -701,7 +702,7 @@ class MainWindow(QMainWindow):
             self.batch_name.clear()
         if update.refresh_details:
             self._details_polled_at = 0.0
-        self._notice(update.notice, page={"archive": 1, "recording": 4}.get(update.notice_page))
+        self.show_operation_notice(update.notice, page={"archive": 1, "recording": 4}.get(update.notice_page))
 
     def _submit(self, command, params):
         update = self.operations.submit(command, params, sender=self.backend.submit,
@@ -713,11 +714,11 @@ class MainWindow(QMainWindow):
 
     def _create_batch(self):
         if not (self.demo or self.management.get("enabled")):
-            self._notice(tr('后台未启用管理模式，不能创建正式批次。'))
+            self.show_operation_notice(tr('后台未启用管理模式，不能创建正式批次。'))
             return
         title = self.batch_name.text().strip()
         if not title:
-            self._notice(tr('请填写新批次名称。'), page=4)
+            self.show_operation_notice(tr('请填写新批次名称。'), page=4)
             self.batch_name.setFocus()
             return
         self._submit("batch.create", {"label": title})
@@ -726,13 +727,13 @@ class MainWindow(QMainWindow):
         if self.pending_request:
             return
         if not self.demo and not recording_access(self.last_snapshot or {}, self.management)[0]:
-            self._notice(tr('当前不能开始：请检查后台管理模式、控制器连接和未决试次。'))
+            self.show_operation_notice(tr('当前不能开始：请检查后台管理模式、控制器连接和未决试次。'))
             return
         batch_id = self.batch_selector.currentData()
         title = self.trial_name.text().strip()
         if not batch_id or not title:
             self.navigation.button(4).click()
-            self._notice(tr('请先创建或选择采集批次，并填写试次名称。'), page=4)
+            self.show_operation_notice(tr('请先创建或选择采集批次，并填写试次名称。'), page=4)
             return
         context = self.management.get("controller") or {}
         params = {"batch_id": batch_id, "label": title, "duration_s": self.duration.value(),
@@ -740,13 +741,13 @@ class MainWindow(QMainWindow):
                   "expected_state_revision": context.get("state_revision", 0)}
         plan_view = self._capture_plan_view()
         if plan_view.blocks_start:
-            self._notice(plan_view.status, page=4)
+            self.show_operation_notice(plan_view.status, page=4)
             return
         params.update(plan_view.start_parameters())
         if getattr(self.backend, "supports_details", False):
             params.update(task_name=self.task_name.text().strip(), operator_name=self.operator_name.text().strip())
         elif self.task_name.text().strip() or self.operator_name.text().strip():
-            self._notice(tr('后台当前不支持元信息；请恢复 v3 连接，或清空任务 / 操作员字段后使用旧版录制。'))
+            self.show_operation_notice(tr('后台当前不支持元信息；请恢复 v3 连接，或清空任务 / 操作员字段后使用旧版录制。'))
             return
         self._submit("capture.start", params)
 
@@ -776,7 +777,7 @@ class MainWindow(QMainWindow):
             trial = next((t for t in self.management.get("trials", []) if t["state"] == "RECORDING"), None)
         else:
             if not recording_access(self.last_snapshot or {}, self.management)[1]:
-                self._notice(tr('当前没有可由本工作台停止的已确认录制。'))
+                self.show_operation_notice(tr('当前没有可由本工作台停止的已确认录制。'))
                 return
             trial = owned_active_trial(self.management)
         if not trial:

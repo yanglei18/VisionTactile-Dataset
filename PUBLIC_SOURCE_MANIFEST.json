@@ -173,13 +173,13 @@
     },
     {
       "path": "docs/tracker-deployment.md",
-      "bytes": 8768,
-      "sha256": "4f784149caf9d547b285185b457bc8b1f3d77d2cfbf5f0aa784c8dfa4dce5d8e"
+      "bytes": 10345,
+      "sha256": "1baf67377263b24624587f7591f9f90e743577ac0ad0b3d0cd9e9702b0d8c82b"
     },
     {
       "path": "docs/tracker-deployment.zh-CN.md",
-      "bytes": 7495,
-      "sha256": "6ee19037dde3d2868eec7130e3f0e0836bbf4c34869c66552dc2a4bb15a473af"
+      "bytes": 8812,
+      "sha256": "7f4d66aff8afc3d302376a53c176e1fe10a17be54db5bc12fdd6412281d978d1"
     },
     {
       "path": "docs/tracker-linux-validation.md",
@@ -1953,8 +1953,8 @@
     },
     {
       "path": "tools/capture_console/README.md",
-      "bytes": 84708,
-      "sha256": "09b8268541e1c63b5dce2a4a2cfe752e5f00c696177da378cd781a2dd60a5681"
+      "bytes": 85619,
+      "sha256": "96969cb07a3c711140c3f8c9a772a287520902f30cae0f6af7d5b212611c672a"
     },
     {
       "path": "tools/capture_console/THIRD_PARTY_NOTICES.md",
@@ -2018,8 +2018,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/environment_discovery.py",
-      "bytes": 18636,
-      "sha256": "da73dfa6d982686578ebba7ab3c204f1e045e3ca107521ec210b587f60db3802"
+      "bytes": 20563,
+      "sha256": "6711dbd5b91da4da850c3f320e2b2d527c383414695b6d81a5490224dde7c77f"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/glove_calibration.py",
@@ -2103,13 +2103,13 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/tracker_settings.py",
-      "bytes": 9608,
-      "sha256": "cd08b938855277a9e401e91c7c4e4a3396e21a78203a964b320aa7d58019777d"
+      "bytes": 9759,
+      "sha256": "fb66e72d082af97c6e13a14a70ef143d7d40d5df938c33d92df3b8050b64387b"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/tracker_workflow.py",
-      "bytes": 19208,
-      "sha256": "4f18c695b5cefb978b4734975c2090028c7325c19620ee255b1002d98907c504"
+      "bytes": 19506,
+      "sha256": "2770c204ece95a3c5d8afae29fadc1754794605625367d6827dbfde66c8d3301"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/backend/workstation_settings.py",
@@ -2242,6 +2242,11 @@
       "sha256": "38368a09ba89dc6836921fa8da8964370e17ffd34abbe39b7584060be6f8eb1f"
     },
     {
+      "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_tracker_defaults.json",
+      "bytes": 764,
+      "sha256": "4b6a1519f9f1496b8b884d8859f27e80cb5a520b32aeef24321c3f6bcdfc9250"
+    },
+    {
       "path": "tools/capture_console/src/vt_capture_console/i18n/catalog_tracker_deployment.json",
       "bytes": 4814,
       "sha256": "9843c43529f6386ed2c2ea3cabfff0470af491abab928685d0cea7530d7e2f34"
@@ -2338,8 +2343,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/desktop_tools.py",
-      "bytes": 12410,
-      "sha256": "c07d9248f23e63e2f7db70313cf91377a9b6d2545b60717f821702ae197f26d9"
+      "bytes": 12630,
+      "sha256": "f73aa85bee3fa068731ad313774cd8dc831ae9aceb5898ac2d262ec4076c6c1e"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/gpu_status.py",
@@ -2353,8 +2358,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/main_window.py",
-      "bytes": 63838,
-      "sha256": "4fe996f61aefd6034a4c4562a625e032b2340f85c321b2f15e6ddfb3d51eddf1"
+      "bytes": 64103,
+      "sha256": "b1ba84982b47632ff61a1969ff65c9dc1afe0813775a3a26ae0c03ba094c20f4"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/tactile_window.py",
@@ -2498,8 +2503,8 @@
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/widgets/tracker_setup.py",
-      "bytes": 15566,
-      "sha256": "a8755b0047fa0d77037f01db83af2d3dfe4eb5472a4479a2c7a10c17db6126c7"
+      "bytes": 18083,
+      "sha256": "b54add1af468daaf349c6991137c249de55cd77f3386b4f647bf90862e2b03a0"
     },
     {
       "path": "tools/capture_console/src/vt_capture_console/ui/widgets/trial_details.py",
@@ -2618,8 +2623,8 @@
     },
     {
       "path": "tools/capture_console/tests/test_desktop_tools.py",
-      "bytes": 4002,
-      "sha256": "e15ad6c2d8ecbcd8234fc571450fd7b73088b1bc326186dc8cb10e2d265591ab"
+      "bytes": 5741,
+      "sha256": "7a6e8481cb71fa49f8cd6d1e84efc43e70d68b47a1eab9b35bf87c62c356a77e"
     },
     {
       "path": "tools/capture_console/tests/test_device_card_expansion.py",
@@ -2928,23 +2933,28 @@
     },
     {
       "path": "tools/capture_console/tests/test_tracker_environment.py",
-      "bytes": 8934,
-      "sha256": "0efd4ff6b17be57bc0701c2f6c9b7f55409f4c2059821cf6681771a99d921d55"
+      "bytes": 13419,
+      "sha256": "90aa73a2947aadca3770fcd6e1cb0870195bca90f1232d07425e96d7d504c1e1"
     },
     {
       "path": "tools/capture_console/tests/test_tracker_installation_discovery.py",
-      "bytes": 15326,
-      "sha256": "ac58e35041ac8d9edd5d667dd84141d0ad0700a368c81f38a7a4147da25d88e8"
+      "bytes": 16543,
+      "sha256": "26eda8afe72f445b1201cb285d01c43673f864806da763f62c4eb1f0c030c0b8"
     },
     {
       "path": "tools/capture_console/tests/test_tracker_settings.py",
-      "bytes": 10626,
-      "sha256": "293fa63fa10d3bb21b296b0a129cc597081df98eedc2270f17f452f9929976fb"
+      "bytes": 10769,
+      "sha256": "8873467ae0c635671d07bdb60686b27c0c74f18733ca8b6fad697bc848006483"
     },
     {
       "path": "tools/capture_console/tests/test_tracker_setup.py",
       "bytes": 7833,
       "sha256": "0e3cceebfc0ea4252545491ba6fe6db3d57fbbae7671b0fe7b985141d81e4a3f"
+    },
+    {
+      "path": "tools/capture_console/tests/test_tracker_setup_defaults.py",
+      "bytes": 4607,
+      "sha256": "dcfd3d911d084a842d869a68f8e31577b7036d87296c7dadbbb84b5259795e99"
     },
     {
       "path": "tools/capture_console/tests/test_tracker_setup_persistence.py",
@@ -2953,13 +2963,13 @@
     },
     {
       "path": "tools/capture_console/tests/test_tracker_workbench_actions.py",
-      "bytes": 13730,
-      "sha256": "1d2566e2b18e09a09c2bea7a0b68e1724cf64da1846a4fc4fe0fd82ed4fe783c"
+      "bytes": 14065,
+      "sha256": "ae0072807d741e00b93fd9bee6f3b4200930eb50011cc8f1db192a5b8f83f23c"
     },
     {
       "path": "tools/capture_console/tests/test_tracker_workflow.py",
-      "bytes": 13364,
-      "sha256": "cc277053fb56c986ac75f445f02a9467b6296f3c91416cb5db12e3315f475552"
+      "bytes": 14847,
+      "sha256": "895f0ba55900f90e1925796964589ab943a1c4563051e563d24ddc5dc058af7b"
     },
     {
       "path": "tools/capture_console/tests/test_trial_details.py",

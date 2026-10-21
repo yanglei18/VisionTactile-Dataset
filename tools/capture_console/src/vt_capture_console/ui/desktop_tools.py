@@ -13,6 +13,7 @@ from ..i18n.widgets import QAction
 from ..i18n.widgets import QMenu, QMessageBox, QToolButton
 
 from ..backend.operation_receipts import operation_for
+from .widgets.workstation_settings import runtime_busy
 
 
 class DesktopTools(QObject):
@@ -71,9 +72,12 @@ class DesktopTools(QObject):
         return action
 
     def open_tracker(self):
-        from ..backend.tracker_settings import TrackerBootstrapSettings
-        from .widgets.tracker_setup import TrackerSetupDialog
         if self.tracker_dialog is None:
+            if runtime_busy(self.runtime):
+                self.window.show_operation_notice(tr('后台正在处理，请稍候。'))
+                return
+            from ..backend.tracker_settings import TrackerBootstrapSettings
+            from .widgets.tracker_setup import TrackerSetupDialog
             self.tracker_dialog = TrackerSetupDialog(
                 self.backend.snapshot, self.window, admission_path=self.runtime.admission_path,
                 fresh_snapshot_provider=self.runtime.fresh_snapshot,

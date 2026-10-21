@@ -1,5 +1,6 @@
 """Synthetic prompt subprocesses only: no PyVUT imports, USB or hardware."""
 from copy import deepcopy
+from dataclasses import asdict
 import fcntl
 import hashlib
 import os
@@ -239,6 +240,35 @@ def test_invalid_config_rejected_before_execution(tmp_path):
         BootstrapConfig(config.python, config.script, config.capture, config.bundle, "").argv()
     with pytest.raises(ValueError, match="绝对"):
         BootstrapConfig(config.python, "live_windows_bootstrap.py", config.capture, config.bundle, "a" * 64).argv()
+
+
+def test_bootstrap_metadata_issues_have_stable_field_order_and_share_argv_validation(tmp_path):
+    assert module.bootstrap_input_issues({}) == ("python", "script", "capture", "bundle", "expected_sha256")
+    values = asdict(make_config(tmp_path))
+    assert module.bootstrap_input_issues(values) == ()
+    wrong_script = tmp_path / "different.py"
+    wrong_script.touch()
+    non_executable = tmp_path / "python"
+    non_executable.touch()
+    for field, invalid in (("python", str(non_executable)), ("script", str(wrong_script)),
+                           ("capture", str(tmp_path)), ("bundle", "relative"),
+                           ("expected_sha256", "invalid")):
+        changed = dict(values, **{field: invalid})
+        assert module.bootstrap_input_issues(changed) == (field,)
+        with pytest.raises(ValueError):
+            BootstrapConfig(**changed).argv()
+
+
+def test_bootstrap_metadata_issues_never_read_hash_or_start_inputs(tmp_path, monkeypatch):
+    values = asdict(make_config(tmp_path))
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("metadata validation must not read, hash or execute")
+    monkeypatch.setattr(Path, "read_bytes", forbidden)
+    monkeypatch.setattr(Path, "read_text", forbidden)
+    monkeypatch.setattr(os, "open", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    monkeypatch.setattr(module, "capture_sha256", forbidden)
+    assert module.bootstrap_input_issues(values) == ()
 
 
 def test_admission_excludes_other_process_for_whole_child_and_is_released(tmp_path):

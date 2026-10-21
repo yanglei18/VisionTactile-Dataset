@@ -273,6 +273,15 @@ def test_navigation_is_read_only_and_checks_sidebar_and_filter(workbench):
     assert window.statusBar().currentMessage() == "只查看"
 
 
+def test_existing_tracker_dialog_can_be_raised_without_reloading_during_runtime_operation(workbench):
+    _, tools, backend, dialog = workbench
+    backend.runtime.status["state"] = "applying"
+    dialog.hide()
+    tools.open_tracker()
+    assert tools.tracker_dialog is dialog and dialog.isVisible()
+    assert not backend.commands
+
+
 def test_real_dialog_signal_and_runtime_local_settings_are_connected(workbench, monkeypatch):
     window, tools, backend, previous = workbench
     previous.reject()

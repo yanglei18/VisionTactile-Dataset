@@ -10,6 +10,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 
 @dataclass(frozen=True)
 class PathFinding:
@@ -226,6 +227,28 @@ class _Discovery:
         except (OSError, RuntimeError, ValueError):
             return (), explicit
 
+    def workstation_bootstrap_software(self, parameters):
+        """Use the selected publisher's software, with a bounded venv mapping.
+
+        A configured site directory can identify a venv only through its standard
+        layout and pyvenv.cfg marker. Keep the invocation path: resolving Python's
+        symlink would discard the environment that supplies its dependencies.
+        """
+        source = _path(parameters.get("pyvut_source", ""), self.home)
+        if (not _matches(source, _markers(_PYVUT_MARKERS))
+                or not _matches(source / "scripts/live_windows_bootstrap.py" if source else None, _file)):
+            source = None
+        site = _path(parameters.get("pyvut_site_packages", ""), self.home)
+        python = None
+        if (_matches(site, _directory) and site.name == "site-packages"
+                and re.fullmatch(r"python[0-9]+\.[0-9]+", site.parent.name)
+                and site.parent.parent.name == "lib"):
+            venv = site.parents[2]
+            candidate = venv / "bin/python"
+            if _matches(venv / "pyvenv.cfg", _file) and _matches(candidate, _python):
+                python = candidate
+        return python, source
+
     def glove(self, parameters, group_id, hand, data):
         self.select(parameters, group_id, "glove_python", predicate=_python, repair=True,
                     environment=("VT_FSGLOVE_PYTHON",), candidates=(
@@ -289,13 +312,14 @@ class _Discovery:
 
 
 def discover_bootstrap_configuration(configuration, *, repo_root, home=None, environ=None,
-                                     replace_missing=False) -> DiscoveryResult:
+                                     replace_missing=False, workstation_parameters=None) -> DiscoveryResult:
     """Suggest initialization software and one coherent managed input group.
 
-    Source candidates share the publisher's structural checks. Existing explicit
-    private inputs remain untouched; empty inputs can use an approved installation
-    only when every nonempty bundle/capture/digest matches that same installation.
-    Callers with final environment precedence apply those overrides afterward.
+    Source candidates share the publisher's structural checks. A workstation's
+    selected source and identifiable virtual environment precede generic paths.
+    Existing explicit private inputs remain untouched; empty inputs can use an
+    approved installation only when every nonempty bundle/capture/digest matches
+    that same installation. Final environment overrides belong to the caller.
     """
     local_home = Path.home() if home is None else Path(home).expanduser().absolute()
     root = Path(repo_root).expanduser().absolute()
@@ -305,14 +329,31 @@ def discover_bootstrap_configuration(configuration, *, repo_root, home=None, env
                 and _matches(_path(configuration.get("python", ""), local_home), _python)
                 and _matches(_path(configuration.get("script", ""), local_home), _file))
     installation = None if complete else discovery.tracker_installation(configuration.get("bundle", ""))
+    # An unrelated active deployment must not outrank the workstation's own
+    # explicitly selected software for another bundle.
+    bound = (installation is not None and (not configuration.get("bundle")
+             or _path(configuration["bundle"], local_home) == installation.bundle))
+    configured_python, configured_source = discovery.workstation_bootstrap_software(workstation_parameters or {})
     venv, explicit_venv = discovery.tracker_venv()
-    python = ((installation.python,) if installation and not explicit_venv
-              else (venv / "bin/python",) if venv else ())
+    if explicit_venv:
+        python = (venv / "bin/python",) if venv else ()
+    elif bound:
+        python = (installation.python,)
+    elif configured_python:
+        python = (configured_python,)
+    else:
+        python = (venv / "bin/python",) if venv else ()
     discovery.select(discovery.configuration, "", "python", predicate=_python,
                      repair=True, candidates=python)
     explicit, source = discovery._explicit(("VT_PYVUT_ROOT",))
-    sources = ((source,) if explicit else (installation.source,) if installation
-               else discovery.tracker_sources())
+    if explicit:
+        sources = (source,)
+    elif bound:
+        sources = (installation.source,)
+    elif configured_source:
+        sources = (configured_source,)
+    else:
+        sources = discovery.tracker_sources()
     scripts = tuple(path / "scripts/live_windows_bootstrap.py" for path in sources
                     if _matches(path, _markers(_PYVUT_MARKERS)))
     discovery.select(discovery.configuration, "", "script", repair=True, candidates=scripts)
