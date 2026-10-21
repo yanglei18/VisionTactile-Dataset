@@ -29,6 +29,7 @@ jobs:
           python -m pip install -e 'tools/tracker_camera_calibration[test]'
           -e 'tools/multisensor_alignment[test]'
           -e ros2_ws/src/vt_capture_core -e ros2_ws/src/vt_capture_manager
+          'cryptography>=41'
       - name: Install offline GUI test libraries
         run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb xauth
       - name: Check offline package dependencies and installed entry points

@@ -52,6 +52,10 @@ python3 tools/release/build_tracker_delivery.py \
 
 整包含设备身份及无线连接凭据，只通过限制访问的下载渠道交付对应操作人员，不能附在公开 GitHub Release。主程序依赖仍可能联网安装；这不是全系统离线安装器，也不包含额外手套软件与许可模型。详见[Tracker 交付指南](../../docs/tracker-deployment.zh-CN.md)。
 
+需要让用户免登录下载完整图形安装包时，使用 [下载托管工具](../../docs/download-hosting.md)。
+它将整包加密后托管在公开下载站，用户使用单独交付的完整链接，由浏览器自动校验、解密和保存；
+公开仓库中不包含原始设备包或链接密钥。
+
 ## Git 历史必须单独处理
 
 报告中的 `history_path_check=BLOCKED` 表示本地可达历史存在禁止公开的路径。即使 `public_source_check=PASS`，也不要直接推送当前分支。删除文件、加 `.gitignore` 或打新标签，都不会删除旧提交中的内容。

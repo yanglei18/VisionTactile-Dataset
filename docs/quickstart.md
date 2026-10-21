@@ -6,7 +6,7 @@ For Ubuntu 24.04 x86_64 computers with the supplied device set. Install the appl
 
 ## Install
 
-1. Open the download link supplied with the equipment. Download and extract the complete package containing the graphical installer.
+1. Open the **complete download link** supplied with the equipment, click **Download installer**, and extract the downloaded archive. No account, GitHub login, or download password is required.
 2. Open **Install-VisionTactile** and click **Install**. Enter the computer's administrator password when the system asks.
 3. Wait for **Installation complete**, then click **Open workbench**.
 
@@ -38,4 +38,4 @@ Completing installation means the software environment is ready. The workbench i
 | A device is missing or assigned incorrectly | Check connections and confirm its physical role in Configure Devices |
 | A Tracker has no position data | Complete the initialization wizard and use the device set supplied with this package |
 
-The maintainer supplies the installer with its matching equipment. A download entry that does not require GitHub sign-in must be configured by the supplier. Private GitHub storage is for maintainers, not an account-registration or permission-request step for end users.
+The sign-in-free site is hosted at [Vision Tactile Downloads](https://yanglei18.github.io/VisionTactile-Downloads/). Keep the complete link supplied with your equipment: it includes access to the matching installer, while the public home page alone does not. The browser handles downloading and decryption automatically; no key copying or manual decryption is needed. Share the complete link only with users of the matching equipment, never in public forums or repositories.

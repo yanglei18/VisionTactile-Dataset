@@ -38,8 +38,8 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "bytes": 5781,
-      "sha256": "9b526e721c9173580189833a55451fa94a3795d3d643093cfde25b3a99eb1c72"
+      "bytes": 5810,
+      "sha256": "1bac7ac359d93450f770e18bd36793152cca4a53bc5de929e05dd6f16c1ce479"
     },
     {
       "path": ".github/workflows/distributions.yml",
@@ -142,6 +142,11 @@
       "sha256": "bd391c1e779d7ce81bfe66b904c05934fb278592f52253eee2a6dff1eaf2dffc"
     },
     {
+      "path": "docs/download-hosting.md",
+      "bytes": 3995,
+      "sha256": "2067ecaab20b15dcad2a0e339264aae80703ed0843b61cf8cdffdea85347c31b"
+    },
+    {
       "path": "docs/hardware-reference.md",
       "bytes": 3566,
       "sha256": "413d211023bf9a843df9ac54582902b182836f3be599c08cf4a4dd3b580972b5"
@@ -153,13 +158,13 @@
     },
     {
       "path": "docs/quickstart.md",
-      "bytes": 3560,
-      "sha256": "4b268a569d20e579b4a221f22c97a00dc1e3dca7513fc4935d46f3865744e59d"
+      "bytes": 3826,
+      "sha256": "05225dd95b66c95dd1d4ae1929e79edbf31015dfb608d876bba4b5d957c1722b"
     },
     {
       "path": "docs/quickstart.zh-CN.md",
-      "bytes": 3003,
-      "sha256": "b185b2f10dda16846f56caecb8fb4ff71ca5ff3948f0ec342e199bf543e732eb"
+      "bytes": 3259,
+      "sha256": "c2e227e19acd910a898064f66bc0b37df8ece4609aba9ea589870f0c6f34e7c3"
     },
     {
       "path": "docs/release-checklist.md",
@@ -5078,8 +5083,13 @@
     },
     {
       "path": "tools/release/README.md",
-      "bytes": 9089,
-      "sha256": "a5f359d6e2855ef4a3890059bb5e688aa57d31f83a847af870242af62d93b894"
+      "bytes": 9404,
+      "sha256": "7582d28e407bdcb01e9f32f1ec74e56bd4c2ee3b6559951a1ee82c8cdcdd19ee"
+    },
+    {
+      "path": "tools/release/build_download_site.py",
+      "bytes": 11822,
+      "sha256": "3eafc04b8493355af70b82a893d765440cd919ccb14663e32c8384b56acf79a9"
     },
     {
       "path": "tools/release/build_linux_installer.py",
@@ -5097,6 +5107,21 @@
       "sha256": "0668a3272aae6f72771a20c6e9a38392491eacfcfaf556390ce4f9e3d04aab99"
     },
     {
+      "path": "tools/release/download_site/app.js",
+      "bytes": 11363,
+      "sha256": "cd6c516b7b7fcb8bd7e50f3480df448c3e6692b64999e0a471538dc138661970"
+    },
+    {
+      "path": "tools/release/download_site/index.html",
+      "bytes": 2568,
+      "sha256": "b8e8643499055d4e2a6ac4b4cd3644ec126def215d75b35ebfecb267fe21dd48"
+    },
+    {
+      "path": "tools/release/download_site/style.css",
+      "bytes": 2762,
+      "sha256": "382596824e95065dd55999eeeaacff2695c4bccff17fcbe2f26a7d844b143b9f"
+    },
+    {
       "path": "tools/release/linux-installer-requirements.txt",
       "bytes": 255,
       "sha256": "4ecd0a15b06e70a87489f5742a1de350d444789d1fec505d77d3924d93c89fbb"
@@ -5105,6 +5130,11 @@
       "path": "tools/release/prepare_release.py",
       "bytes": 9710,
       "sha256": "3b5d546bbf241a91566906cfa73bb068d2016a4061bed732224c29ca9ed94461"
+    },
+    {
+      "path": "tools/release/tests/test_download_site.py",
+      "bytes": 13699,
+      "sha256": "14382004a55e728148859233cfd7fb164fcdaf0695f46edd8bfbe38a74e2c4b5"
     },
     {
       "path": "tools/release/tests/test_linux_installer.py",
