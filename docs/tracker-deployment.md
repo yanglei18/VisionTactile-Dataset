@@ -4,7 +4,29 @@
 
 A `.vttracker` package transfers the verified extended PyVUT implementation, offline Python dependencies, and one device set's bundle, role map, and approved capture together. After one import, the workstation can fill their paths without locating each source directory, environment, and private input separately.
 
-The public GitHub repository contains only the packaging, installation, and discovery tools. Packages contain private device inputs: deliver them privately to the operators of that device set, not through GitHub or public attachments. Checksums establish internal consistency; obtain packages from a trusted deployment maintainer because installation runs the supplied software.
+The public GitHub repository contains only the packaging, installation, and discovery tools. Packages contain device identities and wireless credentials: deliver them through restricted downloads to the operators of that device set, not through public repositories, attachments, or file shares. A restricted download can contain both the program and device package; USB drives and separate file transfers are not required. Checksums establish internal consistency; obtain packages from a trusted deployment maintainer because installation runs the supplied software.
+
+## Download the program and Tracker together
+
+A maintainer can supply one `VisionTactile-Tracker-<version>.tar.gz` containing the program sources, the device set's `.vttracker`, and a single installation entry point. Extract it, enter `VisionTactile-Delivery`, prepare the system and ROS prerequisites below, and run:
+
+```bash
+bash install.sh
+```
+
+The entry point passes the bundled relative path to the existing installer. Users do not need to locate, copy, or enter individual Tracker dependency paths. The first workstation startup discovers the installation; existing valid device selections remain unchanged. Keep the extracted directory after installation because the workstation runs from its sources.
+
+This combines the program and device inputs into one download; it is not an offline system image. Workstation Python dependencies can still require network access. Prepare ROS, sensor drivers, and system libraries using the [full deployment guide](deployment.md). Separate glove software and licensed models are not included in this Tracker delivery. Each package applies to its own device set. The build tool does not upload files or provision download hosting.
+
+Maintainers build a combined delivery from a trusted source checkout:
+
+```bash
+python3 tools/release/build_tracker_delivery.py \
+  --tracker-package "/absolute/path/outside-repository/device-set.vttracker" \
+  --output "/absolute/path/outside-repository/VisionTactile-Tracker-preview.tar.gz"
+```
+
+It reuses public source checks and Tracker package validation. The public source manifest still describes only the program; an outer delivery manifest records the device package and source snapshot digests. The combined archive contains private inputs and requires restricted distribution; it must not be attached to a public GitHub Release.
 
 ## Install on a new computer
 

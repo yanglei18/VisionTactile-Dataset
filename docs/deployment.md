@@ -13,7 +13,7 @@ This guide applies to the `source-preview-20261019` branch. It brings environmen
 
 The public repository provides source code. Private Tracker startup inputs, the extended PyVUT implementation, external FSGlove source and licensed models must be obtained separately. Camera capture, raw tactile data and 2D tactile display do not require Tracker or a MANO model.
 
-For an existing Tracker device set, a maintainer can deliver the extended runtime and matching private inputs as one `.vttracker` file. The [private Tracker package guide](tracker-deployment.md) covers installation on a new computer and import through Configure Devices.
+For an existing Tracker device set, a maintainer can deliver the extended runtime and matching private inputs as one `.vttracker` file, or combine it with the program in one restricted download with an `install.sh` entry point. The [private Tracker package guide](tracker-deployment.md) covers combined delivery, installation on a new computer, and import through Configure Devices. The combined delivery still requires the system and ROS preparation in this guide.
 
 <a id="windows"></a>
 ## 1. Windows: install only the standalone tactile viewer
@@ -68,6 +68,21 @@ If the final output is not `UTF-8`, run `sudo locale-gen en_US.UTF-8`, then `exp
 
 <a id="source"></a>
 ## 3. Obtain the correct source version
+
+**For a combined program and Tracker delivery**, skip the Git clone commands in this section. From the extracted `VisionTactile-Delivery/Vision-Tactile-Dataset` directory, run the commands below, then continue to section 4. This source snapshot has no `.git`; the outer `DELIVERY_MANIFEST.json` and source `PUBLIC_SOURCE_MANIFEST.json` record its baseline and actual file digests.
+
+```bash
+export VT_REPO="$(pwd -P)"
+export VT_WS="${VT_REPO}/ros2_ws"
+export VT_DATA_ROOT="${HOME}/visiontactile-data"
+export VT_DRIVER_WS="${HOME}/visiontactile-drivers_ws"
+mkdir -p "${VT_DATA_ROOT}/config" "${VT_DATA_ROOT}/deployment"
+cp "${VT_REPO}/../DELIVERY_MANIFEST.json" "${VT_DATA_ROOT}/deployment/source-delivery.json"
+```
+
+At section 7, use the outer `bash "${VT_REPO}/../install.sh"` instead of the ordinary workstation installation command to import the bundled Tracker too. Keep the extracted directory after installation.
+
+**For source obtained directly from GitHub**, use the clone procedure below.
 
 Run these commands from the parent directory where you want the source checkout. The branch is explicit so that cloning does not default to the preserved older `main`:
 
@@ -360,7 +375,11 @@ When transferring extrinsics, check physical device identities, rigid mounting r
 After initial acceptance, save records in the data directory:
 
 ```bash
-git -C "${VT_REPO}" rev-parse HEAD > "${VT_DATA_ROOT}/deployment/source-commit.txt"
+if [[ -f "${VT_REPO}/../DELIVERY_MANIFEST.json" ]]; then
+  cp "${VT_REPO}/../DELIVERY_MANIFEST.json" "${VT_DATA_ROOT}/deployment/source-delivery.json"
+else
+  git -C "${VT_REPO}" rev-parse HEAD > "${VT_DATA_ROOT}/deployment/source-commit.txt"
+fi
 git -C "${VT_DRIVER_WS}/src/realsense-ros" rev-parse HEAD \
   > "${VT_DATA_ROOT}/deployment/realsense-ros-commit.txt"
 git -C "${HOME}/visiontactile-deps/librealsense-2.58.1" rev-parse HEAD \

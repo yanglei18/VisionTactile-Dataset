@@ -13,7 +13,7 @@
 
 公开仓库提供源码。Tracker 私有启动输入、扩展 PyVUT、FSGlove 外部源码和许可模型需要另行准备；相机采集、触觉原始数据及二维显示不要求 Tracker 或 MANO 模型。
 
-已有 Tracker 设备组可由部署人员将扩展运行环境与匹配私有输入交付为一个 `.vttracker` 文件。[Tracker 私有包指南](tracker-deployment.zh-CN.md)说明新机安装和“配置设备”中的导入流程。
+已有 Tracker 设备组可由部署人员将扩展运行环境与匹配私有输入交付为一个 `.vttracker` 文件，也可以与程序合成一个受限下载包，解压后运行统一的 `install.sh`。[Tracker 私有包指南](tracker-deployment.zh-CN.md)说明整包交付、新机安装和“配置设备”中的导入流程。整包仍需本指南中的系统与 ROS 环境准备。
 
 <a id="windows"></a>
 ## 1. Windows：只安装独立触觉工具
@@ -68,6 +68,21 @@ locale charmap
 
 <a id="source"></a>
 ## 3. 获取正确版本
+
+**使用程序与 Tracker 一体交付包时**，跳过本节的 Git 克隆命令，在解压后的 `VisionTactile-Delivery/Vision-Tactile-Dataset` 目录执行以下命令，再继续第 4 节。源码包没有 `.git`，版本和实际文件摘要见外层的 `DELIVERY_MANIFEST.json` 与源码中的 `PUBLIC_SOURCE_MANIFEST.json`。
+
+```bash
+export VT_REPO="$(pwd -P)"
+export VT_WS="${VT_REPO}/ros2_ws"
+export VT_DATA_ROOT="${HOME}/visiontactile-data"
+export VT_DRIVER_WS="${HOME}/visiontactile-drivers_ws"
+mkdir -p "${VT_DATA_ROOT}/config" "${VT_DATA_ROOT}/deployment"
+cp "${VT_REPO}/../DELIVERY_MANIFEST.json" "${VT_DATA_ROOT}/deployment/source-delivery.json"
+```
+
+到第 7 节安装工作台时，使用外层 `bash "${VT_REPO}/../install.sh"`，替代普通安装命令，以同时导入随包 Tracker。安装后保留整个解压目录。
+
+**直接从 GitHub 获取源码时**，使用下面的克隆流程。
 
 在选择的源码父目录执行。这里明确选择本次发布分支，避免默认克隆到保留的旧 `main`：
 
@@ -360,7 +375,11 @@ bash tools/capture_deploy/start_workbench.sh
 首次验收后在数据目录保存记录：
 
 ```bash
-git -C "${VT_REPO}" rev-parse HEAD > "${VT_DATA_ROOT}/deployment/source-commit.txt"
+if [[ -f "${VT_REPO}/../DELIVERY_MANIFEST.json" ]]; then
+  cp "${VT_REPO}/../DELIVERY_MANIFEST.json" "${VT_DATA_ROOT}/deployment/source-delivery.json"
+else
+  git -C "${VT_REPO}" rev-parse HEAD > "${VT_DATA_ROOT}/deployment/source-commit.txt"
+fi
 git -C "${VT_DRIVER_WS}/src/realsense-ros" rev-parse HEAD \
   > "${VT_DATA_ROOT}/deployment/realsense-ros-commit.txt"
 git -C "${HOME}/visiontactile-deps/librealsense-2.58.1" rev-parse HEAD \

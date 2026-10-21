@@ -133,13 +133,13 @@
     },
     {
       "path": "docs/deployment.md",
-      "bytes": 33575,
-      "sha256": "1d539275fa15cb44b414a0fad8325aa5ebb22d593ac030cbf7feb4a60dae7ffc"
+      "bytes": 34928,
+      "sha256": "d46911505f02b299913b3b5f1626ea5efd26f98ba096ddb35669a5e8ce7b2046"
     },
     {
       "path": "docs/deployment.zh-CN.md",
-      "bytes": 28506,
-      "sha256": "b48442f68bac6a08dc39b5cec9089a23ddfd51f698bb403daaedbc36fc34f47b"
+      "bytes": 29745,
+      "sha256": "e52cfb8aefbd67e1517ca251bd3d300e02b212aee2e81e6d8c0cdb99e9f3bb32"
     },
     {
       "path": "docs/hardware-reference.md",
@@ -173,13 +173,13 @@
     },
     {
       "path": "docs/tracker-deployment.md",
-      "bytes": 10345,
-      "sha256": "1baf67377263b24624587f7591f9f90e743577ac0ad0b3d0cd9e9702b0d8c82b"
+      "bytes": 12347,
+      "sha256": "9decde5816d629157d0099e8f0e44d7aa0abe8df8eb9a2dcaf3ed89286c45df1"
     },
     {
       "path": "docs/tracker-deployment.zh-CN.md",
-      "bytes": 8812,
-      "sha256": "7f4d66aff8afc3d302376a53c176e1fe10a17be54db5bc12fdd6412281d978d1"
+      "bytes": 10462,
+      "sha256": "e340579f3b90880f1a7f208dac886bbe952869952d0f1af377f3a934befea4b0"
     },
     {
       "path": "docs/tracker-linux-validation.md",
@@ -4998,8 +4998,13 @@
     },
     {
       "path": "tools/release/README.md",
-      "bytes": 7222,
-      "sha256": "a40fa8efe290958529fa75fb111e7069edaf6d0a3bd3648795070e63be26f2fb"
+      "bytes": 8725,
+      "sha256": "0b0647b94ff0a1fc45961850cdd1fecdbf4cab9f8561b2ba54f6fee05c82668c"
+    },
+    {
+      "path": "tools/release/build_tracker_delivery.py",
+      "bytes": 10514,
+      "sha256": "66ce47985d4254f1e9983b12520280938c368a0f051162854e942182cd9617be"
     },
     {
       "path": "tools/release/constraints-tested.txt",
@@ -5020,6 +5025,11 @@
       "path": "tools/release/tests/test_prepare_release.py",
       "bytes": 16343,
       "sha256": "b954fd91945a8da9b96ba35599a1fcb866b732b8c05c770057f09de0f6b611da"
+    },
+    {
+      "path": "tools/release/tests/test_tracker_delivery.py",
+      "bytes": 10661,
+      "sha256": "53dabceef21c52db63f113b020cf4d63e23b43243502349ba90a0500e7331781"
     },
     {
       "path": "tools/release/tests/test_verify_distributions.py",

@@ -34,6 +34,22 @@ Git 属性允许这种换行，不关闭其他源码的空白检查，也不修�
 
 源码包内的 manifest 记录文件路径、大小和 SHA-256，用于交付核对；不包含机器路径、凭据或被排除文件的内容。文本的执行权限按脚本入口规范化，不改变原工作区权限。源码包仍需要按根 README 安装依赖，不能替代虚拟环境或 ROS 部署。
 
+## 程序与 Tracker 的受限交付包
+
+已有对应设备的 `.vttracker` 时，可将程序与设备依赖合成一次下载的交付包：
+
+```bash
+python3 tools/release/build_tracker_delivery.py \
+  --tracker-package "/仓库外的绝对路径/设备组.vttracker" \
+  --output "/仓库外的绝对路径/VisionTactile-Tracker-preview.tar.gz"
+```
+
+输出须位于源码目录之外，父目录已存在，且文件尚不存在。工具复用上述公开源码快照检查和 Tracker 部署包校验，独占创建仅当前用户可读写的归档；失败清理未完成输出。它不安装软件、不访问硬件、不上传文件，也不修改 Git 索引。
+
+归档中的 `VisionTactile-Delivery` 包含程序目录、`deployment/tracker.vttracker`、中英说明、统一 `install.sh` 和交付清单。公开程序的 `PUBLIC_SOURCE_MANIFEST.json` 不包含设备包；外层清单分别记录源码快照和设备包摘要，并区分 Git 基线与未提交改动。用户准备系统和 ROS 基础环境后，运行外层 `bash install.sh`，即可调用既有工作台安装器并自动传入设备包路径；安装后保留整个解压目录。
+
+整包含设备身份及无线连接凭据，只通过限制访问的下载渠道交付对应操作人员，不能附在公开 GitHub Release。主程序依赖仍可能联网安装；这不是全系统离线安装器，也不包含额外手套软件与许可模型。详见[Tracker 交付指南](../../docs/tracker-deployment.zh-CN.md)。
+
 ## Git 历史必须单独处理
 
 报告中的 `history_path_check=BLOCKED` 表示本地可达历史存在禁止公开的路径。即使 `public_source_check=PASS`，也不要直接推送当前分支。删除文件、加 `.gitignore` 或打新标签，都不会删除旧提交中的内容。
