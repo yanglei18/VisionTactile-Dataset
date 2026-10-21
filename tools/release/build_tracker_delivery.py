@@ -7,6 +7,7 @@ result contains private device material and is not a public source release.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import importlib.util
 import io
@@ -165,8 +166,13 @@ def build_delivery(root, tracker_package, output):
                     with tarfile.open(fileobj=stream, mode="w:gz") as archive:
                         for member in source:
                             content = source.extractfile(member)
-                            member.name = PREFIX + member.name
-                            archive.addfile(member, content)
+                            relocated = copy.copy(member)
+                            relocated.name = PREFIX + member.name
+                            relocated.pax_headers = dict(member.pax_headers)
+                            # An inherited PAX path overrides TarInfo.name. Let
+                            # tarfile regenerate it for the new long/Unicode path.
+                            relocated.pax_headers.pop("path", None)
+                            archive.addfile(relocated, content)
                         _add(archive, "deployment/tracker.vttracker", package_bytes, 0o600)
                         _add(archive, "install.sh", WRAPPER, 0o755)
                         _add(archive, "README.zh-CN-en.txt", README)

@@ -115,6 +115,28 @@ class TrackerDeliveryTests(unittest.TestCase):
             manifest = json.load(archive.extractfile(delivery.PREFIX + "DELIVERY_MANIFEST.json"))
         self.assertFalse(manifest["source"]["working_tree_dirty"])
 
+    def test_long_and_unicode_source_paths_are_relocated_with_the_manifest(self):
+        long_path = ("ros2_ws/src/vt_capture_core/vt_capture_core/"
+                     "recording_and_sensor_geometry_contracts/geometry_recording.py")
+        unicode_path = "tools/标定工具/示例.py"
+        self.assertGreater(len(delivery.SOURCE_PREFIX + long_path), 100)
+        for name in (long_path, unicode_path):
+            self.write(name, b"# synthetic source\n")
+        self.build()
+        with tarfile.open(self.output, "r:gz") as archive:
+            names = set(archive.getnames())
+            self.assertTrue(all(name.startswith(delivery.PREFIX) for name in names))
+            source_prefix = delivery.PREFIX + delivery.SOURCE_PREFIX
+            manifest = json.load(archive.extractfile(source_prefix + "PUBLIC_SOURCE_MANIFEST.json"))
+            entries = {item["path"]: item for item in manifest["files"]}
+            self.assertIn(long_path, entries)
+            self.assertIn(unicode_path, entries)
+            for name, item in entries.items():
+                expected_path = source_prefix + name
+                self.assertIn(expected_path, names)
+                content = archive.extractfile(expected_path).read()
+                self.assertEqual(hashlib.sha256(content).hexdigest(), item["sha256"])
+
     def test_public_source_failure_never_reads_package_or_creates_output(self):
         (self.root / "README.md").unlink()
         with patch.object(delivery, "read_package", side_effect=AssertionError("must not read private inputs")):

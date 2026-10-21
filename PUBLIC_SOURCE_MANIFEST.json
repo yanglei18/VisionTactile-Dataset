@@ -5003,8 +5003,8 @@
     },
     {
       "path": "tools/release/build_tracker_delivery.py",
-      "bytes": 10514,
-      "sha256": "66ce47985d4254f1e9983b12520280938c368a0f051162854e942182cd9617be"
+      "bytes": 10898,
+      "sha256": "ad80ce9076f090a23c6f64530303defb5055abcac5dc8e4cd74af42726871596"
     },
     {
       "path": "tools/release/constraints-tested.txt",
@@ -5028,8 +5028,8 @@
     },
     {
       "path": "tools/release/tests/test_tracker_delivery.py",
-      "bytes": 10661,
-      "sha256": "53dabceef21c52db63f113b020cf4d63e23b43243502349ba90a0500e7331781"
+      "bytes": 11979,
+      "sha256": "1b904670426e43429e8a851980bbb7a0d3600906bb40a11f56327096147d5381"
     },
     {
       "path": "tools/release/tests/test_verify_distributions.py",
