@@ -22,6 +22,20 @@ bag. Embedded guided and standalone offline workflows calibrate each fixed
 Tracker-to-camera pair. Offline alignment produces an auditable, host-time-aligned
 dataset index without modifying the raw bag.
 
+## End users: install and use
+
+Use the **complete graphical installer for Ubuntu 24.04 x86_64** supplied with your equipment. No source checkout or manual Python, ROS or camera-driver installation is required.
+
+1. Open the **complete download link** supplied with your equipment and click **Download installer**. No GitHub login, account registration or download password is needed.
+2. Extract the whole archive, open **Install-VisionTactile**, and click **Install**. Enter this computer's administrator password when the operating system asks.
+3. Open the workbench, connect your equipment, and confirm the actual devices and their physical roles.
+
+See the [user quick start](docs/quickstart.md) for installation, first use and common situations, and the [workbench guide](tools/capture_console/README.md) for device control, recording, archive playback and calibration.
+The [public download home page](https://yanglei18.github.io/VisionTactile-Downloads/) explains delivery; the complete link supplied with the equipment opens its matching package.
+The installer prepares the application, camera environment and matching Tracker setup. Licensed hand models, separate gesture solving and specialized calibration environments are optional components prepared by the maintainer.
+
+## Version and delivery scope
+
 The desktop workbench adds device configuration, previews, explicit node
 control, trial management, and post-record quality reports. It is a **development
 preview**, not a fully accepted turnkey hardware product. A synthetic demo runs
@@ -33,7 +47,7 @@ without ROS, sensors, private Tracker inputs, or MANO models.
 > role maps, rig-specific extrinsics, and licensed MANO models are deliberately
 > kept outside Git. A clean clone does not include a configured hardware rig.
 
-This tree is prepared as a **source-only development preview**. The workbench
+This repository publishes a **source development preview**; matching Ubuntu graphical installers are delivered separately through complete sign-in-free links. The workbench
 package version `0.5.0` identifies that component; it does not mean that these
 changes have been published under a matching project tag. See
 [Unreleased changes](CHANGELOG.md#unreleased) for the candidate scope.
@@ -238,7 +252,7 @@ unvalidated hardware combination until the acceptance procedure is repeated.
 
 ## Quick start
 
-For a new computer, use the [deployment guide](docs/deployment.md) ([简体中文](docs/deployment.zh-CN.md)). It separates Windows viewer installation, Ubuntu demos, and the complete capture stack.
+The following steps are for **maintainers installing from source**. Users with a complete graphical delivery should follow the [user quick start](docs/quickstart.md) and do not need these checkout, build or environment commands. The [deployment guide](docs/deployment.md) ([简体中文](docs/deployment.zh-CN.md)) covers Windows viewer installation, Ubuntu demos, and source deployment of the complete capture stack.
 
 ### 1. Clone the repository
 
@@ -296,8 +310,9 @@ bash tools/capture_deploy/start_workbench.sh
 ```
 
 This starts or connects to the local manager, not the sensors. Open device
-configuration, select only the required modules, and provide your own ports,
-paths, and device identities. Modules start through explicit controls; opening
+configuration, select only the required modules, and confirm ports and device
+identities. Runtime paths are discovered automatically; supply only unresolved
+items. Modules start through explicit controls; opening
 the window does not initialize Trackers, calibrate gloves, or record data.
 Closing a preview or the workbench does not stop managed devices; use the
 device and recording stop controls first when shutdown is intended.
@@ -379,7 +394,9 @@ The desktop initialization wizard can save local input paths and invoke an
 approved bootstrap script only after explicit consent. Saved paths are not
 saved approval or proof of initialization. Once initialization completes,
 starting the read-only reader remains a separate action. The wizard does not
-replace Windows pairing/mapping or supply private input files.
+replace Windows pairing/mapping. A matching complete installer includes the
+extended PyVUT runtime and private bundle/role inputs; a public source checkout
+requires the maintainer to supply those materials separately.
 
 ### 7. Record one unified session
 
@@ -650,8 +667,9 @@ validate the offline alignment output.
 - Workbench tactile colors are raw ADC, not calibrated pressure or baseline
   differences. Its static MANO tactile view and dynamic glove pose view are
   separate; synchronized pose–tactile overlay is not implemented there.
-- Optional hand models and Tracker runtime inputs are external prerequisites,
-  not dependencies that a public clone or desktop installer supplies.
+- Optional hand models are supplied separately. Tracker runtime inputs are
+  included in the matching device delivery, but are absent from a public clone
+  or a standalone source installation of the desktop component.
 
 ## Contributing
 

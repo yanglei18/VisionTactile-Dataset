@@ -312,7 +312,7 @@ Page changes preserve the session; reopening the workspace restores the manager'
 
 桌面配置位于 `~/.config/visiontactile/workbench/workstation.json`；后台状态位于同目录的 `manager-state/`，日志为 `manager.log`，IPC 为 `private-desktop.sock`。这些是本机文件，不上传硬件凭据或模型。图形化配置保留未由表单编辑的其他配置字段。
 
-首次安装 ROS、设备驱动、消息包、FSGlove／MANO 资源及 Tracker 扩展环境仍属于部署工作；桌面入口不会自动下载许可模型或修复系统依赖。相机目前按三相机组控制，单相机启停、脱离相机组的独立录制控制器入口、任意 Topic 配置编辑、归档和异常录制强制接管仍未集成到 GUI。**本版本覆盖常用采集流程，不宣称所有维护操作或商业交付验收都已完成。**
+配套完整图形安装器会自动准备 ROS、相机驱动、消息包和 Tracker 扩展环境；FSGlove／MANO 资源及专用标定环境仍由维护人员按需准备。安装后的桌面启动入口不会自动下载许可模型或修复系统依赖。相机目前按三相机组控制，单相机启停、脱离相机组的独立录制控制器入口、任意 Topic 配置编辑、归档和异常录制强制接管仍未集成到 GUI。**本版本覆盖常用采集流程，不宣称所有维护操作或商业交付验收都已完成。**
 
 下文的命令行方式保留给部署人员、旧流程兼容和故障定位；正常桌面使用无需逐次执行。
 
@@ -349,7 +349,11 @@ Page changes preserve the session; reopening the workspace restores the manager'
 
 ## 安装
 
-新电脑先按[中文部署指南](../../docs/deployment.zh-CN.md)（[English](../../docs/deployment.md)）准备系统依赖、选择实际需要的功能；本节安装器只负责桌面部分。
+配套完整安装包用户按[快速上手](../../docs/quickstart.zh-CN.md)使用 **Install-VisionTactile**，它自动准备系统、ROS、相机驱动、工作台及配套 Tracker。
+
+### 维护者从源码安装工作台
+
+仅使用源码部署时，先按[中文部署指南](../../docs/deployment.zh-CN.md)（[English](../../docs/deployment.md)）准备系统依赖、选择实际需要的功能；下列 `tools/capture_deploy/install.sh` 只负责桌面组件。
 
 在仓库根目录执行：
 

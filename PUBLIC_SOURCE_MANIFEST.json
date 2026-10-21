@@ -98,13 +98,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 37207,
-      "sha256": "9eadf29e313585f3ef4fe9e8e2704b240256981ff4334ddd3996b55f66322b36"
+      "bytes": 39113,
+      "sha256": "0680f638341932755ec2c74f7fa749582c8377ddf50d3dcc49f27451fbfb267f"
     },
     {
       "path": "README.zh-CN.md",
-      "bytes": 21017,
-      "sha256": "8cdc1a9ac4acc8b6c944b13a71f71efe9ea5a518890da226611e8e5ce6ccccc8"
+      "bytes": 22540,
+      "sha256": "1fa7fa12dfd58e403b23f44e368dd7e538d625bbc67f79fcb30b10739579548f"
     },
     {
       "path": "SECURITY.md",
@@ -228,8 +228,8 @@
     },
     {
       "path": "docs/user-manual.md",
-      "bytes": 20836,
-      "sha256": "6dbb231a25b4ac148cf49b0160c0986853c3218638f2018ebbd99f6683c771a5"
+      "bytes": 21283,
+      "sha256": "0d88fc597e6c2653e46c52d676bbd0e27b4bac2d35b6481e081d1bfb531c33a0"
     },
     {
       "path": "ros2_ws/src/vt_camera_msgs/CMakeLists.txt",
@@ -1973,8 +1973,8 @@
     },
     {
       "path": "tools/capture_console/README.md",
-      "bytes": 85870,
-      "sha256": "5bbbc1e502f31584819e61c1b9e4653edc235507c633173b061f03714c6d76e4"
+      "bytes": 86218,
+      "sha256": "f962420cf70dd0dffc1f064d8b034ae34f5c9fefecf14c50c1033d90eaa3c009"
     },
     {
       "path": "tools/capture_console/THIRD_PARTY_NOTICES.md",
@@ -3023,8 +3023,8 @@
     },
     {
       "path": "tools/capture_deploy/README.md",
-      "bytes": 5619,
-      "sha256": "60dfde48e338858580c4ae885b033b94f6d480b6e335345e25dd2a54545f791b"
+      "bytes": 5920,
+      "sha256": "f02f0f809a5d510b5c77b807f047e38bd0b83699a1241f1647f4734034ee7370"
     },
     {
       "path": "tools/capture_deploy/REALSENSE_USB.md",

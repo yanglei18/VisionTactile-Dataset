@@ -87,7 +87,9 @@ Tracker 原有配对、建图和实物角色关系仍须有效。
 
 ## 3. 首次安装
 
-新电脑按[部署指南](deployment.zh-CN.md)连续完成以下步骤；该指南集中维护环境安装命令，本手册从第 4 节开始负责日常运行。
+**配套完整安装包用户：**打开收到的完整下载链接，下载并解压，双击 **Install-VisionTactile**，点击安装并完成一次本机管理员授权。安装器自动准备基础环境及配套 Tracker，不需要执行下面的命令。详细步骤和首次使用见[快速上手](quickstart.zh-CN.md)，日常图形界面操作见[工作台说明](../tools/capture_console/README.md)。
+
+**维护者从源码安装：**新电脑按[部署指南](deployment.zh-CN.md)连续完成以下步骤；该指南集中维护环境安装命令，本手册后续保留详细运行与验收操作。
 
 1. [准备 Ubuntu 与获取当前分支](deployment.zh-CN.md#ubuntu)：确认 Ubuntu 24.04，克隆 `source-preview-20261019`，建立仓库外的数据目录。
 2. [安装 ROS 2 Jazzy](deployment.zh-CN.md#ros)：配置官方软件源，安装系统包、MCAP 与 rosdep。
