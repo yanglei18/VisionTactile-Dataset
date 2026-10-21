@@ -47,6 +47,11 @@
       "sha256": "d132610ff4675bb56e6d7cdc75ce0ac1d2f7d3c9e1c9916291521acd01d329e7"
     },
     {
+      "path": ".github/workflows/download-hosting.yml",
+      "bytes": 3436,
+      "sha256": "135f3f92df81eb647eaa872094b4e130e65cbc69e58c7bfcc2787d0ebbb64c59"
+    },
+    {
       "path": ".github/workflows/tactile-windows.yml",
       "bytes": 3985,
       "sha256": "52729309b47cdc2b9513f0178a107161bb36e0b37c6df57fef9a0f3478d7e965"
@@ -143,8 +148,8 @@
     },
     {
       "path": "docs/download-hosting.md",
-      "bytes": 3995,
-      "sha256": "2067ecaab20b15dcad2a0e339264aae80703ed0843b61cf8cdffdea85347c31b"
+      "bytes": 4831,
+      "sha256": "760abf1d91620cd77e497060fdc63c5095edeaa02db6d9607af4327d1913fd47"
     },
     {
       "path": "docs/hardware-reference.md",
@@ -5108,8 +5113,8 @@
     },
     {
       "path": "tools/release/download_site/app.js",
-      "bytes": 11363,
-      "sha256": "cd6c516b7b7fcb8bd7e50f3480df448c3e6692b64999e0a471538dc138661970"
+      "bytes": 11649,
+      "sha256": "69859a96f71b29867ba1a92b892c16a0a5cc281fe236e11a6e3e2ce56c89a5f0"
     },
     {
       "path": "tools/release/download_site/index.html",
@@ -5165,6 +5170,11 @@
       "path": "tools/release/verify_distributions.py",
       "bytes": 19310,
       "sha256": "d413fa7ab791e6c912a9e96da2134c58250e0f9ba6b434ac39b01b5e88cd11c6"
+    },
+    {
+      "path": "tools/release/verify_download_site.py",
+      "bytes": 16845,
+      "sha256": "d69a3c5fa8fe03e79878c6705df2e3fb6b809bb5e9020d5cb9dc0254ddc8ff32"
     },
     {
       "path": "tools/tactile_viewer_windows/README.en.md",

@@ -67,7 +67,11 @@
   async function readBounded(response, maximum, exact = false, onProgress = () => {}) {
     if (!response.ok || !response.body) throw new Error("network");
     const announced = response.headers.get("content-length");
-    if (announced !== null && (!/^\d+$/.test(announced) || Number(announced) > maximum)) throw new Error("integrity");
+    const encoding = response.headers.get("content-encoding");
+    // Content-Length measures encoded transport bytes. CDNs may gzip ciphertext
+    // into a slightly larger payload; fetch exposes the decoded byte stream.
+    if ((!encoding || encoding.toLowerCase() === "identity") && announced !== null
+        && (!/^\d+$/.test(announced) || Number(announced) > maximum)) throw new Error("integrity");
     const buffer = new Uint8Array(maximum);
     const reader = response.body.getReader();
     let offset = 0;

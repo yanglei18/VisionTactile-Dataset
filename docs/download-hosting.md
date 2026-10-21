@@ -59,6 +59,21 @@ GitHub Pages 的发布来源为 `main` 分支根目录。不要提交维护机�
 python3 -m unittest discover -s tools/release/tests -p test_download_site.py -v
 ```
 
+浏览器验收工具需要维护环境中的 `playwright`，不属于终端用户依赖。安装浏览器后可验证
+本地站点；增加 `--online` 则访问链接中的真实 HTTPS 地址：
+
+```bash
+python3 tools/release/verify_download_site.py \
+  --site-dir /public-site/ubuntu/VERSION \
+  --link-file /private/VisionTactile-VERSION.download-link.txt \
+  --archive /private/VisionTactile-Installer-VERSION.tar.gz \
+  --browser firefox --report /private/browser-check.json
+```
+
+支持 Chrome/Chromium 和 Firefox。维护机使用已有 Chrome 时增加 `--chrome-executable`。
+验证工具不打印完整链接，报告只记录结果与脱敏诊断。回归覆盖 CDN 对随机密文进行 gzip
+传输后长度变大的情况：长度限制始终应用于浏览器解码后的内容，而非压缩传输的 Content-Length。
+
 当前安装包约 36.7 MiB，采用浏览器内存解密，目标为桌面电脑。
 GitHub Pages 的站点上限为 1 GB、月带宽软限制为 100 GB；批量客户部署或大包分发需要
 迁移至对象存储/CDN。此站只用于项目软件下载，不含支付交易或 SaaS 服务，也不承诺网络 SLA。

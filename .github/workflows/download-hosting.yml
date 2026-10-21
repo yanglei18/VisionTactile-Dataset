@@ -1,0 +1,79 @@
+name: Encrypted download hosting
+
+on:
+  push:
+    paths:
+      - tools/release/build_download_site.py
+      - tools/release/verify_download_site.py
+      - tools/release/download_site/**
+      - tools/release/tests/test_download_site.py
+      - .github/workflows/download-hosting.yml
+  pull_request:
+    paths:
+      - tools/release/build_download_site.py
+      - tools/release/verify_download_site.py
+      - tools/release/download_site/**
+      - tools/release/tests/test_download_site.py
+      - .github/workflows/download-hosting.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-download:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies and browsers
+        run: |
+          python -m pip install 'cryptography>=41' playwright
+          python -m playwright install --with-deps chromium firefox
+      - name: Test encryption and publication boundaries
+        run: python -m unittest discover -s tools/release/tests -p test_download_site.py -v
+      - name: Build a synthetic delivery and encrypted site
+        # The fixture and private capability remain in the temporary runner.
+        # No real device package, deployment credential or hosting access is used.
+        run: |
+          python - <<'PY'
+          import io
+          import os
+          from pathlib import Path
+          import tarfile
+
+          directory = Path(os.environ["RUNNER_TEMP"]) / "download-hosting-fixture"
+          directory.mkdir(mode=0o700)
+          content = os.urandom(128 * 1024)
+          archive = directory / "VisionTactile-Installer-synthetic.tar.gz"
+          with tarfile.open(archive, "w:gz") as stream:
+              member = tarfile.TarInfo("synthetic-data.bin")
+              member.size = len(content)
+              member.mode = 0o600
+              stream.addfile(member, io.BytesIO(content))
+          archive.chmod(0o600)
+          PY
+          python tools/release/build_download_site.py \
+            --input "${RUNNER_TEMP}/download-hosting-fixture/VisionTactile-Installer-synthetic.tar.gz" \
+            --output "${RUNNER_TEMP}/download-hosting-fixture/public-site" \
+            --link-file "${RUNNER_TEMP}/download-hosting-fixture/private-link.txt" \
+            --base-url https://example.invalid/download/
+      - name: Verify browser download in Chromium
+        run: |
+          python tools/release/verify_download_site.py \
+            --site-dir "${RUNNER_TEMP}/download-hosting-fixture/public-site" \
+            --link-file "${RUNNER_TEMP}/download-hosting-fixture/private-link.txt" \
+            --archive "${RUNNER_TEMP}/download-hosting-fixture/VisionTactile-Installer-synthetic.tar.gz" \
+            --browser chrome \
+            --report "${RUNNER_TEMP}/download-hosting-fixture/chromium-report.json"
+      - name: Verify browser download in Firefox
+        run: |
+          python tools/release/verify_download_site.py \
+            --site-dir "${RUNNER_TEMP}/download-hosting-fixture/public-site" \
+            --link-file "${RUNNER_TEMP}/download-hosting-fixture/private-link.txt" \
+            --archive "${RUNNER_TEMP}/download-hosting-fixture/VisionTactile-Installer-synthetic.tar.gz" \
+            --browser firefox \
+            --report "${RUNNER_TEMP}/download-hosting-fixture/firefox-report.json"
