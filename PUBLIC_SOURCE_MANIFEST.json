@@ -318,8 +318,8 @@
     },
     {
       "path": "ros2_ws/src/vt_capture_core/package.xml",
-      "bytes": 498,
-      "sha256": "5c72b978da1bacb109caa8c0d3d57fe28d8a68181ad7621a3887524f5c7508ec"
+      "bytes": 446,
+      "sha256": "f7d222988b5c021fabe6950216995b755b526d2d6fdc02871744cca969863082"
     },
     {
       "path": "ros2_ws/src/vt_capture_core/pyproject.toml",
@@ -378,8 +378,8 @@
     },
     {
       "path": "ros2_ws/src/vt_capture_core/test/test_package_contract.py",
-      "bytes": 1208,
-      "sha256": "a142061ff0bc8b5d113dd2b5f6eee29036d86de2bb321cf14ad339943f3b44d1"
+      "bytes": 1852,
+      "sha256": "9dc2fab63901c8b1f970af1a00924033e28c5ce961305f6dc7305950234c6897"
     },
     {
       "path": "ros2_ws/src/vt_capture_core/test/test_plan_protocol.py",
@@ -573,8 +573,8 @@
     },
     {
       "path": "ros2_ws/src/vt_capture_manager/package.xml",
-      "bytes": 1028,
-      "sha256": "52525fd879820aaadd4e22027d55e2796aeb8c838db95074ebbd233021b6e057"
+      "bytes": 976,
+      "sha256": "21ce350a8abcbfe6ef56887f7efa211b0d56533c4074e8f517716bc5c546b338"
     },
     {
       "path": "ros2_ws/src/vt_capture_manager/resource/vt_capture_manager",
@@ -988,8 +988,8 @@
     },
     {
       "path": "ros2_ws/src/vt_glove_bridge/package.xml",
-      "bytes": 728,
-      "sha256": "f5d9d97ec64dc2b6936dcc022280dd67217f4836d32b79c73dbd5710d178a17c"
+      "bytes": 676,
+      "sha256": "a534de8e375ed1e9773a9f23ec4b38a3d07f63e0c9693f1bfd676d442e919c6c"
     },
     {
       "path": "ros2_ws/src/vt_glove_bridge/resource/vt_glove_bridge",
@@ -1423,8 +1423,8 @@
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/package.xml",
-      "bytes": 903,
-      "sha256": "f128e601a971e79c5ba2aec22a2aa7d2123ed00170dd0707187b420f59f9d9af"
+      "bytes": 851,
+      "sha256": "04c5816d511d109c3f47fe6488ab9fb47ac56d290291d37733c09c1deaeac822"
     },
     {
       "path": "ros2_ws/src/vt_tactile_capture/resource/vt_tactile_capture",
@@ -1693,8 +1693,8 @@
     },
     {
       "path": "ros2_ws/src/vt_vive_tracker/package.xml",
-      "bytes": 792,
-      "sha256": "7083aebf3406b2d81d64f414b3bcb035030db8208a86948c00bb307be5a04914"
+      "bytes": 740,
+      "sha256": "2caedd4712fd0e54ab100e170ee0e8a5fbfc2eed16a96a5f892143ff0b44318d"
     },
     {
       "path": "ros2_ws/src/vt_vive_tracker/resource/vt_vive_tracker",
@@ -1843,8 +1843,8 @@
     },
     {
       "path": "ros2_ws/src/vt_vive_tracker_gui/package.xml",
-      "bytes": 676,
-      "sha256": "01b0cab55f1c022f9c1c233ab7cf259cacbe2985274b3be3df8881094382ac64"
+      "bytes": 624,
+      "sha256": "4df570ce15917a9223e706e61c3ca8b211e0025b077a3e040a7ddea471cba79e"
     },
     {
       "path": "ros2_ws/src/vt_vive_tracker_gui/resource/vt_vive_tracker_gui",

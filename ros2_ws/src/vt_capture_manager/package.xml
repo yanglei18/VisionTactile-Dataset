@@ -4,7 +4,6 @@
   <description>ROS capture observability, local snapshots, and opt-in durable recorder management.</description>
   <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
   <license>Apache-2.0</license>
-  <buildtool_depend>ament_python</buildtool_depend>
   <depend>rclpy</depend><depend>sensor_msgs</depend><depend>vt_tracker_msgs</depend>
   <depend>vt_glove_msgs</depend><depend>vt_tactile_msgs</depend><depend>vt_camera_msgs</depend>
   <exec_depend>realsense2_camera_msgs</exec_depend>

@@ -5,7 +5,6 @@
   <description>Loss-aware tactile ADC capture and independent ROS heatmap viewer.</description>
   <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
   <license>Apache-2.0</license>
-  <buildtool_depend>ament_python</buildtool_depend>
   <depend>rclpy</depend>
   <depend>rcl_interfaces</depend>
   <depend>diagnostic_msgs</depend>

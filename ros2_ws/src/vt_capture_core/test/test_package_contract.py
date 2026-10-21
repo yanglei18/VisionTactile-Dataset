@@ -28,3 +28,16 @@ def test_ament_manifest_matches_python_distribution():
     assert root.findall("exec_depend") == []
     assert (PACKAGE_ROOT / "resource/vt_capture_core").exists()
     assert (PACKAGE_ROOT / "pyproject.toml").exists()
+
+
+def test_python_build_type_is_not_declared_as_a_package_dependency():
+    # Like the ROS demo_nodes_py manifest, ament_python is an exported build
+    # type, not an installable rosdep key. Check the whole local workspace.
+    for path in sorted(PACKAGE_ROOT.parent.glob("*/package.xml")):
+        root = ET.parse(path).getroot()
+        if root.findtext("export/build_type") != "ament_python":
+            continue
+        assert all(
+            (element.text or "").strip() != "ament_python"
+            for element in root if element.tag.endswith("depend")
+        ), f"{path.parent.name}: ament_python belongs only in export/build_type"
