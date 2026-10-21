@@ -6,6 +6,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 [简体中文](README.zh-CN.md) ·
+[User quick start](docs/quickstart.md) ·
 [Desktop workbench](tools/capture_console/README.md) ·
 [User manual](docs/user-manual.md) ·
 [Interfaces](docs/interface-reference.md) ·

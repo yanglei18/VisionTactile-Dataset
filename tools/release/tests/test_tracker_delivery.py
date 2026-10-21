@@ -71,10 +71,42 @@ class TrackerDeliveryTests(unittest.TestCase):
         path.write_bytes(content)
         return path
 
-    def build(self):
+    def build(self, bootstrap_directory=None):
         verified = SimpleNamespace(package_id=hashlib.sha256(self.payload).hexdigest())
         with patch.object(delivery, "read_package", return_value=verified):
-            return delivery.build_delivery(self.root, self.package, self.output)
+            return delivery.build_delivery(self.root, self.package, self.output, bootstrap_directory)
+
+    def bootstrap(self):
+        sources = {}
+        for name in ("tools/capture_deploy/install_full.py", "tools/capture_deploy/oneclick/engine.py",
+                     "tools/capture_deploy/oneclick/delivery.py", "tools/capture_deploy/oneclick/gui.py",
+                     "tools/tracker_deploy/src/vt_tracker_deploy/archive.py"):
+            content = b"import sys\nprint('\\n'.join(sys.argv[1:]))\n"
+            self.write(name, content)
+            sources[name] = content
+        directory = self.base / "bootstrap"
+        directory.mkdir()
+        binary = bytearray(20)
+        binary[:6] = b"\x7fELF\x02\x01"
+        binary[18] = 62
+        payload = {delivery.BOOTSTRAP_NAME: bytes(binary), "LICENSES/runtime.txt": b"Synthetic license\n"}
+        for name, content in payload.items():
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        entry = lambda name, content: {"path": name, "bytes": len(content),
+                                       "sha256": hashlib.sha256(content).hexdigest()}
+        manifest = {
+            "schema_version": 1, "kind": "visiontactile-linux-bootstrap",
+            "target": dict(delivery.BOOTSTRAP_TARGET),
+            "sources": [entry(name, content) for name, content in sources.items()],
+            "files": [entry(name, content) for name, content in payload.items()],
+        }
+        self.save_bootstrap_manifest(directory, manifest)
+        return directory, manifest
+
+    def save_bootstrap_manifest(self, directory, manifest):
+        (directory / "BUILD_MANIFEST.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     def test_archive_preserves_public_source_boundary_and_hashes(self):
         self.write("tools/private/identity.json", b"synthetic device identity")
@@ -114,6 +146,141 @@ class TrackerDeliveryTests(unittest.TestCase):
         with tarfile.open(self.output, "r:gz") as archive:
             manifest = json.load(archive.extractfile(delivery.PREFIX + "DELIVERY_MANIFEST.json"))
         self.assertFalse(manifest["source"]["working_tree_dirty"])
+
+    def test_bootstrap_export_binds_binary_licenses_and_manifest_to_public_sources(self):
+        directory, _ = self.bootstrap()
+        self.build(directory)
+        self.assertEqual(self.output.stat().st_mode & 0o777, 0o600)
+        with tarfile.open(self.output, "r:gz") as archive:
+            prefix = delivery.PREFIX
+            manifest = json.load(archive.extractfile(prefix + "DELIVERY_MANIFEST.json"))
+            bootstrap = manifest["bootstrap"]
+            binary = archive.extractfile(prefix + bootstrap["path"]).read()
+            self.assertEqual(bootstrap["bytes"], len(binary))
+            self.assertEqual(bootstrap["sha256"], hashlib.sha256(binary).hexdigest())
+            self.assertEqual(archive.getmember(prefix + bootstrap["path"]).mode, 0o755)
+            self.assertEqual(archive.getmember(prefix + "LICENSES/runtime.txt").mode, 0o644)
+            build_manifest = archive.extractfile(prefix + bootstrap["manifest_path"]).read()
+            self.assertEqual(build_manifest, (directory / "BUILD_MANIFEST.json").read_bytes())
+            self.assertEqual(bootstrap["manifest_sha256"], hashlib.sha256(build_manifest).hexdigest())
+            public = json.load(archive.extractfile(prefix + delivery.SOURCE_PREFIX + "PUBLIC_SOURCE_MANIFEST.json"))
+            self.assertNotIn(delivery.BOOTSTRAP_NAME, {item["path"] for item in public["files"]})
+            wrapper = archive.extractfile(prefix + "install.sh").read()
+            self.assertEqual(wrapper, delivery.FULL_WRAPPER)
+            self.assertIn(b"--headless", wrapper)
+            self.assertEqual(archive.extractfile(prefix + "README.zh-CN-en.txt").read(), delivery.FULL_README)
+
+    def test_bootstrap_rejects_changed_source_snapshot_before_reading_private_inputs(self):
+        directory, _ = self.bootstrap()
+        self.write("tools/capture_deploy/oneclick/engine.py", b"# changed source\n")
+        with patch.object(delivery, "read_package", side_effect=AssertionError("no private input read")):
+            with self.assertRaisesRegex(delivery.DeliveryError, "sources differ"):
+                delivery.build_delivery(self.root, self.package, self.output, directory)
+        self.assertFalse(self.output.exists())
+
+    def test_bootstrap_rejects_new_source_file_missing_from_build_manifest(self):
+        directory, _ = self.bootstrap()
+        self.write("tools/capture_deploy/oneclick/new_module.py", b"# new module\n")
+        with self.assertRaisesRegex(delivery.DeliveryError, "sources differ"):
+            self.build(directory)
+        self.assertFalse(self.output.exists())
+
+    def test_bootstrap_rejects_wrong_kind_schema_and_target(self):
+        directory, original = self.bootstrap()
+        for key, value in (("kind", "other"), ("schema_version", True),
+                           ("schema_version", 2), ("target", {"system": "Windows"})):
+            with self.subTest(key=key, value=value):
+                manifest = dict(original)
+                manifest[key] = value
+                self.save_bootstrap_manifest(directory, manifest)
+                with self.assertRaisesRegex(delivery.DeliveryError, "unsupported"):
+                    self.build(directory)
+                self.assertFalse(self.output.exists())
+
+    def test_bootstrap_rejects_tampered_file_and_incorrect_declared_size(self):
+        directory, manifest = self.bootstrap()
+        original = (directory / delivery.BOOTSTRAP_NAME).read_bytes()
+        (directory / delivery.BOOTSTRAP_NAME).write_bytes(original + b"modified")
+        with self.assertRaisesRegex(delivery.DeliveryError, "digest or byte count"):
+            self.build(directory)
+        (directory / delivery.BOOTSTRAP_NAME).write_bytes(original)
+        manifest["files"][0]["bytes"] += 1
+        self.save_bootstrap_manifest(directory, manifest)
+        with self.assertRaisesRegex(delivery.DeliveryError, "digest or byte count"):
+            self.build(directory)
+
+    def test_bootstrap_rejects_other_architecture_even_with_valid_digest(self):
+        directory, manifest = self.bootstrap()
+        content = bytearray((directory / delivery.BOOTSTRAP_NAME).read_bytes())
+        content[18] = 183  # AArch64
+        (directory / delivery.BOOTSTRAP_NAME).write_bytes(content)
+        manifest["files"][0]["sha256"] = hashlib.sha256(content).hexdigest()
+        self.save_bootstrap_manifest(directory, manifest)
+        with self.assertRaisesRegex(delivery.DeliveryError, "ELF64"):
+            self.build(directory)
+
+    def test_bootstrap_rejects_links_extra_files_and_duplicate_entries(self):
+        directory, manifest = self.bootstrap()
+        license_path = directory / "LICENSES/runtime.txt"
+        payload = license_path.read_bytes()
+        license_path.unlink()
+        license_path.symlink_to(self.package)
+        with self.assertRaises(delivery.DeliveryError):
+            self.build(directory)
+        license_path.unlink()
+        license_path.write_bytes(payload)
+        extra = directory / "unlisted.txt"
+        extra.write_text("unexpected")
+        with self.assertRaisesRegex(delivery.DeliveryError, "file sets differ"):
+            self.build(directory)
+        extra.unlink()
+        manifest["files"].append(manifest["files"][0])
+        self.save_bootstrap_manifest(directory, manifest)
+        with self.assertRaisesRegex(delivery.DeliveryError, "duplicate"):
+            self.build(directory)
+
+    def test_bootstrap_rejects_unsafe_manifest_paths(self):
+        directory, manifest = self.bootstrap()
+        for name in ("LICENSES/../../outside", "LICENSES//runtime.txt", "LICENSES/../runtime.txt",
+                     "LICENSES/\\outside", "/outside", "unapproved.txt"):
+            with self.subTest(name=name):
+                manifest["files"][1]["path"] = name
+                self.save_bootstrap_manifest(directory, manifest)
+                with self.assertRaises(delivery.DeliveryError):
+                    self.build(directory)
+                self.assertFalse(self.output.exists())
+
+    def test_bootstrap_rejects_hard_linked_payload(self):
+        directory, _ = self.bootstrap()
+        os.link(directory / "LICENSES/runtime.txt", self.base / "outside-license")
+        with self.assertRaisesRegex(delivery.DeliveryError, "invalid type"):
+            self.build(directory)
+        self.assertFalse(self.output.exists())
+
+    def test_cli_accepts_optional_bootstrap_directory(self):
+        with patch.object(delivery, "build_delivery", return_value={"status": "PASS"}) as build:
+            with patch("sys.stdout", new=io.StringIO()):
+                result = delivery.main(["--root", str(self.root), "--tracker-package", str(self.package),
+                                        "--output", str(self.output), "--bootstrap-directory", str(self.base)])
+        self.assertEqual(result, 0)
+        build.assert_called_once_with(self.root, self.package, self.output, self.base)
+
+    @unittest.skipUnless(shutil.which("bash"), "Bash is required for wrapper testing")
+    def test_full_wrapper_keeps_arguments_and_uses_delivery_path_with_spaces(self):
+        directory, _ = self.bootstrap()
+        self.build(directory)
+        extracted = self.base / "含空格 full delivery"
+        extracted.mkdir()
+        entry = "tools/capture_deploy/install_full.py"
+        with tarfile.open(self.output, "r:gz") as archive:
+            for name in ("install.sh", delivery.SOURCE_PREFIX + entry):
+                path = extracted / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(archive.extractfile(delivery.PREFIX + name).read())
+        arguments = ["--help", "literal;$(not-executed)"]
+        result = subprocess.run(["bash", str(extracted / "install.sh"), *arguments], cwd=self.base,
+                                check=True, text=True, capture_output=True)
+        self.assertEqual(result.stdout.splitlines(), ["--delivery", str(extracted), "--headless", *arguments])
 
     def test_long_and_unicode_source_paths_are_relocated_with_the_manifest(self):
         long_path = ("ros2_ws/src/vt_capture_core/vt_capture_core/"

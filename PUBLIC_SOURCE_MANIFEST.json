@@ -33,8 +33,8 @@
     },
     {
       "path": ".github/workflows/capture-console.yml",
-      "bytes": 2935,
-      "sha256": "d637f3743ccead7a8f84c025cf2f3dcccc130767579151658390ebb6b81074ae"
+      "bytes": 2990,
+      "sha256": "fc555927ad7b0f9aaa9c05133e74a1457d906031defa4dde17339ee696cf1309"
     },
     {
       "path": ".github/workflows/ci.yml",
@@ -93,13 +93,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 37165,
-      "sha256": "661c8483eb6fa6b6a2da57278010da112bfd1eded885c2d9b5b944b250c37ab0"
+      "bytes": 37207,
+      "sha256": "9eadf29e313585f3ef4fe9e8e2704b240256981ff4334ddd3996b55f66322b36"
     },
     {
       "path": "README.zh-CN.md",
-      "bytes": 20967,
-      "sha256": "1285fd8f74ecb32147d2f4d84a6dc29063022db6aee77c4c860ff424f85149cb"
+      "bytes": 21017,
+      "sha256": "8cdc1a9ac4acc8b6c944b13a71f71efe9ea5a518890da226611e8e5ce6ccccc8"
     },
     {
       "path": "SECURITY.md",
@@ -133,13 +133,13 @@
     },
     {
       "path": "docs/deployment.md",
-      "bytes": 34928,
-      "sha256": "d46911505f02b299913b3b5f1626ea5efd26f98ba096ddb35669a5e8ce7b2046"
+      "bytes": 35349,
+      "sha256": "02358ed29145c90b81792dab018a354c7e2bd4ba178c049c17fcfdcbbd9407b8"
     },
     {
       "path": "docs/deployment.zh-CN.md",
-      "bytes": 29745,
-      "sha256": "e52cfb8aefbd67e1517ca251bd3d300e02b212aee2e81e6d8c0cdb99e9f3bb32"
+      "bytes": 30129,
+      "sha256": "bd391c1e779d7ce81bfe66b904c05934fb278592f52253eee2a6dff1eaf2dffc"
     },
     {
       "path": "docs/hardware-reference.md",
@@ -150,6 +150,16 @@
       "path": "docs/interface-reference.md",
       "bytes": 15269,
       "sha256": "89d936c9b47393b264e2eac75e124e97f193856e80c31ae077995e740f33ed94"
+    },
+    {
+      "path": "docs/quickstart.md",
+      "bytes": 3560,
+      "sha256": "4b268a569d20e579b4a221f22c97a00dc1e3dca7513fc4935d46f3865744e59d"
+    },
+    {
+      "path": "docs/quickstart.zh-CN.md",
+      "bytes": 3003,
+      "sha256": "b185b2f10dda16846f56caecb8fb4ff71ca5ff3948f0ec342e199bf543e732eb"
     },
     {
       "path": "docs/release-checklist.md",
@@ -173,13 +183,13 @@
     },
     {
       "path": "docs/tracker-deployment.md",
-      "bytes": 12347,
-      "sha256": "9decde5816d629157d0099e8f0e44d7aa0abe8df8eb9a2dcaf3ed89286c45df1"
+      "bytes": 13005,
+      "sha256": "77df96866036c6dd92b645ae18f600fee92fa9bf5513f30b0ad571e9884251a0"
     },
     {
       "path": "docs/tracker-deployment.zh-CN.md",
-      "bytes": 10462,
-      "sha256": "e340579f3b90880f1a7f208dac886bbe952869952d0f1af377f3a934befea4b0"
+      "bytes": 11020,
+      "sha256": "44459629c41e131b708fb190f75d3463bc691f43f1021096e760e211ffb61508"
     },
     {
       "path": "docs/tracker-linux-validation.md",
@@ -208,8 +218,8 @@
     },
     {
       "path": "docs/user-manual.md",
-      "bytes": 20523,
-      "sha256": "03cbd521a468b754afd4afa2633629ef91c2e16673e671fd0094786df683467e"
+      "bytes": 20836,
+      "sha256": "6dbb231a25b4ac148cf49b0160c0986853c3218638f2018ebbd99f6683c771a5"
     },
     {
       "path": "ros2_ws/src/vt_camera_msgs/CMakeLists.txt",
@@ -1953,8 +1963,8 @@
     },
     {
       "path": "tools/capture_console/README.md",
-      "bytes": 85619,
-      "sha256": "96969cb07a3c711140c3f8c9a772a287520902f30cae0f6af7d5b212611c672a"
+      "bytes": 85870,
+      "sha256": "5bbbc1e502f31584819e61c1b9e4653edc235507c633173b061f03714c6d76e4"
     },
     {
       "path": "tools/capture_console/THIRD_PARTY_NOTICES.md",
@@ -3002,6 +3012,11 @@
       "sha256": "052c68a94e189623c0df94280613a6ad53f1dfecb4e9c44a18dae3548b395740"
     },
     {
+      "path": "tools/capture_deploy/README.md",
+      "bytes": 5619,
+      "sha256": "60dfde48e338858580c4ae885b033b94f6d480b6e335345e25dd2a54545f791b"
+    },
+    {
       "path": "tools/capture_deploy/REALSENSE_USB.md",
       "bytes": 2235,
       "sha256": "d7536eabf9d08dbcc6882ed6fa075a91e49c80f5e2ca9c00f009fff4148a7cf7"
@@ -3013,8 +3028,53 @@
     },
     {
       "path": "tools/capture_deploy/install.sh",
-      "bytes": 2055,
-      "sha256": "0fa9a39f6afed3b9a0f26ea3fda8d5e214c14eb09bf229b10e9fbff8c104aae7"
+      "bytes": 2362,
+      "sha256": "30338e84cdda702c2a5b88b548ed7025039ced0068f56515a55c7a2d8e152229"
+    },
+    {
+      "path": "tools/capture_deploy/install_full.py",
+      "bytes": 2174,
+      "sha256": "6b820883baafd353dca8d85f6e226370fa1b4adfdf30b9a1a5d4a93da02ea292"
+    },
+    {
+      "path": "tools/capture_deploy/install_system.py",
+      "bytes": 446,
+      "sha256": "6caebbf5cb7c9933ae46c24b7650737d367ec6d241121582cde9a846c66be70e"
+    },
+    {
+      "path": "tools/capture_deploy/oneclick/__init__.py",
+      "bytes": 78,
+      "sha256": "40c07745b6a07f82adc6eb0b42d02644875b218c44ab50042f3c6de97c33f887"
+    },
+    {
+      "path": "tools/capture_deploy/oneclick/contract.py",
+      "bytes": 227,
+      "sha256": "a251ed78bf6ab5b164f2203ea580a6458d320e5548d4bab6316ab2eb3f5640da"
+    },
+    {
+      "path": "tools/capture_deploy/oneclick/delivery.py",
+      "bytes": 8625,
+      "sha256": "7532cdd5088ffc679325b1cc59d408df927a6c28c2682a6af763a0e2189f9d4c"
+    },
+    {
+      "path": "tools/capture_deploy/oneclick/engine.py",
+      "bytes": 21593,
+      "sha256": "cfe3c7d7fbeb1300ca28798a2fcbcdcb47dd746b9cf391f524a263bb868dbddd"
+    },
+    {
+      "path": "tools/capture_deploy/oneclick/gui.py",
+      "bytes": 11597,
+      "sha256": "da4a605731cbcb92e9ad7cb795f3e863a02b5cf5a6381bcffe85494fbe7eb7cc"
+    },
+    {
+      "path": "tools/capture_deploy/oneclick/plan.py",
+      "bytes": 3949,
+      "sha256": "0240ab7ab3849fe7f71f22e34e3f90ad61818acdd023eaecfc82b0c97443a25b"
+    },
+    {
+      "path": "tools/capture_deploy/oneclick/system.py",
+      "bytes": 22710,
+      "sha256": "62a5ea38bd4c071e91002787be6d2f80b8b9ccfc4fe09ff6cce7b8ff552c5718"
     },
     {
       "path": "tools/capture_deploy/run_alignment.sh",
@@ -3053,8 +3113,28 @@
     },
     {
       "path": "tools/capture_deploy/tests/test_install_console.py",
-      "bytes": 3351,
-      "sha256": "178a17c49406379dc3f8bbdad0e79fee47ce80feb9c6a58dd6ac41d297d62788"
+      "bytes": 4432,
+      "sha256": "3749e4e2202fbdfdfb67c7a8073b4475d09b5c68d78c0dd86098c2b1802a8a96"
+    },
+    {
+      "path": "tools/capture_deploy/tests/test_oneclick_delivery.py",
+      "bytes": 9383,
+      "sha256": "1b1a0612fc1bfd49c78171464e9c45fc6ef3d725ea1461c46058c3ded8d2adf8"
+    },
+    {
+      "path": "tools/capture_deploy/tests/test_oneclick_engine.py",
+      "bytes": 11515,
+      "sha256": "86c595ad3f01dc47d42cd380e41a950d209a542b2f523f13b38ef9869f9a95c7"
+    },
+    {
+      "path": "tools/capture_deploy/tests/test_oneclick_gui.py",
+      "bytes": 9498,
+      "sha256": "37677b42e2c0b730c159bceec2d8c1f46ed7e65182bfc499f21308459b2bcc06"
+    },
+    {
+      "path": "tools/capture_deploy/tests/test_oneclick_system.py",
+      "bytes": 13943,
+      "sha256": "8e7e49af2e548b65ac2a1cfbe2478834d9a4889e9d285c4929a636dfedcc8978"
     },
     {
       "path": "tools/capture_deploy/tests/test_serial_session.py",
@@ -4998,13 +5078,18 @@
     },
     {
       "path": "tools/release/README.md",
-      "bytes": 8725,
-      "sha256": "0b0647b94ff0a1fc45961850cdd1fecdbf4cab9f8561b2ba54f6fee05c82668c"
+      "bytes": 9089,
+      "sha256": "a5f359d6e2855ef4a3890059bb5e688aa57d31f83a847af870242af62d93b894"
+    },
+    {
+      "path": "tools/release/build_linux_installer.py",
+      "bytes": 14521,
+      "sha256": "d730d02ecacabc5f6d4dac67cc341ad4045b1d0bd6b69a0ac9d4e2c6766a6165"
     },
     {
       "path": "tools/release/build_tracker_delivery.py",
-      "bytes": 10898,
-      "sha256": "ad80ce9076f090a23c6f64530303defb5055abcac5dc8e4cd74af42726871596"
+      "bytes": 21455,
+      "sha256": "927bb9498b775cae0c1d4ac786351eba69dbc2ecc4efeb0c002cdb521dd4e4c4"
     },
     {
       "path": "tools/release/constraints-tested.txt",
@@ -5012,9 +5097,19 @@
       "sha256": "0668a3272aae6f72771a20c6e9a38392491eacfcfaf556390ce4f9e3d04aab99"
     },
     {
+      "path": "tools/release/linux-installer-requirements.txt",
+      "bytes": 255,
+      "sha256": "4ecd0a15b06e70a87489f5742a1de350d444789d1fec505d77d3924d93c89fbb"
+    },
+    {
       "path": "tools/release/prepare_release.py",
       "bytes": 9710,
       "sha256": "3b5d546bbf241a91566906cfa73bb068d2016a4061bed732224c29ca9ed94461"
+    },
+    {
+      "path": "tools/release/tests/test_linux_installer.py",
+      "bytes": 7358,
+      "sha256": "17305da28f7195b3d2dcdbf8c5cccfb41b53fb07eff1066d2896d9347ba5e770"
     },
     {
       "path": "tools/release/tests/test_package_licenses.py",
@@ -5028,8 +5123,8 @@
     },
     {
       "path": "tools/release/tests/test_tracker_delivery.py",
-      "bytes": 11979,
-      "sha256": "1b904670426e43429e8a851980bbb7a0d3600906bb40a11f56327096147d5381"
+      "bytes": 21613,
+      "sha256": "b7a3468329f97bce6e2a21fdc41a2447ead408a7858ee1913f40c534c8034494"
     },
     {
       "path": "tools/release/tests/test_verify_distributions.py",

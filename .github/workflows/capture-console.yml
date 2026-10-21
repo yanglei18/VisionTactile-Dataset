@@ -30,7 +30,7 @@ jobs:
             ros2_ws/src/vt_capture_manager/setup.py
             ros2_ws/src/vt_tactile_capture/setup.py
       - name: Install runtime libraries
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 fonts-noto-cjk
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 fonts-noto-cjk python3-tk xvfb xauth
       - name: Install isolated packages
         run: >-
           python -m pip install -r tools/capture_console/requirements-tested.txt
@@ -48,9 +48,9 @@ jobs:
         env:
           # Exercise the real pure-Python controller/manager boundary as well
           # as fake adapters. This CMake package is built separately by ROS CI.
-          PYTHONPATH: ros2_ws/src/vt_realsense_capture
+          PYTHONPATH: ros2_ws/src/vt_realsense_capture:tools/capture_deploy
         run: >-
-          python -m pytest -q ros2_ws/src/vt_capture_core/test
+          xvfb-run -a python -m pytest -q ros2_ws/src/vt_capture_core/test
           ros2_ws/src/vt_capture_manager/test tools/capture_console/tests
           tools/capture_deploy/tests tools/tracker_deploy/tests
       - name: Test shared hand renderer and dual-hand isolation without model assets

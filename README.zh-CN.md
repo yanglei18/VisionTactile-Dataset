@@ -4,7 +4,7 @@
 ![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-22314E.svg)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 
-[English](README.md) · [新电脑部署](docs/deployment.zh-CN.md) · [桌面工作台](tools/capture_console/README.md) ·
+[English](README.md) · [用户快速上手](docs/quickstart.zh-CN.md) · [维护者部署](docs/deployment.zh-CN.md) · [桌面工作台](tools/capture_console/README.md) ·
 [用户手册](docs/user-manual.md) · [接口参考](docs/interface-reference.md)
 
 VisionTactile-Dataset 提供 ROS 2 采集、桌面工作台和离线对齐，面向两台 D405、

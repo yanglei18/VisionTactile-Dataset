@@ -2,7 +2,9 @@
 
 [简体中文](deployment.zh-CN.md) · [Documentation home](../README.md) · [Daily operation (Chinese)](../tools/capture_console/README.md)
 
-This guide applies to the `source-preview-20261019` branch. It brings environment installation into one place; the individual module manuals cover configuration and operation after installation. Run the commands on the target computer in section order. If a command fails, stop and resolve the error before continuing.
+Users with a complete delivery should start with the [user quick start](quickstart.md): download once, open the graphical installer, and let it prepare the environment. The component commands below are for maintainers deploying from source, troubleshooting or adding optional modules; they are not an end-user installation checklist.
+
+This maintainer guide applies to the `source-preview-20261019` branch. It brings environment installation into one place; the individual module manuals cover configuration and operation after installation. Run the commands on the target computer in section order. If a command fails, stop and resolve the error before continuing.
 
 | Your use case | Installation path | Completion criterion |
 | --- | --- | --- |
@@ -13,7 +15,7 @@ This guide applies to the `source-preview-20261019` branch. It brings environmen
 
 The public repository provides source code. Private Tracker startup inputs, the extended PyVUT implementation, external FSGlove source and licensed models must be obtained separately. Camera capture, raw tactile data and 2D tactile display do not require Tracker or a MANO model.
 
-For an existing Tracker device set, a maintainer can deliver the extended runtime and matching private inputs as one `.vttracker` file, or combine it with the program in one restricted download with an `install.sh` entry point. The [private Tracker package guide](tracker-deployment.md) covers combined delivery, installation on a new computer, and import through Configure Devices. The combined delivery still requires the system and ROS preparation in this guide.
+For an existing Tracker device set, maintainers can supply a complete delivery containing **Install-VisionTactile**. It automatically installs the base runtime, pinned camera drivers, workstation and matching Tracker inputs. Older source archives containing only `install.sh` still require system and ROS preparation by a maintainer. See the [automatic installer maintenance guide](../tools/capture_deploy/README.md) to build a complete delivery, or the [Tracker deployment guide](tracker-deployment.md) to import a standalone `.vttracker`.
 
 <a id="windows"></a>
 ## 1. Windows: install only the standalone tactile viewer

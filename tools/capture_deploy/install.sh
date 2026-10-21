@@ -3,8 +3,13 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="${VT_CONSOLE_PYTHON:-$ROOT/.venv-capture-console/bin/python}"
 TRACKER_PACKAGE=""
+REGISTER_DESKTOP=true
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --no-desktop)
+            REGISTER_DESKTOP=false
+            shift
+            ;;
         --tracker-package)
             if [[ $# -lt 2 || -z "$2" || ! -f "$2" ]]; then
                 printf '%s\n' '--tracker-package 需要一个已存在的 .vttracker 私有部署包。' >&2
@@ -14,7 +19,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --help|-h)
-            printf '%s\n' '用法：bash tools/capture_deploy/install.sh [--tracker-package FILE.vttracker]'
+            printf '%s\n' '用法：bash tools/capture_deploy/install.sh [--tracker-package FILE.vttracker] [--no-desktop]'
             exit 0
             ;;
         *)
@@ -39,6 +44,10 @@ env -u PYTHONPATH -u AMENT_PREFIX_PATH -u COLCON_PREFIX_PATH -u LD_LIBRARY_PATH 
     -e "$ROOT/tools/capture_console"
 if [[ -n "$TRACKER_PACKAGE" ]]; then
     "$PYTHON" -I "$ROOT/tools/tracker_deploy/manage.py" install --package "$TRACKER_PACKAGE"
+fi
+if [[ "$REGISTER_DESKTOP" == false ]]; then
+    printf '%s\n' '工作台 Python 与所选 Tracker 依赖已安装；桌面入口等待完整环境验证后注册。'
+    exit 0
 fi
 "$PYTHON" -I -m vt_capture_console.desktop_entry --repo-root "$ROOT" --desktop
 printf '%s\n' 'Qt 工作台与桌面入口已安装。未启动硬件、未注册开机服务。' \

@@ -6,7 +6,13 @@ A `.vttracker` package transfers the verified extended PyVUT implementation, off
 
 The public GitHub repository contains only the packaging, installation, and discovery tools. Packages contain device identities and wireless credentials: deliver them through restricted downloads to the operators of that device set, not through public repositories, attachments, or file shares. A restricted download can contain both the program and device package; USB drives and separate file transfers are not required. Checksums establish internal consistency; obtain packages from a trusted deployment maintainer because installation runs the supplied software.
 
-## Download the program and Tracker together
+## End users: complete graphical delivery
+
+With a matching complete package containing **Install-VisionTactile**, follow the [user quick start](quickstart.md). The manual environment and CLI steps below are unnecessary. The new installer prepares the system, ROS, camera drivers and workstation, then retains the program in its managed user directory; the download directory can be removed after success. See the [automatic installer guide](../tools/capture_deploy/README.md) for maintainer build instructions.
+
+The following sections cover standalone `.vttracker` imports and older source deliveries containing only `install.sh`.
+
+## Maintainers: older source deliveries and standalone device packages
 
 A maintainer can supply one `VisionTactile-Tracker-<version>.tar.gz` containing the program sources, the device set's `.vttracker`, and a single installation entry point. Extract it, enter `VisionTactile-Delivery`, prepare the system and ROS prerequisites below, and run:
 

@@ -36,6 +36,8 @@ Git 属性允许这种换行，不关闭其他源码的空白检查，也不修�
 
 ## 程序与 Tracker 的受限交付包
 
+面向普通用户的完整图形自动安装包，请先按[自动安装器维护说明](../capture_deploy/README.md)构建 bootstrap，再给下方命令增加 `--bootstrap-directory`。该模式自动准备系统及 ROS 环境，并将用户引导到[快速上手](../../docs/quickstart.zh-CN.md)。本节未传该选项的命令保留旧源码交付行为。
+
 已有对应设备的 `.vttracker` 时，可将程序与设备依赖合成一次下载的交付包：
 
 ```bash

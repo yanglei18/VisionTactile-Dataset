@@ -2,7 +2,9 @@
 
 [English](deployment.md) · [文档首页](../README.zh-CN.md) · [日常操作](../tools/capture_console/README.md)
 
-本指南对应 `source-preview-20261019` 分支。它将环境安装集中在一处；各模块手册负责安装后的配置和操作。命令用于目标新电脑，按章节执行；遇到错误先停止，不要继续粘贴后续命令。
+普通用户使用配套完整安装包时，请先看[用户快速上手](quickstart.zh-CN.md)：下载一次，打开图形安装器，等待环境自动准备完成。以下分组件命令供维护者从源码部署、排错及增加可选模块使用，不是普通用户的安装清单。
+
+本维护指南对应 `source-preview-20261019` 分支。它将环境安装集中在一处；各模块手册负责安装后的配置和操作。命令用于目标新电脑，按章节执行；遇到错误先停止，不要继续粘贴后续命令。
 
 | 你的用途 | 安装路径 | 完成标准 |
 | --- | --- | --- |
@@ -13,7 +15,7 @@
 
 公开仓库提供源码。Tracker 私有启动输入、扩展 PyVUT、FSGlove 外部源码和许可模型需要另行准备；相机采集、触觉原始数据及二维显示不要求 Tracker 或 MANO 模型。
 
-已有 Tracker 设备组可由部署人员将扩展运行环境与匹配私有输入交付为一个 `.vttracker` 文件，也可以与程序合成一个受限下载包，解压后运行统一的 `install.sh`。[Tracker 私有包指南](tracker-deployment.zh-CN.md)说明整包交付、新机安装和“配置设备”中的导入流程。整包仍需本指南中的系统与 ROS 环境准备。
+已有 Tracker 设备组可由部署人员交付包含 **Install-VisionTactile** 的完整安装包，自动安装本指南中的基础运行环境、固定版本相机驱动、工作台和配套 Tracker 输入。仅含 `install.sh` 的旧源码包仍需维护者准备系统及 ROS 环境。完整交付的构建方式见[自动安装器维护说明](../tools/capture_deploy/README.md)，单独导入已有 `.vttracker` 见[Tracker 部署指南](tracker-deployment.zh-CN.md)。
 
 <a id="windows"></a>
 ## 1. Windows：只安装独立触觉工具
