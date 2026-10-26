@@ -9,48 +9,17 @@ from pathlib import Path
 from PyQt5 import QtCore, QtWidgets
 
 from .health_contract import calibration_input_ready
+from .calibration_presentation import calibration_status, shape_busy, storage_status
+from .ui_sections import CollapsibleSection
+from .ui_theme import status_style, text_style
 
 
 CONTACT_NAMES = {2: "拇指—食指", 3: "拇指—中指", 4: "拇指—无名指", 5: "拇指—小指"}
-BUSY_STATUSES = {"capturing", "optimizing"}
-
-
-def shape_busy(calibration):
-    state = calibration.get("shape_calibration") or {}
-    return bool(state.get("busy") or state.get("status") in BUSY_STATUSES)
-
-
-def workflow_status_text(calibration):
-    """Report independent evidence, never collapse partial calibration to 'done'."""
-    check = calibration.get("input_scale_check") or {}
-    unresolved = check.get("inconclusive_nodes") or []
-    if unresolved:
-        scale = "证据不足（" + "、".join(map(str, unresolved)) + "号）；仍未解决"
-    elif check.get("status") == "applied":
-        scale = "已显式采用候选；需重新连接并检查"
-    elif check.get("status") == "completed" and check.get("recommended_nodes"):
-        scale = "存在待采用候选；尚未解决"
-    elif check.get("status") == "completed" and check.get("supported_nodes"):
-        scale = "有一致性证据；非物理量程读回"
-    else:
-        scale = "未确认 / 等待三姿态检查"
-    mounting = "已拟合（非人体精度验收）" if calibration.get("calibrated_nodes") else "待完成三姿态"
-    fingers = calibration.get("functional_fingers") or []
-    functional = f"已存 {len(fingers)}/5 指参数" if fingers else "待完成全手弯伸或单指补采"
-    if fingers and not calibration.get("functional_enabled", True):
-        functional += "，当前关闭"
-    shape = calibration.get("shape_calibration") or {}
-    personalized = ("已采用个性化结果（非精度验证）" if shape.get("shape_calibrated") else
-                    "已有候选，尚未采用" if shape.get("candidate_available") else "未个性化")
-    return (f"输入尺度：{scale}\n安装 / 坐标：{mounting}\n功能轴 / 关节约束：{functional}"
-            f"\n个性化手形：{personalized}\n六轴航向漂移 / 人体精度：未验证；不是全手标定全部完成")
-
-
 class ShapeCalibrationPanel(QtWidgets.QGroupBox):
     """All commands require a user action and a fresh eligibility check."""
 
     def __init__(self, window):
-        super().__init__("个性化手形 / 触指标定")
+        super().__init__("触指标定")
         self.window = window
         self._context = None
         self._pending = None
@@ -58,9 +27,9 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
         self._local_error = ""
         layout = QtWidgets.QVBoxLayout(self)
         self.guidance = window._label(
-            "先完成三姿态安装标定，建议先做全手弯伸。逐对让拇指与指定指尖真实轻触。"
-            "先摆好手，再用另一只手左键操作；勾选确认后点击采集，3 秒准备 → 2 秒保持。"
-            "不必用力或勉强到疼痛；做不到真实接触时不要勾选。界面保留实时模型，不伪造触指动作。")
+            "完成基础标定后，逐对让拇指与指定指尖轻触。确认接触后采集，"
+            "每对 3 秒准备、2 秒保持；建议先完成全手弯伸。")
+        self.guidance.setStyleSheet(text_style("body"))
         layout.addWidget(self.guidance)
         grid = QtWidgets.QGridLayout()
         self.pairs = QtWidgets.QButtonGroup(self)
@@ -82,27 +51,22 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
         self.confirm.setToolTip("仅由操作者观察确认；IMU、模型外观或优化损失都不能证明真实接触。每次采集需重新勾选。")
         self.confirm.toggled.connect(lambda _: self.refresh_from_controller())
         layout.addWidget(self.confirm)
+        self.contact_note = window._label("以实际指尖接触为准，模型画面不能代替确认。")
+        self.contact_note.setStyleSheet(text_style("muted"))
+        layout.addWidget(self.contact_note)
         self.capture_button = QtWidgets.QPushButton()
         self.capture_button.clicked.connect(self.capture)
         layout.addWidget(self.capture_button)
         self.progress = QtWidgets.QProgressBar()
+        self.progress.setObjectName("calibrationProgress")
         layout.addWidget(self.progress)
         self.status = window._label()
         self.status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.status.setStyleSheet(status_style())
         layout.addWidget(self.status)
-        task_actions = QtWidgets.QHBoxLayout()
-        self.save_task_button = QtWidgets.QPushButton("保存触指任务")
-        self.save_task_button.setToolTip("将已采集的触指姿态保存到新 JSON；可另选可写位置，不覆盖历史任务。")
-        self.save_task_button.clicked.connect(self.save_task)
-        self.load_task_button = QtWidgets.QPushButton("恢复触指任务")
-        self.load_task_button.setToolTip("仅在断开时恢复已记录姿态用于离线优化；不连接、不恢复安装或滤波，也不继续采集。")
-        self.load_task_button.clicked.connect(self.load_task)
-        task_actions.addWidget(self.save_task_button)
-        task_actions.addWidget(self.load_task_button)
-        layout.addLayout(task_actions)
         self.retry_save_button = QtWidgets.QPushButton("重试保存标定")
         self.retry_save_button.setToolTip("处理存储故障后，显式重试尚未保存的标定 / 触指任务；不重新采集。")
-        self.retry_save_button.clicked.connect(lambda: self._command("retry_calibration_save", "retry_save"))
+        self.retry_save_button.clicked.connect(self.window.retry_calibration_save)
         self.retry_save_button.hide()
         self.retry_save_to_button = QtWidgets.QPushButton("另选保存目录")
         self.retry_save_to_button.setToolTip("将待保存标定 / 触指任务写入另一个可写目录；不重新连接或采集。")
@@ -122,8 +86,8 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
         layout.addLayout(actions)
         self.preview = QtWidgets.QComboBox()
         for label, mode in (("显示当前已采用手形", "current"),
-                            ("预览候选（不改变解算 / ROS）", "candidate"),
-                            ("对比基准手形（不改变解算 / ROS）", "baseline")):
+                            ("预览候选（尚未采用）", "candidate"),
+                            ("对比基准手形（仅预览）", "baseline")):
             self.preview.addItem(label, mode)
         self.preview.activated.connect(self._preview_selected)
         layout.addWidget(self.preview)
@@ -131,6 +95,20 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
         self.apply_button.setToolTip("显式提交到当前官方解算和后续姿态；仅预览或优化不会采用。")
         self.apply_button.clicked.connect(lambda: self._command("apply_shape_candidate", "apply"))
         layout.addWidget(self.apply_button)
+
+        self.file_actions_section = CollapsibleSection("任务与文件", self)
+        file_layout = self.file_actions_section.content_layout
+        layout.addWidget(self.file_actions_section)
+        task_actions = QtWidgets.QHBoxLayout()
+        self.save_task_button = QtWidgets.QPushButton("保存触指任务")
+        self.save_task_button.setToolTip("将已采集的触指姿态保存到新 JSON；可另选可写位置，不覆盖历史任务。")
+        self.save_task_button.clicked.connect(self.save_task)
+        self.load_task_button = QtWidgets.QPushButton("恢复触指任务")
+        self.load_task_button.setToolTip("仅在断开时恢复已记录姿态用于离线优化；不连接、不恢复安装或滤波，也不继续采集。")
+        self.load_task_button.clicked.connect(self.load_task)
+        task_actions.addWidget(self.save_task_button)
+        task_actions.addWidget(self.load_task_button)
+        file_layout.addLayout(task_actions)
         file_actions = QtWidgets.QHBoxLayout()
         self.load_button = QtWidgets.QPushButton("加载手形文件")
         self.load_button.clicked.connect(self.load_profile)
@@ -140,19 +118,26 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
         self.save_button.setToolTip("导出候选（优先）或已采用结果到新文件；拒绝覆盖已有文件。")
         file_actions.addWidget(self.load_button)
         file_actions.addWidget(self.save_button)
-        layout.addLayout(file_actions)
+        file_layout.addLayout(file_actions)
         self.revert_button = QtWidgets.QPushButton("回退到上一次已采用手形")
         self.revert_button.clicked.connect(lambda: self._command("revert_shape", "revert"))
-        layout.addWidget(self.revert_button)
+        file_layout.addWidget(self.revert_button)
+        self.result_details_section = CollapsibleSection("结果详情", self)
+        result_layout = self.result_details_section.content_layout
+        layout.addWidget(self.result_details_section)
         self.paths = window._label()
         self.paths.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        layout.addWidget(self.paths)
+        self.paths.setStyleSheet(text_style("muted"))
+        result_layout.addWidget(self.paths)
         self.metrics = window._label()
         self.metrics.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        layout.addWidget(self.metrics)
-        layout.addWidget(window._label(
+        self.metrics.setStyleSheet(text_style("body"))
+        result_layout.addWidget(self.metrics)
+        self.capability_note = window._label(
             "边界：官方优化只更新 10 维 MANO 手形 beta，不联合优化姿态或安装，不修正航向漂移。"
-            "缺测 DIP / CMC 先验仍会影响触指；损失降低不等于实际接触误差或人体精度已通过。"))
+            "缺测 DIP / CMC 先验仍会影响触指；损失降低不等于实际接触误差或人体精度已通过。")
+        self.capability_note.setStyleSheet(text_style("muted"))
+        result_layout.addWidget(self.capability_note)
         self._update_pair_text()
         if not window.official:
             self.hide()
@@ -186,26 +171,20 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
                 runtime.get("shape_command_generation"), runtime.get("shape_rejected_count"),
                 runtime.get("shape_command_error"), runtime.get("error"))
 
-    @staticmethod
-    def _storage_status(snapshot):
-        state = snapshot.get("calibration", {}).get("shape_calibration") or {}
-        storage = snapshot.get("runtime", {}).get("calibration_storage") or {}
-        return dict(error=state.get("storage_error") or storage.get("error"),
-            message=state.get("storage_message"),
-            can_retry=state.get("can_retry_save") is True or storage.get("retry_available") is True)
-
-    def _permissions(self, snapshot, clearing):
+    def _permissions(self, snapshot, clearing, storage=None, presentation=None):
         calibration = snapshot.get("calibration") or {}
         runtime = snapshot.get("runtime") or {}
         state = calibration.get("shape_calibration") or {}
-        storage = self._storage_status(snapshot)
+        storage = storage if storage is not None else storage_status(snapshot)
+        presentation = presentation if presentation is not None else calibration_status(snapshot)
         busy = shape_busy(calibration)
         available = bool(self.window.official and not clearing
             and calibration.get("active") is None
             and not str(calibration.get("profile_status", "")).startswith("fitting")
             and calibration.get("profile_status") != "clearing")
-        idle = available and not busy and self._pending is None
-        calibrated = bool(runtime.get("connected") and calibration.get("calibrated_nodes"))
+        idle = available and not busy and self._pending is None and not self.window._save_actions.pending
+        calibrated = bool(runtime.get("connected") and presentation.has_profile
+                          and not presentation.requires_recalibration)
         contacts = state.get("contacts") or {}
         complete = all((contacts.get(str(category)) or {}).get("frames", 0) > 0
                        and (contacts.get(str(category)) or {}).get("confirmed") is True
@@ -224,26 +203,27 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
             load=idle, save=idle and bool(state.get("can_export", candidate or bool(state.get("applied_path")))),
             save_task=idle and state.get("can_save_task") is True,
             load_task=idle and not runtime.get("connected") and state.get("can_load_task", True) is True,
-            retry_save=idle and bool(storage["error"]) and storage["can_retry"],
-            retry_save_to=idle and bool(storage["error"]) and storage["can_retry"],
+            retry_save=self.window._save_actions.allowed(snapshot, storage, clearing=clearing,
+                official=self.window.official, other_pending=self._pending is not None),
+            retry_save_to=self.window._save_actions.allowed(snapshot, storage, clearing=clearing,
+                official=self.window.official, other_pending=self._pending is not None),
             revert=idle and bool(state.get("can_revert")))
 
     def refresh_from_controller(self):
-        snapshot, clearing = self._snapshot()
-        self.refresh(snapshot, clearing=clearing)
+        self.window.refresh()
 
-    def refresh(self, snapshot, *, clearing=False):
+    def refresh(self, snapshot, *, clearing=False, storage=None, presentation=None):
         calibration = snapshot.get("calibration") or {}
         runtime = snapshot.get("runtime") or {}
         state = calibration.get("shape_calibration") or {}
-        storage = self._storage_status(snapshot)
+        storage = storage if storage is not None else storage_status(snapshot)
         context = (runtime.get("session_id"), bool(runtime.get("connected")), calibration.get("clear_generation"))
         if self._context != context or clearing:
             self.reset()
             self._context = context
         if self._pending and self._pending_evidence != self._evidence(snapshot):
             self._pending = self._pending_evidence = None
-        permissions = self._permissions(snapshot, clearing)
+        permissions = self._permissions(snapshot, clearing, storage, presentation)
         if not permissions["capture"]:
             blocked = self.confirm.blockSignals(True)
             self.confirm.setChecked(False)
@@ -255,8 +235,8 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
         for action in ("optimize", "cancel", "apply", "load", "save", "revert", "save_task", "load_task",
                        "retry_save", "retry_save_to"):
             getattr(self, action + "_button").setEnabled(permissions[action])
-        self.retry_save_button.setVisible(bool(storage["error"]))
-        self.retry_save_to_button.setVisible(bool(storage["error"]))
+        self.retry_save_button.setVisible(storage.has_errors)
+        self.retry_save_to_button.setVisible(storage.has_errors)
         self.preview.setEnabled(permissions["preview"])
         self.preview.model().item(1).setEnabled(state.get("candidate_available") is True)
         self.preview.model().item(2).setEnabled(state.get("candidate_available") is True)
@@ -276,16 +256,16 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
                   "optimizing": "正在优化候选；不改变当前已采用手形", "candidate": "候选就绪，尚未采用",
                   "applied": "手形已采用", "failed": "本次手形操作失败", "cancelled": "本次手形操作已取消"}
         lines = ["正在清除本次标定" if clearing else labels.get(status, "手形状态待确认")]
-        if self._pending:
+        if self._pending or self.window._save_actions.pending:
             lines.append("操作请求已发送，等待后台确认；不会自动重试。")
         if state.get("message"):
             lines.append(str(state["message"]))
         if state.get("error"):
             lines.append("错误：" + str(state["error"]))
-        if storage["error"]:
-            lines.append("保存失败：" + str(storage["error"]))
-        if storage["message"]:
-            lines.append(str(storage["message"]))
+        if storage.has_notices:
+            lines.append(storage.notice_text)
+        if storage.message:
+            lines.append(storage.message)
         if state.get("task_loaded"):
             lines.append("已恢复触指任务：仅离线优化 / 导出，不恢复安装或滤波，不续采。")
         if runtime.get("shape_command_error"):
@@ -295,6 +275,19 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
         if mode != "current":
             lines.append("仅显示对比：" + ("候选手形" if mode == "candidate" else "基准手形") + "；解算 / ROS 未切换。")
         self.status.setText("\n".join(lines))
+        if state.get("error") or storage.has_errors or runtime.get("shape_command_error") or self._local_error:
+            tone = "error"
+        elif status == "failed":
+            tone = "warning"
+        elif status == "applied":
+            tone = "success"
+        elif self._pending or status in {"capturing", "optimizing", "candidate"}:
+            tone = "info"
+        else:
+            tone = "neutral"
+        style = status_style(tone)
+        if self.status.styleSheet() != style:
+            self.status.setStyleSheet(style)
         self.progress.setRange(0, 100)
         if status == "capturing":
             remaining = state.get("remaining_s", 0.)
@@ -382,12 +375,7 @@ class ShapeCalibrationPanel(QtWidgets.QGroupBox):
             self._command("load_shape_task", "load_task", path=path)
 
     def retry_save_to(self):
-        snapshot, clearing = self._snapshot()
-        if not self._permissions(snapshot, clearing)["retry_save_to"]:
-            return
-        directory = QtWidgets.QFileDialog.getExistingDirectory(self, "另选目录保存待保存标定 / 触指任务", "")
-        if directory:
-            self._command("retry_calibration_save_to", "retry_save_to", directory=directory)
+        return self.window.choose_calibration_save_directory()
 
     def save_task(self):
         snapshot, clearing = self._snapshot()

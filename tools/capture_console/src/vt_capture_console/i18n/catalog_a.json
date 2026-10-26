@@ -296,7 +296,7 @@
   "已有模拟录制正在进行": "A simulated recording is already in progress",
   "仅可重试执行失败的演示检查": "Only failed demo inspections can be retried",
   "标定进程可能已运行，请用 Alt+Tab 切换对应手的 FSGlove 窗口；不会重复启动采集。": "The calibration process may already be running. Use Alt+Tab to switch to the FSGlove window for that hand; no duplicate capture process will start.",
-  "此手已有外部发布器；请手动切换现有窗口，不会接管或再启动。": "This hand already has an external publisher. Switch to the existing window manually; it will not be taken over or started again.",
+  "此手已有外部发布程序；窗口关闭后后台仍可能运行。请退出该外部程序后重试。": "An external program is publishing this hand's data; its background process may still run after the window closes. Exit that program and try again.",
   "此手进程已停止，但后台当前不允许启动；请核对录制与设备状态。": "This hand's process has stopped, but the backend currently blocks startup. Check recording and device status.",
   "有效手势正在更新；点击“标定”可回到原窗口。": "Valid hand pose data is updating. Click Calibrate to return to the original window.",
   "节点已启动，尚无姿态数据。点击“标定”，在原窗口检查 IMU 连接与标定状态。": "Node started; no pose data yet. Click Calibrate and check the IMU connection and calibration status in the original window.",

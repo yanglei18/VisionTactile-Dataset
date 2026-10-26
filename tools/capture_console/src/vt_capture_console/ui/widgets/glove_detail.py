@@ -86,9 +86,11 @@ class GloveDetailDialog(QDialog):
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setObjectName("muted")
+        self._status_text = ""
         layout.addWidget(self.status)
         self.preview = PreviewWidget("glove")
         self.preview.glove_view_changed.connect(lambda *_: self.controls.sync(self.preview))
+        self.preview.glove_display_changed.connect(self._refresh_status)
         layout.addWidget(self.preview, 1)
         note = QLabel(tr('来自手势数据主题的解算结果 · 腕部相对坐标，非世界定位。\n拖动旋转、滚轮缩放；标定仍在原 FSGlove 窗口中完成。'))
         note.setWordWrap(True)
@@ -114,7 +116,13 @@ class GloveDetailDialog(QDialog):
     def update_preview(self, source, device):
         if self.identity != (device.get("id"), device.get("side")):
             raise ValueError(tr('手势放大窗口不能更换设备或手别'))
+        self._status_text = tr('{v0} · 接收 {v1:.1f} Hz · 有效 {v2:.1f} Hz\n', v0=device.get('topic', ''), v1=device.get('receive_hz', 0), v2=device.get('valid_hz') or 0) + display_message(device.get("glove_hint", ""))
         self.preview.copy_glove_state_from(source)
-        self.status.setText(tr('{v0} · 接收 {v1:.1f} Hz · 有效 {v2:.1f} Hz\n', v0=device.get('topic', ''), v1=device.get('receive_hz', 0), v2=device.get('valid_hz') or 0) + display_message(device.get("glove_hint", "")))
         self.controls.sync(self.preview)
         self.controls.calibration_button.setEnabled(device.get("glove_action_enabled", True))
+
+    def _refresh_status(self):
+        status = self._status_text
+        if self.preview.glove_source_summary:
+            status += "\n" + self.preview.glove_source_summary
+        self.status.setText(status)

@@ -108,8 +108,6 @@ class SparseHandSolver:
             raise ValueError("node_to_slot requires node strings 1..12 and slots 0..15")
         if len(set(mapping.values())) != len(mapping) or 0 not in mapping.values():
             raise ValueError("node slots must be unique and include a root mapping")
-        if "11" in mapping and mapping["11"] != 13:
-            raise ValueError("auxiliary node 11 may only be explicitly assigned to thumb CMC slot 13")
         self.node_to_slot = dict(mapping)
         ratio = config.get("dip_ratio", .65)
         if isinstance(ratio, bool) or not isinstance(ratio, (int, float)) or not math.isfinite(ratio) or not 0 <= ratio <= 1:

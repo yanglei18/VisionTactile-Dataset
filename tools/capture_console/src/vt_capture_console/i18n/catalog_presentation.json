@@ -103,5 +103,8 @@
   "控制器数据主题名称格式无效，必须使用完整的绝对 ROS数据主题名称。": "The controller topic name is invalid. Use a complete, absolute ROS topic name.",
   "控制器数据主题名称超过 {maximum} 字节，请检查录制配置。": "A controller topic name exceeds {maximum} bytes. Check the recording configuration.",
   "设备数据主题配置不完整：{topics}": "Device topic configuration is incomplete: {topics}",
-  "当前采集配置不支持这些数据主题：{topics}": "The capture profile does not support these topics: {topics}"
+  "当前采集配置不支持这些数据主题：{topics}": "The capture profile does not support these topics: {topics}",
+  "该帧未提供骨段来源信息。": "This frame does not provide segment provenance.",
+  "当前显示：IMU 观测骨段 {observed}/16；含推断的模型关节 {inferred}/16。": "Displayed frame: {observed}/16 segments observed by IMUs; {inferred}/16 model joints involve inference.",
+  " 掌心参考：IMU {node}。": " Palm reference: IMU {node}."
 }

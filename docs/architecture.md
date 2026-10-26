@@ -26,6 +26,77 @@ described separately below.
 | `tools/capture_console` | Presents configured plans and shared live/archive views; submits explicit user operations through negotiated IPC. |
 | `tools/tracker_camera_calibration` | A separately installed worker guides dedicated acquisition and reuses the completed-bag solver for `tracker_from_camera`; CLI/offline use remains available. It does not own active configuration or calibration publication. |
 | `tools/multisensor_alignment` | Reads one completed unified bag, audits clocks and identities, aligns cameras and Trackers in host realtime, applies external calibration, and exports an immutable extensible index. |
+| `tools/fsglove12` | Owns glove input interpretation, fusion, calibration, joint inference and display contracts; shares the same numerical path between live input and recorded replay. |
+
+## Glove calibration and presentation ownership
+
+Hardware node IDs enter through the configured `node_to_slot` mapping and input
+unit contract. `layout_capabilities` derives observable joint pairs, calibration
+targets and action guidance from that mapping. GUI demonstrations use those
+targets; they do not maintain another numbering table or alter measured angles.
+`upstream_functional` fits the observable pairs. `middle_prior` owns estimates
+for missing segments; its inferred values are not independent measurements.
+
+`FusionEngine` owns integration and filter state. `input_timing` distinguishes
+arrival cadence from orientation continuity. The buffered continuity policy
+temporarily withholds measurement validity while completed arrival groups are
+accounted for; it never changes integration dt or invents missing samples.
+An unresolved or interrupted reference requires an explicit new reference.
+Historical recordings retain their saved policies and event boundaries.
+Fusion bias contributions are recorded as diagnostics, not physical truth or
+an instruction for the renderer to compensate the pose.
+
+`StationaryPreparation` owns the measured baseline and its statistical evidence.
+The opt-in offline `prepared_uncertainty_v3` policy also transfers a conservative
+uncertainty prior into native VQF at filter creation. It uses the norm of the
+three simultaneous confidence bounds as an intentionally broad isotropic sigma,
+then propagates age with the unchanged VQF process noise. This is not an exact
+standard-error claim. Reference rebuilds do not rejuvenate old evidence, and a
+changed host clock epoch prevents reuse of its confidence. Live defaults and
+historical replay remain unchanged: recorded whole-hand refits still contain
+per-joint regressions, so this candidate is not a completed drift repair.
+
+The live controller transfers completed, no-longer-mutated capture documents
+to a background job. Basic and functional fits share `CalibrationFitJob`, while
+`IsolatedJob` owns process startup, cancellation, deadlines and reaping.
+`CalibrationIO` serializes bounded artifact writes through the same execution
+primitive. Numerical workers and storage workers cannot activate profiles.
+Custom `calibration_fn` callbacks run through the same isolated task and must be
+importable and serializable by Python's spawn mechanism; isolation failures are
+reported instead of silently substituting the built-in algorithm. An injected
+job factory is the explicit extension seam for a different execution backend.
+The controller alone admits a candidate after its durable write receipt and
+checks the session, calibration reference and input epochs again. Cancellation
+revokes pending application; already submitted evidence may still finish saving.
+Waiting for buffered input is bounded and never bypasses a health or epoch fault.
+
+`kinematic_quality` produces per-joint quality and `joint_quality` defines its
+shared interpretation. Display, capture and export consume that contract.
+Current producers explicitly select
+`joint_quality_revision=local_joint_geometry_v2`: `valid_hidden=(true,false)`
+means the local joint estimate passed its own checks while mesh ancestry is
+unavailable. `kinematic_rejections` records local-model and inference-dependency
+failures; `joint_display_rejections` records unavailable parent geometry.
+An observed segment's global rotation is not invalidated merely by rejection of
+its own local joint model. Missing input dependencies and coupled-prior final
+model checks still apply. Unversioned results retain the v1 three-state meaning;
+unknown declared revisions fail closed. Complete `pose_valid` requires all local
+validity and display-availability flags, plus the existing input/time conditions.
+Neither local validity nor displaying a local angle establishes independent
+measurement or whole-hand anatomical accuracy.
+`display_pose` manages source-timed local history and a separate display-only
+partial-mesh contract. Unknown regions and their descendants are hidden by the
+renderer; placeholders needed to evaluate MANO never enter pose measurements or
+ROS. A `valid_hidden` local estimate can update a display-only composition when
+its missing ancestors still have unexpired display history; it cannot refresh
+those ancestors' source times or make the measured chain valid. Source
+timestamps, numerical validity and calibration are not repaired by GUI
+refreshes. A missing root still expires the complete display.
+
+Regression coverage must include raw/replay equivalence, complete and incomplete
+USB bursts, cancellation across fitting and saving, obsolete session results,
+and actual MANO partial rendering. These checks establish software behavior;
+anatomical accuracy and hardware signal consistency require separate evidence.
 
 ## Shared capture and archive presentation
 

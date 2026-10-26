@@ -58,7 +58,7 @@ def test_input_view_uses_acquisition_not_stale_solver_snapshot(window, monkeypat
     assert "累计样本 1,200" in w.stats.text()
     assert "最新数据年龄 5 ms" in w.stats.text()
     assert "24,000 字节" in w.stats.text()
-    assert all("#d6f3e7" in badge.styleSheet() for badge in w.badges.values())
+    assert all(badge.property("statusState") == "success" for badge in w.badges.values())
     assert w.input_contract_table.item(4, 6).text() == "20 / 2 / -10"
     assert w.view.mesh.visible() and "解算延迟" in w.view_state.text()
     assert "输入中断" not in w.view_state.text() and "1000 ms" in w.view_state.text()
@@ -68,6 +68,7 @@ def test_input_view_uses_acquisition_not_stale_solver_snapshot(window, monkeypat
 
 def test_expired_pose_keeps_complete_last_display_and_source_age_keeps_increasing(window, monkeypatch):
     w, controller, _, clock = setup_display(window, monkeypatch)
+    w.toggle_joints(True)
     vertices, joints = w.view.mesh_data.vertexes().copy(), w.view.joints.pos.copy()
     for stamp in (10.3, 11., 15.):
         clock[0] = stamp
@@ -79,7 +80,7 @@ def test_expired_pose_keeps_complete_last_display_and_source_age_keeps_increasin
         np.testing.assert_array_equal(w.view.mesh_data.vertexes(), vertices)
         np.testing.assert_array_equal(w.view.joints.pos, joints)
         assert "解算延迟" in w.view_state.text() and "非新测量" in w.view_state.text()
-        assert "#fbe1df" not in w.view_state.styleSheet()
+        assert w.view_state.property("statusState") != "error"
         assert "新鲜通道 12/12" in w.stats.text()
     assert "5000 ms" in w.view_state.text()
 
@@ -109,7 +110,7 @@ def test_stable_recovery_waits_two_hundred_ms_but_current_mesh_updates_immediate
     publish_input(controller, clock[0])
     controller.state.update(display_pose=None, display_geometry=None)
     w.refresh()
-    assert "#fff3d9" in w.view_state.styleSheet()
+    assert w.view_state.property("statusState") == "warning"
     for index, stamp in enumerate((10.41, 10.51, 10.62), 2):
         clock[0] = stamp
         controller.state["runtime"].update(published_monotonic_s=stamp)
@@ -119,7 +120,7 @@ def test_stable_recovery_waits_two_hundred_ms_but_current_mesh_updates_immediate
         w.refresh()
         np.testing.assert_allclose(w.view.mesh_data.vertexes(), np.asarray(geometry["vertices_m"]) @ w.view.basis.T)
         assert w.view.mesh.visible()
-        assert ("#d6f3e7" in w.view_state.styleSheet()) is (stamp == 10.62)
+        assert (w.view_state.property("statusState") == "success") is (stamp == 10.62)
         assert ("实时重建" in w.view_state.text()) is (stamp == 10.62)
 
 
@@ -148,7 +149,7 @@ def test_nan_geometry_and_render_failure_do_not_corrupt_previous_complete_model(
     assert w.view.mesh.visible() and "更新失败" in w.view_state.text()
     np.testing.assert_array_equal(w.view.mesh_data.vertexes(), vertices)
     np.testing.assert_array_equal(w.view.joints.pos, joints)
-    assert "已冻结" in w.view_state.text() and "#fbe1df" not in w.view_state.styleSheet()
+    assert "已冻结" in w.view_state.text() and w.view_state.property("statusState") != "error"
     controller.state.update(display_geometry=None, display_geometry_error="test worker failure")
     w.refresh()
     assert w.view.mesh.visible() and w._render_error == "test worker failure"

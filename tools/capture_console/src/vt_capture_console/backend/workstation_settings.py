@@ -11,6 +11,7 @@ import uuid
 from vt_capture_core.workstation import validate_configuration
 
 from .environment_discovery import default_data_root, discover_configuration
+from .serial_ports import serial_ports, stable_serial_path
 
 
 def repository_root():
@@ -127,37 +128,6 @@ def prepare_default_output(configuration):
         raise ValueError(f"无法创建默认数据目录：{output}；{exc}") from exc
 
 
-def serial_ports(dev_root=Path("/dev")):
-    """List paths only; no serial library, termios, read, or open is used."""
-    root = Path(dev_root)
-    choices, targets = [], set()
-    for category in ("by-id", "by-path"):
-        directory = root / "serial" / category
-        try:
-            paths = sorted(directory.iterdir())
-        except OSError:
-            paths = []
-        for path in paths:
-            try:
-                target = path.resolve(strict=True)
-                if target in targets:
-                    continue
-                targets.add(target)
-                choices.append(dict(path=str(path), label=f"{path.name} → {target.name}"))
-            except (OSError, RuntimeError):
-                continue
-    for pattern in ("ttyACM*", "ttyUSB*"):
-        for path in sorted(root.glob(pattern)):
-            try:
-                target = path.resolve(strict=True)
-            except (OSError, RuntimeError):
-                continue
-            if target not in targets:
-                targets.add(target)
-                choices.append(dict(path=str(path), label=path.name + "（未指定设备身份）"))
-    return choices
-
-
 class WorkstationSettings:
     def __init__(self, repo_root=None, settings_dir=None):
         self.repo_root = Path(repo_root).expanduser().absolute() if repo_root is not None else repository_root()
@@ -179,11 +149,18 @@ class WorkstationSettings:
     def prepare_for_startup(self):
         """Persist discovered paths only after the caller confirms no backend is alive."""
         result = self.detect_environment(self.configuration)
-        self.save(result.configuration)
+        # A historical tty number may now name another device. Only an explicit
+        # settings save may establish a new stable identity from that choice.
+        self.save(result.configuration, bind_serial_identity=False)
         return result
 
-    def save(self, configuration):
+    def save(self, configuration, *, bind_serial_identity=True):
         value = validate_configuration(configuration)
+        if bind_serial_identity:
+            for group in value["process_groups"]:
+                parameters = group["parameters"]
+                if group["preset"] in {"glove", "tactile"} and parameters.get("port"):
+                    parameters["port"] = stable_serial_path(parameters["port"])
         prepare_default_output(value)
         atomic_json(self.path, value)
         self._configuration = value

@@ -42,6 +42,56 @@ def joint_quality(**overrides):
     return quality
 
 
+@pytest.mark.parametrize("algorithm", ["official_fsglove_raw2mano_with_explicit_sparse_adapter_v3",
+                                       "official_fsglove_with_qmt_functional_adapter_v2"])
+def test_new_solver_contract_cannot_omit_quality_to_gain_validity(algorithm):
+    with pytest.raises(ValueError, match="requires explicit joint quality"):
+        decode_state(packet(algorithm=algorithm))
+    assert decode_state(packet(algorithm=algorithm, quality_json=json.dumps(joint_quality())))["pose_valid"]
+    degraded = joint_quality(joint_valid_mask=[True] * 15 + [False],
+                            joint_quality=["valid"] * 15 + ["degraded"])
+    with pytest.raises(ValueError, match="valid pose requires all"):
+        decode_state(packet(algorithm=algorithm, quality_json=json.dumps(degraded)))
+
+
+def test_declared_quality_revision_is_required_even_with_generic_algorithm():
+    with pytest.raises(ValueError, match="requires explicit joint quality"):
+        decode_state(packet(metadata_json=json.dumps({"quality_policy_revision": "calibration_kinematics_v1"})))
+
+
+@pytest.mark.parametrize("revision", [None, "unknown", 2, {}])
+def test_unknown_local_joint_revision_cannot_fall_back_to_legacy(revision):
+    quality = joint_quality(joint_quality_revision=revision)
+    with pytest.raises(ValueError, match="unsupported joint_quality_revision"):
+        decode_state(packet(quality_json=json.dumps(quality)))
+
+
+def test_local_joint_quality_preserves_independent_child_without_exporting_complete_pose():
+    quality = joint_quality(joint_quality_revision="local_joint_geometry_v2")
+    quality["joint_valid_mask"][14] = False
+    quality["joint_display_available_mask"][14:16] = [False, False]
+    quality["joint_quality"][14:16] = ["unavailable", "valid_hidden"]
+    valid = decode_state(packet(pose_valid=False, quality_json=json.dumps(quality)))
+    assert json.loads(valid["quality_json"])["joint_valid_mask"][15]
+    with pytest.raises(ValueError, match="valid pose requires all"):
+        decode_state(packet(quality_json=json.dumps(quality)))
+    quality["joint_display_available_mask"][15] = True
+    quality["joint_quality"][15] = "valid"
+    with pytest.raises(ValueError, match="parent geometry"):
+        decode_state(packet(pose_valid=False, quality_json=json.dumps(quality)))
+
+
+def test_local_revision_without_masks_and_unversioned_valid_hidden_are_rejected():
+    with pytest.raises(ValueError, match="requires explicit joint quality"):
+        decode_state(packet(pose_valid=False,
+            quality_json=json.dumps({"joint_quality_revision": "local_joint_geometry_v2"})))
+    quality = joint_quality()
+    quality["joint_display_available_mask"][15] = False
+    quality["joint_quality"][15] = "valid_hidden"
+    with pytest.raises(ValueError, match="supported quality"):
+        decode_state(packet(pose_valid=False, quality_json=json.dumps(quality)))
+
+
 def test_preserves_source_stamps_and_pose_exactly():
     state = decode_state(packet())
     result = populate_message(message(), state, realtime_ns=state["host_realtime_ns"] + 99,

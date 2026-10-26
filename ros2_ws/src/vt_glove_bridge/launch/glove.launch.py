@@ -2,7 +2,10 @@
 from pathlib import Path
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, EmitEvent, ExecuteProcess, OpaqueFunction, RegisterEventHandler
+from launch.event_handlers import OnExecutionComplete
+from launch.events import matches_action
+from launch.events.process import ShutdownProcess
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -28,7 +31,7 @@ DESCRIPTIONS = {
     "mano_assets": "User-provided MANO asset directory for the selected hand",
     "socket_path": "Pose-result Unix socket; empty derives the selected hand's path",
     "topic": "Solved-state output topic; empty derives /gloves/<hand>/state",
-    "config": "Optional per-hand solver JSON; must match an explicitly selected hand",
+    "config": "Optional per-hand solver JSON; pins the bridge palm ID and must match hand. Empty uses the producer's configuration",
     "port": "IMU serial path prefill only; connect manually in the GUI",
     "output_root": "Local session/debug directory, separate from ROS bags",
     "max_input_age_s": "Maximum source-input age before marking a received pose invalid",
@@ -97,7 +100,20 @@ def _start(context):
                       "allow_replay": _enabled(values["allow_replay"], "allow_replay"),
                       "use_sim_time": False,
                   }])
-    return [bridge, *display, *gui]
+    processes = [bridge, *display, *gui]
+    lifecycle = []
+    if gui:
+        # GUI and pose bridge form one session. Completion also covers a process
+        # that could not be spawned, unlike OnProcessExit. Register before any
+        # process starts so an early failure cannot leave its peers running.
+        # Target only this hand's actions: a global Shutdown would also stop the
+        # other hand and serial capture when included by hands.launch.py.
+        lifecycle = [RegisterEventHandler(OnExecutionComplete(
+            target_action=required,
+            on_completion=[EmitEvent(event=ShutdownProcess(process_matcher=matches_action(peer)))
+                           for peer in processes if peer is not required],
+        )) for required in (bridge, *gui)]
+    return [*lifecycle, *processes]
 
 
 def generate_launch_description():

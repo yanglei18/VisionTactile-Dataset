@@ -37,14 +37,24 @@ def glove_device(hand="right", *, payload=None, **changes):
 @pytest.fixture
 def fake_canvas(monkeypatch):
     class Canvas(QtWidgets.QWidget):
+        display_changed = QtCore.Signal()
+
         def __init__(self, hand, parent=None):
             super().__init__(parent)
             self.hand = hand
             self.samples = []
             self.disposed = False
+            self.displayed_frame = None
 
         def set_sample(self, frame, **context):
             self.samples.append((frame, context))
+            if frame and frame.get("mano") and not context["held"] and context["mode"] != "demo":
+                self.displayed_frame = deepcopy(frame)
+                self.display_changed.emit()
+
+        def clear_sample(self):
+            self.displayed_frame = None
+            self.display_changed.emit()
 
         def dispose(self):
             self.disposed = True
@@ -168,9 +178,28 @@ def test_invalid_pose_retains_history_and_mano_only_pose_has_no_fake_skeleton(fa
     preview.set_device(glove_device(payload={"valid": True, "joints": [], "mano": mano(frame_index=21)}))
     assert not preview._held
     assert preview._frame["joints"] == preview._frame["relative"] == ()
+    assert preview.glove_source_summary == ""
     assert not render(preview).isNull()
     preview.set_glove_view("3d")
     assert preview._glove_3d.samples[-1][0]["joints"] == ()
+
+
+def test_glove_sources_follow_displayed_frame_through_hold_and_unknown_history(fake_canvas, widgets):
+    raw = glove_device()
+    raw["preview"]["glove_sources"] = dict(reference_node_id=11,
+        segment_observed_mask=[i not in (2, 5, 8, 11, 13) for i in range(16)],
+        joint_observed_mask=[i in (0, 1, 4, 7, 10, 15) for i in range(16)],
+        inferred_mask=[i not in (0, 1, 4, 7, 10, 15) for i in range(16)])
+    card = widgets(DeviceCard(raw))
+    card.open_glove_detail()
+    assert "11/16" in card.preview.toolTip() and "10/16" in card.preview.toolTip()
+    assert "IMU 11" in card.glove_dialog.status.text()
+    card.update_device(glove_device(payload={"valid": False}))
+    assert card.preview._held and "IMU 11" in card.preview.glove_source_summary
+    card.update_device(glove_device())
+    assert "未提供骨段来源" in card.preview.toolTip()
+    assert "IMU 11" not in card.glove_dialog.status.text()
+    assert card.preview._frame.get("glove_sources") is None
 
 
 def test_legacy_joint_only_data_remains_renderable_without_requesting_a_model(fake_canvas, widgets):
@@ -356,6 +385,16 @@ def sample(source=None):
     return {"mano": source or mano(), "joints": glove_device()["preview"]["joints"]}
 
 
+def sourced_device(reference=11, **mano_changes):
+    device = glove_device()
+    device["preview"]["mano"].update(mano_changes)
+    device["preview"]["glove_sources"] = dict(reference_node_id=reference,
+        segment_observed_mask=[i not in (2, 5, 8, 11, 13) for i in range(16)],
+        joint_observed_mask=[i in (0, 1, 4, 7, 10, 15) for i in range(16)],
+        inferred_mask=[i not in (0, 1, 4, 7, 10, 15) for i in range(16)])
+    return device
+
+
 def result_for(source, offset=0.):
     return {"key": key_for(source), "geometry": {
         "vertices_m": np.array([[.1, .2, -.05], [-.2, .3, .1], [.15, -.1, .3]]) + offset,
@@ -367,6 +406,172 @@ def attach_view(widget):
     widget.view = view
     widget.layout.addWidget(view)
     return view
+
+
+@pytest.fixture
+def preview_renderer(qapp, monkeypatch, widgets):
+    worker = FakePosePreview()
+    monkeypatch.setattr(glove_3d, "pose_preview", lambda hand: worker)
+    preview = widgets(PreviewWidget("glove"))
+    preview.set_device(sourced_device())
+    preview.set_glove_view("3d")
+    preview.show()
+    qapp.processEvents()
+    view = attach_view(preview._glove_3d)
+    return preview, worker, view
+
+
+def test_sources_commit_with_geometry_and_stay_with_old_mesh_on_wait_or_failure(preview_renderer):
+    preview, worker, view = preview_renderer
+    renderer = preview._glove_3d
+    changes = QSignalSpy(renderer.display_changed)
+    assert renderer.displayed_frame is None and preview.toolTip() == ""
+    worker.ready.emit(result_for(mano()))
+    assert "IMU 11" in preview.toolTip() and changes.count() == 1
+
+    newer = sourced_device(12, frame_index=21)
+    preview.set_device(newer)
+    assert "IMU 11" in preview.toolTip() and changes.count() == 1
+    worker.failed.emit("reconstruction failed")
+    assert "IMU 11" in preview.toolTip() and len(view.received) == 1
+    worker.ready.emit(result_for(mano(frame_index=21)))
+    assert "IMU 12" in preview.toolTip() and changes.count() == 2
+    assert len(view.received) == 2
+
+    # The renderer owns its accepted metadata; neither producer nor consumer
+    # can rewrite a frame after display.
+    newer["preview"]["glove_sources"]["reference_node_id"] = 1
+    observed = renderer.displayed_frame
+    observed["glove_sources"]["reference_node_id"] = 2
+    assert "IMU 12" in preview.glove_source_summary
+
+
+def test_same_key_source_update_does_not_upload_or_revert_to_pending_metadata(preview_renderer):
+    preview, worker, view = preview_renderer
+    worker.ready.emit(result_for(mano()))
+    preview.set_device(sourced_device(12))
+    assert "IMU 11" in preview.toolTip()
+    worker.ready.emit(result_for(mano()))
+    assert "IMU 12" in preview.toolTip() and len(view.received) == 1
+    worker.ready.emit(result_for(mano()))
+    assert "IMU 12" in preview.toolTip() and len(view.received) == 1
+
+
+def test_legacy_metadata_becomes_unknown_only_when_its_geometry_is_displayed(preview_renderer):
+    preview, worker, view = preview_renderer
+    worker.ready.emit(result_for(mano()))
+    legacy = glove_device()
+    legacy["preview"]["mano"]["frame_index"] = 21
+    preview.set_device(legacy)
+    assert "IMU 11" in preview.toolTip()
+    worker.ready.emit(result_for(mano(frame_index=21)))
+    assert "未提供骨段来源" in preview.toolTip() and "IMU 11" not in preview.toolTip()
+    assert len(view.received) == 2
+
+
+def test_source_summary_follows_selected_geometry_during_async_view_switch(preview_renderer):
+    preview, worker, view = preview_renderer
+    worker.ready.emit(result_for(mano()))
+    preview.set_device(sourced_device(12, frame_index=21))
+    assert "IMU 11" in preview.toolTip()
+    preview.set_glove_view("skeleton")
+    assert "IMU 12" in preview.toolTip()
+    preview.set_glove_view("3d")
+    assert "IMU 11" in preview.toolTip()
+    worker.ready.emit(result_for(mano(frame_index=21)))
+    assert "IMU 12" in preview.toolTip() and len(view.received) == 2
+
+
+def test_pending_frame_expiration_does_not_replace_displayed_mesh_sources(preview_renderer):
+    preview, worker, view = preview_renderer
+    worker.ready.emit(result_for(mano()))
+    newer = sourced_device(12, frame_index=21)
+    preview.set_device(newer)
+    newer["status"] = "stale"
+    preview.set_device(newer)
+    worker.ready.emit(result_for(mano(frame_index=21)))
+    assert preview.held and "IMU 11" in preview.toolTip()
+    assert len(view.received) == 1
+    preview.set_glove_view("skeleton")
+    assert "IMU 12" in preview.toolTip()  # This synchronous frame was accepted.
+
+
+@pytest.mark.parametrize("transition", ["clear", "context", "identity", "copy_empty"])
+def test_cleared_or_replaced_context_discards_mesh_and_sources(preview_renderer, widgets, transition):
+    preview, worker, view = preview_renderer
+    worker.ready.emit(result_for(mano()))
+    assert "IMU 11" in preview.toolTip()
+    if transition == "clear":
+        preview.clear_frame()
+    elif transition == "context":
+        preview.set_device(glove_device(payload={}, mode="replay"))
+    elif transition == "identity":
+        preview.set_device(glove_device(payload={}, id="another_right_glove"))
+    else:
+        source = widgets(PreviewWidget("glove"))
+        source.set_device(glove_device(payload={}))
+        preview.copy_glove_state_from(source)
+    assert preview._glove_3d.displayed_frame is None
+    assert not view.hand_visible and preview.toolTip() == ""
+    worker.ready.emit(result_for(mano()))
+    assert not view.hand_visible and preview.toolTip() == ""
+
+
+def test_session_change_removes_sources_until_matching_geometry_is_installed(preview_renderer):
+    preview, worker, view = preview_renderer
+    worker.ready.emit(result_for(mano()))
+    preview.set_device(sourced_device(12, session_id="next-session"))
+    assert not view.hand_visible and preview.toolTip() == ""
+    worker.ready.emit(result_for(mano()))
+    assert preview.toolTip() == ""
+    worker.ready.emit(result_for(mano(session_id="next-session")))
+    assert "IMU 12" in preview.toolTip() and view.hand_visible
+
+
+def test_geometry_rejection_keeps_previously_displayed_sources(preview_renderer, monkeypatch):
+    preview, worker, view = preview_renderer
+    worker.ready.emit(result_for(mano()))
+    preview.set_device(sourced_device(12, frame_index=21))
+
+    def reject(geometry):
+        raise ValueError("invalid geometry")
+
+    monkeypatch.setattr(view, "set_geometry", reject)
+    worker.ready.emit(result_for(mano(frame_index=21)))
+    assert len(view.received) == 1 and "IMU 11" in preview.toolTip()
+
+
+def test_detail_sources_refresh_on_render_completion_without_another_snapshot(qapp, monkeypatch, widgets):
+    from vt_capture_console import i18n
+
+    worker = FakePosePreview()
+    monkeypatch.setattr(glove_3d, "pose_preview", lambda hand: worker)
+    card = widgets(DeviceCard(sourced_device()))
+    card.show()
+    card.open_glove_detail()
+    qapp.processEvents()
+    main_view = attach_view(card.preview._glove_3d)
+    detail_view = attach_view(card.glove_dialog.preview._glove_3d)
+    worker.ready.emit(result_for(mano()))
+    assert "IMU 11" in card.glove_dialog.status.text()
+    card.update_device(sourced_device(12, frame_index=21))
+    assert "IMU 11" in card.glove_dialog.status.text()
+    before_completion = len(worker.submissions)
+    previous_language = i18n.language()
+    try:
+        i18n.set_language("en", persist=False)
+        assert "Palm reference: IMU 11" in card.glove_dialog.status.text()
+        worker.ready.emit(result_for(mano(frame_index=21)))
+        assert "Palm reference: IMU 12" in card.preview.toolTip()
+        assert "Palm reference: IMU 12" in card.glove_dialog.status.text()
+        assert "Receive" in card.glove_dialog.status.text()
+    finally:
+        i18n.set_language(previous_language, persist=False)
+    assert len(worker.submissions) == before_completion
+    assert len(main_view.received) == len(detail_view.received) == 2
+    card.glove_dialog.set_glove_view("skeleton")
+    card.glove_dialog.preview.clear_frame()
+    assert "IMU 12" not in card.glove_dialog.status.text()
 
 
 @pytest.mark.parametrize("frame, held, mode", [

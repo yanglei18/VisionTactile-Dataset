@@ -3,4 +3,4 @@
 from .model import Transform
 
 __all__ = ["Transform"]
-__version__ = "0.1.0"
+__version__ = "0.1.1"

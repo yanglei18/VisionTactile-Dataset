@@ -47,7 +47,7 @@ def _runtime_details():
 
 
 def _resource_details():
-    theme_root = files("vt_capture_console.theme")
+    theme_root = files("vt_fsglove12.ui_theme")
     stylesheet = theme_root.joinpath("theme.qss").read_text(encoding="utf-8")
     if not stylesheet.strip():
         raise ValueError("主题样式资源为空。")

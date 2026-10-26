@@ -31,7 +31,7 @@ license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-vt_fsglove12 = ["configs/*.json"]
+vt_fsglove12 = ["configs/*.json", "ui_theme/*.qss", "ui_theme/icons/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

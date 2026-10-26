@@ -20,6 +20,7 @@ from .sensor_quality import GyroNearRailMonitor, quality_warnings
 from .input_contract import describe_input_contract, effective_input_scales, raw_to_si, validate_input_contract
 from .input_diagnostics import InputObservationMonitor, describe_filter_state
 from .input_guard import ImuInputGuard, REVISION as INPUT_GUARD_REVISION
+from .vqf_settings import vqf_parameters
 
 
 _TIME = "host_parse_monotonic_s"
@@ -111,6 +112,7 @@ def replay_raw(raw_path, config: dict, output_path, *, max_frames=None) -> dict:
     continuity. Host intervals cannot detect hidden USB/firmware sample loss.
     """
     validate_input_contract(config)
+    parameters = vqf_parameters(config)
     settings, scales = _configuration(config)
     scales, accel_scales = effective_input_scales(config)
     if max_frames is not None and (type(max_frames) is not int or max_frames <= 0):
@@ -178,7 +180,7 @@ def replay_raw(raw_path, config: dict, output_path, *, max_frames=None) -> dict:
                             counts[key]["short_gaps"] += 1
                             pending_warnings.add(f"node_{node}_short_gap_filter_preserved")
                     if previous is None:
-                        previous = dict(filter=VQF(period), stamp=stamp)
+                        previous = dict(filter=VQF(period, **parameters), stamp=stamp)
                         states[key] = previous
                     gyro, accel = raw_to_si(values, gyro_dps_per_lsb=scales[key],
                                            accel_g_per_lsb=accel_scales[key])

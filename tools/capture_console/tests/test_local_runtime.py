@@ -358,6 +358,26 @@ def test_stale_desktop_apply_preserves_manager_and_saved_configuration(runtime_f
     assert runtime_factory.children[0].poll() is None
 
 
+def test_explicit_glove_config_is_preserved_without_composition(runtime_factory, tmp_path):
+    runtime = runtime_factory()
+    eventually(lambda: runtime.status["state"] == "ready")
+    path = tmp_path / "historical-right.json"
+    original = b'{"sample_rate_hz":120,"gyro_dps_per_lsb":0.00875,"node_to_slot":{"12":0}}\n'
+    path.write_bytes(original)
+    assert not (runtime.settings.directory / "glove-configs").exists()
+    draft = runtime.configuration
+    right = next(g for g in draft["process_groups"] if g["id"] == "right_glove")
+    right["parameters"].update(config=str(path), output_rate_hz="119")
+    assert runtime.apply(draft, runtime._probe()[0])
+    eventually(lambda: runtime.status["last_apply"]["state"] == "applied")
+    right = next(g for g in runtime.configuration["process_groups"] if g["id"] == "right_glove")
+    assert right["parameters"]["config"] == str(path)
+    assert path.read_bytes() == original
+    assert right["parameters"]["output_rate_hz"] == "119"
+    assert not (runtime.settings.directory / "glove-configs").exists()
+    assert len(runtime_factory.children) == 2
+
+
 @pytest.mark.parametrize("initial_probe_fails", [False, True])
 def test_refreshed_desktop_replaces_only_idle_owned_stale_manager(runtime_factory, monkeypatch, initial_probe_fails):
     first = runtime_factory()
@@ -456,6 +476,43 @@ def test_safe_apply_after_window_reopen_restarts_only_saved_owned_manager(runtim
     assert len(runtime_factory.children) == 2
     assert replacement.configuration["process_groups"][0]["label"] == "新配置"
     assert all(not value["enabled"] for value in replacement.configuration["process_groups"])
+
+
+def test_apply_retains_selected_identity_if_tty_numbers_change_during_restart(
+        runtime_factory, monkeypatch, tmp_path):
+    from vt_capture_console.backend import serial_ports
+
+    root = tmp_path / "dev"
+    aliases = root / "serial/by-id"
+    aliases.mkdir(parents=True)
+    old, new = root / "ttyACM0", root / "ttyACM1"
+    old.touch()
+    new.touch()
+    chosen, other = aliases / "chosen-glove", aliases / "other-device"
+    chosen.symlink_to(old)
+    other.symlink_to(new)
+    monkeypatch.setattr(serial_ports, "DEV_ROOT", root)
+    runtime = runtime_factory()
+    eventually(lambda: runtime.status["state"] == "ready")
+    configuration = runtime.configuration
+    selected = next(g for g in configuration["process_groups"] if g["id"] == "right_glove")
+    selected["parameters"]["port"] = str(old)
+    stop = runtime._stop_owned
+
+    def swap_numbering(record):
+        chosen.unlink()
+        other.unlink()
+        chosen.symlink_to(new)
+        other.symlink_to(old)
+        return stop(record)
+
+    monkeypatch.setattr(runtime, "_stop_owned", swap_numbering)
+    assert runtime.apply(configuration, runtime._probe()[0])
+    eventually(lambda: runtime.status["last_apply"]["state"] == "applied")
+    saved = json.loads(runtime.settings_path.read_text())
+    right = next(g for g in saved["process_groups"] if g["id"] == "right_glove")
+    assert right["parameters"]["port"] == str(chosen)
+    assert Path(right["parameters"]["port"]).resolve() == new
 
 
 def test_apply_is_async_and_holds_shared_admission_lock(runtime_factory, monkeypatch):

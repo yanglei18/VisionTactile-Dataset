@@ -269,15 +269,15 @@ def test_scale_panel_preserves_existing_minimum_height_and_scrollable_full_hand_
     scroll.widget().layout().activate()
     window.centralWidget().layout().activate()
     assert with_panel == without_panel
-    # The existing right-side view currently needs about 975 px. At a 900 px
-    # request, the new panel must not raise that pre-existing minimum further.
+    # Diagnostic contents must not increase the main window's minimum height.
     assert window.height() <= max(900, without_panel)
     assert scroll.widgetResizable() and scroll.verticalScrollBar().maximum() > 0
-    # All new and later controls remain inside the vertical scroll area, not
-    # outside its available region. No real window or GL paint is started.
-    for widget in (window.input_scale_apply_button, window.functional_hand_capture,
-                   window.functional_capture, window.clear, window.details):
+    # Primary actions stay in the main page, diagnostics in their own scroll
+    # area. No real window or GL paint is started.
+    for widget in (window.functional_hand_capture, window.functional_capture, window.clear):
         assert scroll.isAncestorOf(widget)
+    for widget in (window.input_scale_apply_button, window.details):
+        assert window.diagnostics_scroll.isAncestorOf(widget)
     scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
     assert scroll.verticalScrollBar().value() > 0
     assert controller.commands == []

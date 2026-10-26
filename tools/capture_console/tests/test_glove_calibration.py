@@ -81,6 +81,51 @@ def test_process_state_keeps_start_and_focus_separate(process_state, allowed, ex
     assert not status["can_focus"]
 
 
+@pytest.mark.parametrize("process_state", ["STOPPED", "FAILED"])
+def test_blocked_start_preserves_only_selected_hand_diagnostic(process_state):
+    detail = "串口 /dev/serial/by-id/test-right 不存在；请检查 USB 连接、设备枚举和配置端口。"
+    value = snapshot(process_control=dict(enabled=True, groups=[
+        group("left", state="FAILED", owned=False, pid=None, detail="unrelated hand detail"),
+        group(state=process_state, owned=False, pid=None, detail=detail, log_path="unrelated log path"),
+    ]))
+    before = deepcopy(value)
+    status = inspect_status(value, "right")
+    assert status["message"] == detail
+    assert status["state"] == "STOPPED"
+    assert not status["can_start"] and not status["can_focus"]
+    assert value == before
+
+
+@pytest.mark.parametrize("detail", [None, "", "   ", {}, ["unexpected data"], 123])
+def test_blocked_start_without_text_detail_keeps_fallback(detail):
+    value = snapshot(process_control=dict(enabled=True, groups=[
+        group(state="FAILED", owned=False, pid=None, detail=detail),
+    ]))
+    status = inspect_status(value, "right")
+    assert "后台当前不允许启动" in status["message"]
+    assert not status["can_start"] and not status["can_focus"]
+
+
+def test_startable_group_does_not_keep_previous_failure_message():
+    value = snapshot(process_control=dict(enabled=True, groups=[
+        group(state="FAILED", owned=False, pid=None, can_start=True, detail="previous failure"),
+    ]))
+    status = inspect_status(value, "right")
+    assert status["can_start"]
+    assert "可通过托管启动" in status["message"]
+    assert "previous failure" not in status["message"]
+
+
+def test_external_publisher_does_not_imply_a_window_exists():
+    value = snapshot(process_control=dict(enabled=True, groups=[
+        group(state="EXTERNAL", owned=False, pid=None, can_start=True),
+    ]))
+    status = inspect_status(value, "right")
+    assert "窗口关闭后后台仍可能运行" in status["message"]
+    assert "请退出该外部程序后重试" in status["message"]
+    assert not status["can_start"] and not status["can_focus"]
+
+
 @pytest.mark.parametrize("process_state", ["STARTING", "RUNNING", "DEGRADED"])
 def test_running_without_data_does_not_invent_calibration_stage(process_state):
     value = snapshot(process_control=dict(enabled=True, groups=[group(state=process_state)]))

@@ -51,6 +51,57 @@ def test_common_rotation_preserves_hand_and_root_is_mano_delta():
     assert_rotation_equal(b["root_quat_xyzw"], common.as_quat())
 
 
+@pytest.mark.parametrize("cmc", [False, True])
+def test_sensor_numbering_permutation_preserves_pose_and_observation_roles(cmc):
+    old_solver, old_config, rest = make_solver(cmc=cmc)
+    new_to_old = {
+        "1": "6", "2": "5", "3": "4", "4": "3", "5": "2", "6": "1",
+        "7": "8", "8": "7", "9": "10", "10": "9", "11": "12", "12": "11",
+    }
+    new_config = deepcopy(old_config)
+    new_config["node_to_slot"] = {
+        new: old_config["node_to_slot"][old] for new, old in new_to_old.items()
+        if old in old_config["node_to_slot"]
+    }
+    assert new_config["node_to_slot"]["11"] == 0
+    assert ("12" in new_config["node_to_slot"]) is cmc
+    if cmc:
+        # This is an explicitly mapped synthetic CMC, not the new glove's
+        # wrist sensor. Its sensor ID must not determine its model role.
+        assert new_config["node_to_slot"]["12"] == 13
+    new_solver = SparseHandSolver(new_config, rest)
+
+    angles = np.zeros((16, 3))
+    for index, proximal in enumerate((1, 4, 7, 10)):
+        angles[proximal, 1:] = [(-1) ** index * .12, .25 + .12 * index]
+        angles[proximal + 1, 2] = .45 + .15 * index
+        angles[proximal + 2, 2] = .65 * angles[proximal + 1, 2]
+    if cmc:
+        angles[13] = [.15, -.2, .25]
+    angles[14, 1:] = [.1, .4]
+    angles[15, 2] = .65
+    common = Rotation.from_euler("XYZ", [.6, -.35, .8])
+    old_observations = synthesize(old_config, rest, angles, common)
+    new_observations = {new: old_observations[old] for new, old in new_to_old.items()
+                        if old in old_observations}
+    expected = old_solver.solve(old_observations, 2.)
+    actual = new_solver.solve(new_observations, 2.)
+    for key in ("anatomical_euler_rad", "root_quat_xyzw", "predicted_global_xyzw"):
+        np.testing.assert_allclose(actual[key], expected[key], rtol=0., atol=1e-10)
+    np.testing.assert_allclose(actual["anatomical_euler_rad"], angles, atol=1e-6)
+    for key in ("quality", "pose_available", "solver_success", "segment_observed_mask",
+                "joint_observed_mask", "inferred_mask", "source_labels", "active_joint_limits"):
+        assert actual[key] == expected[key], key
+
+    # A missing palm is still unavailable after its identity changes to 11.
+    del old_observations["12"]
+    del new_observations["11"]
+    expected_missing = old_solver.solve(old_observations, 3.)
+    actual_missing = new_solver.solve(new_observations, 3.)
+    assert actual_missing == expected_missing
+    assert not actual_missing["pose_available"]
+
+
 @pytest.mark.parametrize("proximal,middle,distal", [(1, 2, 3), (4, 5, 6), (7, 8, 9), (10, 11, 12)])
 def test_independent_finger_and_exact_inferred_dip(proximal, middle, distal):
     solver, config, rest = make_solver()
@@ -157,7 +208,7 @@ def test_inputs_are_not_mutated_and_configuration_is_validated():
     with pytest.raises(ValueError):
         SparseHandSolver(dict(config, dip_ratio=float("nan")), rest)
     with pytest.raises(ValueError):
-        SparseHandSolver(dict(config, node_to_slot=dict(MAPPING, **{"11": 6})), rest)
+        SparseHandSolver(dict(config, node_to_slot=dict(MAPPING, **{"11": 5})), rest)
     with pytest.raises(ValueError):
         SparseHandSolver(config, np.zeros((16, 4)))
 

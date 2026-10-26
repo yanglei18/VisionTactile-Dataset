@@ -14,6 +14,8 @@ import threading
 import time
 import uuid
 
+from vt_capture_core.glove_sources import glove_sources
+
 from .config import ManagerConfig
 
 
@@ -185,6 +187,9 @@ class SnapshotModel:
             valid = bool(message.pose_valid and message.time_valid)
             preview = dict(joints=joints, valid=bool(valid and joints),
                            quality=str(message.quality)[:128], reason=str(message.reason)[:512])
+            sources = glove_sources(message)
+            if sources:
+                preview["glove_sources"] = sources
             source_mode = getattr(message, "source_mode", "")
             if source_mode == "replay":
                 # Legacy skeleton consumers also need to distinguish replay.

@@ -27,6 +27,25 @@ Public software tests must not require local Tracker credentials, a physical
 sensor, external FSGlove source, or licensed MANO assets. Keep optional tests
 for those prerequisites explicit and report skips separately from passes.
 
+## Glove pose restoration baseline
+
+Incremental glove-pose development starts from the previously pushed commit
+`7466ba3be0299f167963e472be520fc03df808a4`. The restoration includes the complete
+historical implementations, configurations and tests in `tools/fsglove12` and
+`tools/glove_hand_pose`. Only the current shared `ui_theme` resources, their tests
+and packaging declarations are retained; they do not participate in numerical
+inference. The workbench uses an explicit configuration file again and does not
+inject later fusion policies, missing-bone inference or thumb models when saving.
+
+The baseline retains the old numbering (right palm node 12), input units and
+output target; it is not yet an adaptation for the new glove. Change the new IMU
+numbering, STM32 count-to-unit conversions and measured sample period in separate,
+reviewable increments. Compare identical inputs before fresh wearing calibration
+and stationary/motion acceptance; a successful launch does not establish physical
+accuracy. Record the commit, configuration digest, interpreter and child-process
+import paths for every comparison. Continue from the restored branch instead of
+merging the entire later experimental branch back into it; history remains in Git.
+
 ## Change workflow
 
 Write or update a failing test before every behavior change, confirm that it

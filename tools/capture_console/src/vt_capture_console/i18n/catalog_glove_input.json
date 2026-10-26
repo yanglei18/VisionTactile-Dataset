@@ -1,0 +1,13 @@
+{
+  "使用配置文件中的参数": "Use parameters from the configuration file",
+  "LSM6DSR · 原固件 · 104 Hz": "LSM6DSR · original firmware · 104 Hz",
+  "LSM6DSR · 固件 v2 · 104 Hz": "LSM6DSR · firmware v2 · 104 Hz",
+  "保留配置文件中的布局": "Keep the layout from the configuration file",
+  "右手：近节＋末节，掌心 11，辅助腕部 12": "Right: proximal + distal, palm 11, auxiliary wrist 12",
+  "历史右手布局（掌心 12）": "Legacy right-hand layout (palm 12)",
+  "历史左手布局": "Legacy left-hand layout",
+  "按近节与末节约束估算缺测中节": "Estimate missing middle segments from proximal and distal constraints",
+  "保存时生成新配置并匹配输出频率；需要重新标定。推断关节不是独立实测。": "Saving creates a new configuration with a compatible output rate. Recalibration is required. Inferred joints are not independent measurements.",
+  "硬件输入": "Hardware input",
+  "传感器布局": "Sensor layout"
+}

@@ -576,7 +576,16 @@ def _official_functional_backend(harness, monkeypatch):
         raise AssertionError("official functional capture must not call the legacy fit")
 
     class Official:
-        def fit_functional_finger(self, neutral, motion, profile, *, finger, session_id):
+        def functional_reference_rotations(self, frame, profile, slots):
+            data = frame["nodes"].get("12")
+            if data is None:
+                return {}
+            return {str(slot): dict(quat_xyzw=[0., 0., 0., 1.],
+                                    identity=((data["epoch"], data["sample_index"]),) * 2)
+                    for slot in slots}
+
+        def fit_functional_finger(self, neutral, motion, profile, *, finger, session_id,
+                                  reference_selection=None):
             calls.append((neutral, motion, finger, session_id))
             assert neutral and motion and neutral[-1]["timestamp_s"] < motion[0]["timestamp_s"]
             if control.fail:
@@ -610,7 +619,10 @@ def _capture_functional(harness, finger):
     for _ in range(4):
         harness.pump()
     assert controller.latest_snapshot()["calibration"]["active"]["phase"] == "collecting_neutral"
-    harness.clock.advance(2.)
+    for _ in range(45):
+        if controller.latest_snapshot()["calibration"]["active"]["phase"] == "moving":
+            break
+        harness.pump()
     for _ in range(4):
         harness.pump()
     assert controller.latest_snapshot()["calibration"]["active"]["phase"] == "moving"
@@ -703,7 +715,7 @@ def _hand_backend(harness, monkeypatch):
     control = SimpleNamespace(errors={}, rejected={}, fail=False, block=False,
                               entered=threading.Event(), release=threading.Event())
 
-    def fit(neutral, fingers, thumb, profile, *, session_id):
+    def fit(neutral, fingers, thumb, profile, *, session_id, reference_selection=None):
         calls.append((deepcopy(neutral), deepcopy(fingers), deepcopy(thumb), session_id))
         control.entered.set()
         if control.block:
@@ -730,14 +742,24 @@ def _start_hand_capture(harness):
 
 def _hand_capture_phases(harness, *, finish=True):
     start = _start_hand_capture(harness)
-    for offset, phase, duration in ((.01, "preparing", 3.), (3.01, "collecting_neutral", 2.),
-                                     (5.01, "moving_fingers", 8.), (13.01, "preparing_thumb", 3.),
-                                     (16.01, "moving_thumb", 8.)):
+    for offset, phase, duration in ((.01, "preparing", 3.), (3.01, "collecting_neutral", 12.)):
         harness.clock.value = start + offset
         for _ in range(4):
             harness.pump()
         active = harness.controller.latest_snapshot()["calibration"]["active"]
         assert active["kind"] == "functional_hand" and active["step"] == "neutral"
+        assert active["phase"] == phase and 0 < active["remaining_s"] <= duration
+    for _ in range(45):
+        if harness.controller.latest_snapshot()["calibration"]["active"]["phase"] == "moving_fingers":
+            break
+        harness.pump()
+    start = harness.controller._active["neutral_end_at"] - 5.
+    for offset, phase, duration in ((5.1, "moving_fingers", 8.), (13.01, "preparing_thumb", 3.),
+                                    (16.01, "moving_thumb", 8.)):
+        harness.clock.value = start + offset
+        for _ in range(4):
+            harness.pump()
+        active = harness.controller.latest_snapshot()["calibration"]["active"]
         assert active["phase"] == phase and 0 < active["remaining_s"] <= duration
     if finish:
         harness.clock.value = start + 24.01
@@ -764,7 +786,7 @@ def test_whole_hand_split_capture_single_save_and_preserved_enabled(harness, mon
     old_nodes = deepcopy(controller._profile["nodes"])
     start = _hand_capture_phases(harness)
     assert len(calls) == 1
-    for rows, lo, hi in zip(calls[0][:3], (3., 5., 16.), (5., 13., 24.)):
+    for rows, lo, hi in zip(calls[0][:3], (2.8, 5., 16.), (5.001, 13., 24.)):
         assert rows and all(start + lo <= row["timestamp_s"] < start + hi for row in rows)
         assert len({row["nodes"]["12"]["sample_index"] for row in rows}) == len(rows)
     result = controller.latest_snapshot()["calibration"]["functional_hand_result"]
@@ -819,7 +841,11 @@ def test_cancel_in_each_whole_hand_phase_never_fits_or_saves(harness, monkeypatc
     controller = harness.controller
     previous = deepcopy(controller._profile)
     start = _start_hand_capture(harness)
-    harness.clock.value = start + offset
+    if offset > 3.:
+        harness.clock.value = start + 3.
+        while harness.clock() < start + min(offset, 5.4):
+            harness.pump()
+    harness.clock.value = max(harness.clock(), start + offset)
     harness.pump()
     assert controller.submit("cancel_capture")
     wait_for(lambda: controller.latest_snapshot()["calibration"]["active"] is None)
@@ -847,6 +873,47 @@ def test_cancel_during_whole_hand_fit_keeps_reader_running_and_does_not_save(har
     assert calls and controller._profile == previous
     assert controller.latest_snapshot()["calibration"]["functional_hand_result"]["status"] == "cancelled"
     assert len(list((harness.output / previous["session_id"]).glob("profile.v*.json"))) == 1
+
+
+@pytest.mark.parametrize("command", ["capture_functional", "capture_functional_hand"])
+def test_unstable_functional_reference_times_out_without_fitting_or_losing_profile(harness, monkeypatch, command):
+    import math
+    from scipy.spatial.transform import Rotation
+    calls, _ = _hand_backend(harness, monkeypatch)
+    controller = harness.controller
+    original = controller._pose_backend.functional_reference_rotations
+    def moving(frame, profile, slots):
+        values = original(frame, profile, slots)
+        for item in values.values():
+            item["quat_xyzw"] = Rotation.from_euler("z", .8 * math.sin(frame["timestamp_s"] * 8)).as_quat().tolist()
+        return values
+    controller._pose_backend.functional_reference_rotations = moving
+    previous = deepcopy(controller._profile)
+    assert controller.submit(command, **({"finger": "index"} if command == "capture_functional" else {}))
+    wait_for(lambda: controller.latest_snapshot()["calibration"]["active"] is not None)
+    harness.clock.advance(3.)
+    elapsed = []
+    for _ in range(250):
+        harness.pump()
+        active = controller.latest_snapshot()["calibration"]["active"]
+        if active is None:
+            break
+        assert active["phase"] == "collecting_neutral"
+        assert active["reference_waiting"]
+        elapsed.append(active["reference_wait_elapsed_s"])
+    snapshot = controller.latest_snapshot()
+    assert snapshot["calibration"]["active"] is None
+    assert elapsed == sorted(elapsed)  # No countdown reset on each failed window.
+    assert controller._profile == previous and not calls
+    assert snapshot["runtime"]["connected"]
+    assert "稳定" in snapshot["runtime"]["error"]
+    if command == "capture_functional_hand":
+        assert snapshot["calibration"]["functional_hand_result"]["reason"]
+    directory = harness.output / previous["session_id"]
+    assert len(list(directory.glob("profile.v*.json"))) == 1
+    events = [json.loads(line) for line in (directory / "events.jsonl").read_text().splitlines()]
+    failed = [event for event in events if event["event"] == "functional_reference_failed"]
+    assert len(failed) == 1 and not failed[0]["reference_selection"]["stable_slots"]
 
 
 def test_hand_phase_buffers_are_bounded_and_do_not_repeat_polled_nodes(harness):

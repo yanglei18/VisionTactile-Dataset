@@ -22,6 +22,7 @@ import os
 from PySide6 import QtCore, QtGui
 from ...i18n import widgets as QtWidgets
 from ...i18n.widgets import QPainter as LocalizedPainter
+from ...viewmodels.glove_sources import source_summary
 
 from .tactile_hand import right_hand_geometry
 
@@ -100,6 +101,7 @@ class PreviewWidget(QtWidgets.QWidget):
 
     tactile_view_changed = QtCore.Signal(str)
     glove_view_changed = QtCore.Signal(str)
+    glove_display_changed = QtCore.Signal()
 
     def __init__(self, kind: str, parent=None):
         super().__init__(parent)
@@ -293,18 +295,39 @@ class PreviewWidget(QtWidgets.QWidget):
         if active and self._glove_3d is None:
             from .glove_3d import Glove3DWidget
             self._glove_3d = Glove3DWidget(side, self)
+            self._glove_3d.display_changed.connect(self._notify_glove_display_changed)
         if self._glove_3d is not None:
-            self._glove_3d.setVisible(active)
             if active:
                 self._glove_3d.setGeometry(self._canvas_rect().toRect())
+                # Update the target before showEvent can submit a hidden view's
+                # previous sample to the shared reconstruction worker.
                 self._glove_3d.set_sample(self._frame, held=self._held, mode=self._mode,
                                            device=self._device)
+            self._glove_3d.setVisible(active)
+        self._notify_glove_display_changed()
+
+    def _notify_glove_display_changed(self):
+        self.setToolTip(self.glove_source_summary)
+        self.glove_display_changed.emit()
+
+    @property
+    def glove_source_summary(self):
+        """Describe the selected view's displayed geometry, including history."""
+        if self.kind != "glove" or self._mode == "demo":
+            return ""
+        if self.glove_view == "3d":
+            frame = self._glove_3d.displayed_frame if self._glove_3d is not None else None
+        else:
+            frame = self._frame if self._frame and self._frame.get("relative") else None
+        return source_summary(frame) if frame else ""
 
     def copy_glove_state_from(self, source):
         if self.kind != "glove" or source.kind != "glove":
             raise ValueError("glove state copying requires glove widgets")
         if self._identity is not None and self._identity != source._identity:
             raise ValueError("glove display must belong to the same device and hand")
+        if self._mode != source._mode or source._frame is None:
+            self._reset_frame()
         self._identity = source._identity
         self._device = source.device_snapshot
         self._frame = dict(source._frame) if source._frame is not None else None
@@ -495,8 +518,6 @@ class PreviewWidget(QtWidgets.QWidget):
         self.setToolTip("")
         if self._camera_gpu is not None:
             self._camera_gpu.set_frame(QtGui.QImage(), False)
-        if self._glove_3d is not None:
-            self._glove_3d.clear_sample()
         if self._tactile_3d is not None:
             self._tactile_3d.set_frame(None, None)
         self._refresh_camera_gpu()
@@ -506,6 +527,8 @@ class PreviewWidget(QtWidgets.QWidget):
 
     def _reset_frame(self):
         self._frame = self._image = self._encoded_image = None
+        if self._glove_3d is not None:
+            self._glove_3d.clear_sample()
         self._levels = None
         self._cell_colors = ()
         self._trail.clear()
@@ -616,6 +639,10 @@ class PreviewWidget(QtWidgets.QWidget):
         if self.kind == "glove":
             if preview.get("valid") is not True:
                 return None
+            from vt_capture_core.glove_sources import glove_sources
+
+            sources = glove_sources(preview.get("glove_sources", {}))
+            source_fields = {"glove_sources": sources} if sources else {}
             mano = preview.get("mano")
             if mano is not None:
                 # Keep the common 2D path independent of numpy/OpenGL/model packages.
@@ -634,7 +661,7 @@ class PreviewWidget(QtWidgets.QWidget):
                         raise ValueError(tr('MANO 帧标识无效'))
             raw = preview.get("joints")
             if not raw and mano is not None:
-                return {"joints": (), "relative": (), "mano": mano}
+                return {"joints": (), "relative": (), "mano": mano, **source_fields}
             if not isinstance(raw, (tuple, list)) or len(raw) != 21:
                 raise ValueError(tr('手骨架需要 21 个关节点'))
             joints = tuple(_vector(point, 3) for point in raw)
@@ -643,7 +670,7 @@ class PreviewWidget(QtWidgets.QWidget):
             if not math.isfinite(span) or span < 1e-10:
                 raise ValueError(tr('手关节点范围无效'))
             self._glove_span = max(self._glove_span or span, span)
-            return {"joints": joints, "relative": relative, **({"mano": mano} if mano else {})}
+            return {"joints": joints, "relative": relative, **({"mano": mano} if mano else {}), **source_fields}
         rows, cols = preview.get("rows", 20), preview.get("cols", 20)
         if type(rows) is not int or type(cols) is not int or (rows, cols) != (20, 20):
             raise ValueError(tr('触觉预览必须是 20 × 20'))

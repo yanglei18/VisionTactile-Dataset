@@ -8,6 +8,7 @@ pytest.importorskip("pyqtgraph")
 pytest.importorskip("OpenGL")
 
 from vt_fsglove12 import live_ui
+from vt_fsglove12.calibration_presentation import workflow_status_text
 from test_live_ui import official_window, window, make_measured
 
 
@@ -39,32 +40,51 @@ def test_shape_panel_official_only_and_startup_is_read_only(window, official_win
     assert w.shape_panel.load_button.isEnabled()
     assert controller.commands == legacy_controller.commands == []
     for widget in (w.shape_panel.capture_button, w.shape_panel.apply_button, w.shape_panel.revert_button):
-        assert w.sidebar_scroll.isAncestorOf(widget)
+        assert w.shape_scroll.isAncestorOf(widget)
+        assert not w.sidebar_scroll.isAncestorOf(widget)
+    assert w.workspace_tabs.currentWidget() is w.sidebar_scroll
 
 
-def test_workflow_navigation_scrolls_to_shape_panel_without_commands(official_window, monkeypatch):
+def test_workflow_navigation_opens_shape_tab_without_commands(official_window):
     w, controller = official_window
+    ready(controller)
+    before = deepcopy(controller.state)
+    w.refresh()
     w.ensurePolished()
     w.resize(1920, 1000)
     w.layout().activate()
     w.centralWidget().layout().activate()
     w.sidebar_scroll.widget().layout().activate()
     assert w.minimumSizeHint().height() <= 1000
-    assert w.workflow_panel.isAncestorOf(w.shape_navigation_button)
-    assert w.shape_navigation_button.text() == "前往个性化手形 / 触指标定"
-    targets = []
-    ensure_visible = w.sidebar_scroll.ensureWidgetVisible
-
-    def scroll_to(widget):
-        targets.append(widget)
-        ensure_visible(widget)
-
-    monkeypatch.setattr(w.sidebar_scroll, "ensureWidgetVisible", scroll_to)
-    w.sidebar_scroll.verticalScrollBar().setValue(0)
+    assert w.sidebar_scroll.isAncestorOf(w.shape_navigation_button)
+    assert "个性化手形" in w.shape_navigation_button.text()
+    assert w.workspace_tabs.currentWidget() is w.sidebar_scroll
+    assert w.shape_navigation_button.isEnabled()
     w.shape_navigation_button.click()
-    assert targets == [w.shape_panel]
-    assert w.sidebar_scroll.verticalScrollBar().value() > 0
-    assert controller.commands == []
+    assert w.workspace_tabs.currentWidget() is w.shape_scroll
+    assert controller.commands == [] and controller.state == before
+
+
+def test_shape_disclosures_preserve_primary_actions_without_commands(official_window):
+    w, controller = official_window
+    panel = w.shape_panel
+    before = deepcopy(controller.state)
+    files, details = panel.file_actions_section, panel.result_details_section
+    assert files.content.isHidden() and details.content.isHidden()
+    for widget in (panel.save_task_button, panel.load_task_button, panel.load_button,
+                   panel.save_button, panel.revert_button):
+        assert files.content.isAncestorOf(widget)
+    for widget in (panel.paths, panel.metrics, panel.capability_note):
+        assert details.content.isAncestorOf(widget)
+    for widget in (panel.confirm, panel.capture_button, panel.progress, panel.status,
+                   panel.optimize_button, panel.cancel_button, panel.preview, panel.apply_button):
+        assert not files.content.isAncestorOf(widget) and not details.content.isAncestorOf(widget)
+    files.button.click()
+    details.button.click()
+    assert not files.content.isHidden() and not details.content.isHidden()
+    w.refresh()
+    assert files.isExpanded() and details.isExpanded()
+    assert controller.commands == [] and controller.state == before
 
 
 @pytest.mark.parametrize("category", [2, 3, 4, 5])
@@ -240,9 +260,27 @@ def test_scale_inconclusive_never_claims_workflow_complete(official_window):
         input_scale_check={"status": "completed", "inconclusive_nodes": ["6"]})
     before = deepcopy(controller.state)
     w.refresh()
-    assert "证据不足（6号）；仍未解决" in w.workflow_status.text()
-    assert "不是全手标定全部完成" in w.workflow_status.text()
+    assert "6号待核对" in w.workflow_status.text()
+    assert "基础标定：已生效" in w.workflow_status.text()
+    assert "弯伸校准：已有 5/5 指参数" in w.workflow_status.text()
+    assert "全部完成" not in w.workflow_status.text()
     assert controller.commands == [] and controller.state == before
+
+
+@pytest.mark.parametrize("status,nodes,expected", [
+    ("not_calibrated", [], "已采集，等待结果"),
+    ("fitting", [], "正在计算"),
+    ("fitted", ["1", "2"], "已生效"),
+])
+def test_workflow_distinguishes_captured_steps_from_applied_calibration(status, nodes, expected):
+    text = workflow_status_text(dict(runtime={"connected": True},
+        pose={"pose_available": True, "solver_success": True},
+        calibration=dict(profile_status=status, calibrated_nodes=nodes,
+            captured_steps=["neutral", "fingers_down", "thumb_up"])))
+    assert f"基础标定：{expected}" in text
+    assert "弯伸校准：待采集" in text
+    assert "未个性化" not in text and "未验证" not in text
+    assert len(text.splitlines()) == 2
 
 
 def test_shape_command_rejection_unlocks_without_automatic_retry(official_window):
@@ -300,6 +338,10 @@ def test_saved_badges_and_storage_retry_preserve_confirmation_data(official_wind
     assert not panel.retry_save_to_button.isHidden() and panel.retry_save_to_button.isEnabled()
     assert panel.save_task_button.isEnabled()
     assert "磁盘不可写" in panel.status.text() and "内存保留" in panel.status.text()
+    for section in (panel.file_actions_section, panel.result_details_section):
+        assert section.content.isHidden()
+        for widget in (panel.status, panel.retry_save_button, panel.retry_save_to_button):
+            assert not section.content.isAncestorOf(widget)
     before = deepcopy(controller.state)
     panel.retry_save_button.click()
     panel.retry_save_button.click()

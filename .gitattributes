@@ -14,3 +14,6 @@
 *.jpg binary
 *.jpeg binary
 *.ico binary
+# Preserve supplied vendor formatting; application sources retain normal checks.
+data_imu_stm32/**/Drivers/** whitespace=-blank-at-eol,-blank-at-eof
+data_imu_stm32/**/Middlewares/** whitespace=-blank-at-eol,-blank-at-eof

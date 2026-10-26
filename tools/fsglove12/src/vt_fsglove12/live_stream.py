@@ -27,6 +27,7 @@ from .input_contract import effective_input_scales, raw_to_si, validate_input_co
 from .input_diagnostics import InputObservationMonitor, describe_filter_state
 from .input_guard import ImuInputGuard, REVISION as INPUT_GUARD_REVISION
 from .input_health import InputHealthMonitor
+from .vqf_settings import vqf_parameters
 
 FRAME_SIZE = 84
 NODE_BLOCK_SIZE = 14
@@ -398,6 +399,7 @@ class OnlineFusion:
         from vqf import VQF
         validate_input_contract(config)
         self._factory = VQF
+        self._vqf_parameters = vqf_parameters(config)
         self.settings, self.scales = _configuration(config)
         self.scales, self.accel_scales = effective_input_scales(config)
         self.period = 1. / self.settings["sample_rate_hz"]
@@ -473,7 +475,7 @@ class OnlineFusion:
                 else:
                     self._pending_warnings.add(f"node_{key}_short_gap_filter_preserved")
             if previous is None:
-                previous = dict(filter=self._factory(self.period), stamp=stamp)
+                previous = dict(filter=self._factory(self.period, **self._vqf_parameters), stamp=stamp)
                 self.states[key] = previous
             transitions = self.input_health.observe(key, sample.values, sample.status, stamp,
                                                     np.rad2deg(gyro))
@@ -485,7 +487,7 @@ class OnlineFusion:
                     # The fault already invalidated the old calibration epoch.
                     # Recovery never resumes a filter that missed real motion.
                     if affected in self.states:
-                        self.states[affected]["filter"] = self._factory(self.period)
+                        self.states[affected]["filter"] = self._factory(self.period, **self._vqf_parameters)
                     self.input_guard.reset(affected)
                     self._pending_warnings.add(f"node_{affected}_input_health_recovered")
             used_gyro, used_accel, protection = self.input_guard.process(

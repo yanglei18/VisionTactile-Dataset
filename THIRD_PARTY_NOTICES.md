@@ -80,6 +80,16 @@ of the Linux packages. It is excluded in its entirety from the prepared source
 archive, including generated Windows binaries and internal notes. Exclusion
 from the archive does not erase copies in the original Git history.
 
+## STM32 glove firmware
+
+`data_imu_stm32/` includes the supplied STM32Cube projects and their ST HAL,
+CMSIS and USB device library source. Their original license files and source
+headers are retained in each `Drivers/` and `Middlewares/` directory; these
+components keep their own licenses. New application modules use Apache-2.0.
+The modified CDC transmit function is identified in the
+[firmware maintenance guide](data_imu_stm32/README.md). Generated firmware
+binaries and toolchains are excluded from the source distribution.
+
 ## Product names
 
 VIVE, VIVE Ultimate Tracker, VIVE Hub, SteamVR, Windows, Intel, RealSense, and

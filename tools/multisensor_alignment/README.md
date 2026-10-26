@@ -814,6 +814,11 @@ tests do not establish hardware accuracy.
 缺失与空话题保留提示，不改变严格对齐和三维重建的校验规则。操作见
 [档案兼容回放](../capture_console/README.md#档案兼容回放)。
 
+手套回放与实时预览共用 `vt-capture-core` 中的有界来源解析；完整工作台安装已包含该依赖，
+单独配置回放环境时需一并安装仓库的 `ros2_ws/src/vt_capture_core`，版本至少为 `0.6.0`（对应本工具的 `replay` extra）。
+骨段实测／推断标记、掌心参考编号只读取当前历史消息，不用本机新 IMU 布局解释旧 bag；
+旧消息没有这些信息时显示“未提供”，姿态回放仍可用。
+
 Archive compatibility playback uses a separate topic reader and bag-time
 playhead. It can browse partial raw streams without Trackers or calibration;
 unavailable message types retain bounded serialized summaries. This does not

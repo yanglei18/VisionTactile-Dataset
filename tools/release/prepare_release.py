@@ -25,7 +25,7 @@ ROOT_FILES = {".gitignore", ".gitmodules", ".gitattributes", ".editorconfig",
               "README.md", "README.zh-CN.md", "LICENSE", "THIRD_PARTY_NOTICES.md",
               "CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md", "SECURITY.md", "CHANGELOG.md", "Glove.py", "Ploy_IMU.py",
               "WINDOWS_USBPcap_CAPTURE_GUIDE.md"}
-PREFIXES = (".github/", "docs/", "ros2_ws/src/", "tools/")
+PREFIXES = (".github/", "docs/", "ros2_ws/src/", "tools/", "data_imu_stm32/")
 SECRET_PATTERNS = (
     rb"gh[pousr]_[A-Za-z0-9]{36,255}",
     rb"github_pat_[A-Za-z0-9_]{70,255}",

@@ -9,7 +9,13 @@ from .transport import default_socket_path
 
 
 def pose_options(options):
-    """Resolve one hand without importing FSGlove, Qt, torch, or ROS."""
+    """Resolve one hand without importing FSGlove, Qt, torch, or ROS.
+
+    Only the producer selects its default solver configuration. Without an
+    explicit config, use the node's packet-defined reference mode: the protocol
+    validates the producer's palm ID and its source timestamps. An explicit
+    config additionally pins that ID for this bridge instance.
+    """
     values = dict(options)
     requested = values.get("hand", "")
     config = None
@@ -24,7 +30,7 @@ def pose_options(options):
         raise ValueError("hand must be left or right")
     if config is not None and config.get("hand") != hand:
         raise ValueError("hand does not match glove config")
-    reference = 12
+    reference = 0  # GloveBridge's packet-defined mode; never a physical IMU ID.
     if config is not None:
         mapping = config.get("node_to_slot", {})
         if not isinstance(mapping, dict):

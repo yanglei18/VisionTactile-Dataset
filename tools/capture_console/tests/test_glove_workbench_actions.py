@@ -8,6 +8,7 @@ import time
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 
+from vt_capture_console import i18n
 from vt_capture_console.backend.demo_backend import DemoBackend
 from vt_capture_console.ui import main_window as module
 from vt_capture_console.ui.desktop_tools import DesktopTools
@@ -162,6 +163,29 @@ def test_non_actionable_states_never_start_or_focus(workbench, case):
     assert not card(window, backend).glove_controls.calibration_button.isEnabled()
     window.open_glove_calibration("right")  # Direct menu call must have the same guards.
     assert backend.commands == [] and not focuses
+
+
+@pytest.mark.parametrize("language", ["zh_CN", "en"])
+def test_blocked_glove_start_shows_serial_diagnostic_in_menu_and_card(workbench, language):
+    window, backend, focuses = workbench
+    path = "/dev/serial/by-id/用户设备-{right}"
+    detail = f"串口 {path} 不存在；请检查 USB 连接、设备枚举和配置端口。"
+    expected = detail if language == "zh_CN" else (
+        f"Serial port {path} does not exist; check the USB connection, detected devices and configured port.")
+    group(backend).update(state="FAILED", can_start=False, detail=detail)
+    previous = i18n.language()
+    try:
+        i18n.set_language(language, persist=False)
+        window.refresh()
+        target = card(window, backend)
+        assert not target.glove_controls.calibration_button.isEnabled()
+        assert target.glove_note.toolTip().splitlines()[0] == expected
+        window.open_glove_calibration("right")
+        assert window.statusBar().currentMessage() == expected
+        assert backend.commands == [] and not focuses
+        assert group(backend)["detail"] == detail
+    finally:
+        i18n.set_language(previous, persist=False)
 
 
 def test_disconnected_backend_property_blocks_cached_true_start_flags(workbench):

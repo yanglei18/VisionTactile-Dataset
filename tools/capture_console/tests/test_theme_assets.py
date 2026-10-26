@@ -12,6 +12,13 @@ def test_stylesheet_resources_are_cwd_independent(tmp_path, monkeypatch):
     assert "chevron-down.svg" in original
 
 
+def test_workstation_uses_exact_shared_calibration_base_theme():
+    from vt_fsglove12 import ui_theme
+
+    assert stylesheet is ui_theme.stylesheet
+    assert stylesheet() in ui_theme.calibration_stylesheet()
+
+
 def test_native_vector_icons_render_enabled_and_disabled(qapp):
     names = ("dashboard", "trials", "devices", "settings", "play", "stop",
              "camera", "tracker", "glove", "tactile", "chevron", "orbit", "expand")

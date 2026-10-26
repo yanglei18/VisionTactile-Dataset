@@ -7,6 +7,16 @@
 本包是 ROS 桥接层，不代表手套已完成精度、漂移或硬件量程验收。
 默认只启动窗口，**连接、静止参考、姿态和功能标定仍由用户在原界面操作**。
 
+新右手实物会话省略 `config` 时，由 GUI 统一选择当前近节＋末节布局及 STM32 104 Hz 输入配置。
+需要显式文件时，使用主程序“配置设备”生成的完整输入配置；单独的布局模板保留历史量程。
+桥接从配置的掌部骨段查找参考节点，
+新布局发布 `reference_node_id=11`，辅助腕部 12 不会自动加入骨架。
+已知右手部署的新会话启用版本化拇指复合模型；历史回放保留原配置与解算语义。
+桥接不再另设掌心默认编号，而是消费生产端按实际配置发布的 `reference_node_id`，并校验
+手别、节点范围、掌心源数据和时间戳的一致性。显式 `config` 则同时传给 GUI，并将桥接的
+掌心编号固定为该配置的映射。不能从串口自动推断每颗 IMU 的佩戴位置。
+ROS 中的 MANO 骨架顺序和 topic 名称不随物理编号改变；录制自带配置摘要、实测与推断掩码。
+
 ## 1. 环境准备
 
 目标环境：Linux、ROS 2 Jazzy、已能正常启动的官方 FSGlove 12 路适配界面。
@@ -50,6 +60,9 @@ ros2 launch vt_glove_bridge glove.launch.py \
 ```
 
 界面外观、标定向导和三维可视化保留。`port` 仅预填，不会自动连接。
+新版实物会话连接后，先将手套平放桌面，点击“静止准备”；通过后佩戴并完成三步标定。
+准备失败会提示具体节点，不能沿用旧会话的滤波参考。操作顺序和质量边界见
+[姿态标定窗口说明](../../../tools/fsglove12/README.md#姿态标定窗口)。
 需要测试高频解算时，在 launch 命令末尾增加 `output_rate_hz:=120`；省略则沿用配置（默认 30 Hz）。
 这是求解器目标，不是桥接节点重复旧姿态的发布定时器，也不保证当前机器已达标。
 独立 GUI 命令对应 `--output-rate-hz 120`。详见[高频解算与离线性能基准](../../../tools/fsglove12/README.md#高频姿态解算120-hz-目标)。
@@ -151,6 +164,10 @@ ros2 launch vt_glove_bridge hands.launch.py \
 IMU 端口仍只是窗口预填，需在对应窗口点击连接、分别标定。触觉端口明确指定后由其
 采集节点打开；空端口保持未连接。不要在旧串口采集程序运行时重复启动。
 两只手独立退出/断流不会触发关闭另一只手的动作；各自的无效状态如实报告。
+默认 `launch_gui:=true` 时，每只手的标定窗口和姿态桥接作为一组管理：窗口关闭或
+任一必要进程启动失败、退出，会同时结束本组的窗口、姿态桥接和可选触觉显示桥接，
+避免无窗口的残留发布器阻挡下次打开。另一只手和独立触觉采集不受影响；单纯数据断流
+不会自动关闭窗口。需要分别管理窗口和桥接时，使用下文的 `launch_gui:=false` 方式。
 
 仅触觉示例，不需要填写官方源码或模型目录：
 
@@ -248,28 +265,37 @@ socket 为 `0600`。默认 `/tmp/vt-glove-UID/right.sock`；可用 `socket_path:
 | 丢样信息 | `producer_dropped_total`、`bridge_sequence_gaps_total`、`bridge_rejected_total` |
 
 `segment_observed_mask` 只表示有传感器观测支持，不等同于关节角独立真值。
-缺测末节的推算结果会保留，但带推算标识。当前 `units_verified` 和
+缺测骨段的先验或推算结果会保留，但带推断标识；具体缺测位置由录制时的配置决定。当前 `units_verified` 和
 `sample_rate_verified` 按实际配置传递，不能因接入 ROS 自动变为已验证。
 不宣称绝对航向漂移已修正或解剖学精度已验收。
 
 ### 逐关节估计有效性与部分姿态
 
 统一功能层让四指 PIP 和拇指 IP 共用一条连续估计路径；MCP 保留侧摆/弯曲两个自由度。
+这些功能标定要求父子骨段均配置 IMU；近节＋末节布局不支持四指 PIP 功能标定，不能借助该路径独立恢复 PIP/DIP。
 旧窗口预校正与小指独立校正不再串联执行。拒绝一次航向更新不会切换成未校正角度。
-缺测 DIP 的质量继承其 PIP。ROS `.msg` 和 `schema_version=1` 保持不变，新增语义放在
-`quality_json`，使用 **MANO16 槽位顺序**，不是 21 个关键点的顺序：
+缺测 DIP 的局部有效性依赖其 PIP，仍是推断。ROS `.msg` 和 `schema_version=1` 保持不变，
+当前契约通过 `quality_json.joint_quality_revision=local_joint_geometry_v2` 显式启用，
+使用 **MANO16 槽位顺序**，不是 21 个关键点的顺序：
 
 | `joint_quality[slot]` | `joint_valid_mask[slot]` | `joint_display_available_mask[slot]` | 消费方式 |
 |---|---|---|---|
 | `valid` | `true` | `true` | 当前估计通过内部条件，仍不代表解剖学精度认证或独立观测 |
+| `valid_hidden` | `true` | `false` | 局部估计通过自身检查，但父链几何不可用；不可作为完整骨链或空间位置使用，仅 v2 支持 |
 | `degraded` | `false` | `true` | 当前暂估仅供明确标记的显示/诊断，不能作为有效角度测量 |
 | `unavailable` | `false` | `false` | 无可信当前角度；数组中的有限值可能是网格占位，不可解释为伸直或末次有效测量 |
 
 `joint_estimation` 以槽位字符串（如 `"8"`）索引本帧原因、偏轴残差、航向参考等诊断。
-三个 mask/quality 字段必须同时出现且各有 16 项，桥接验证类型及状态一致性。
-任一槽位不是 `valid` 时，出口立即设 `pose_valid=false`、
+三个 mask/quality 字段必须同时出现且各有 16 项，桥接验证类型、状态一致性及 v2 的父链显示依赖。
+`metadata_json.kinematic_rejections` 记录局部模型、缺测或推断依赖的拒绝；
+`quality_json.joint_display_rejections` 单独记录父链不可显示原因。父关节模型拒绝不自动否定
+由可信骨段输入计算的子关节，实际缺测与模型门槛仍有效。
+整手有效仍要求全部局部估计有效、全部几何可用，并通过原有输入与时序检查。
+任一槽位不是 `valid`（包括 `valid_hidden`）时，出口立即设 `pose_valid=false`、
 `reason=joint_estimation_degraded` 或 `joint_estimation_unavailable`；桥接拒绝把这种包标为有效。
-`time_valid` 仍独立表达源时间是否可靠。旧的、不带新字段的消息仍按原 schema 1 合同处理。
+`time_valid` 仍独立表达源时间是否可靠。缺少 `joint_quality_revision` 的历史结果保留 v1 三态
+语义，不自动升级；显式未知版本（含空值）被拒绝。历史算法允许省略质量字段的规则不变，
+当前算法仍要求完整字段。局部角度有效或可以显示不代表独立实测、整手准确或漂移已解决。
 
 只要完整有限表示和源时间仍可用，**`pose_valid=false` 仍可能保留非空的 MANO、root、shape 和关键点数组**，
 以及原观测/推断来源 mask。这样了解新合同的消费者可以局部使用未受影响部分；不检查新字段的旧消费者
@@ -277,8 +303,9 @@ socket 为 `0600`。默认 `/tmp/vt-glove-UID/right.sock`；可用 `socket_path:
 `metadata_json.joint_validity_contract` 明确记录该语义。关节空间位置还受父链影响；消费 21 点时须按
 MANO 槽位与其父链映射质量，不能把 16 项 mask 直接当 21 点索引。
 
-GUI 不再因单帧延迟或关节不可用而清空网格、反复变灰或切除面片。数值仍区分“暂估”和“— [不可用]”，
-完整手模型可保持历史显示姿态，并明确标注延迟/冻结、保持关节和源时间。
+GUI 的局部失效不清空整手；未过期历史可明确标记为保持，没有可用当前值或历史的区域及其后继隐藏。
+`valid_hidden` 的局部角度可在显示父链仍可用时参与展示组合，但不能延长祖先历史寿命，
+也不把原测量改为有效。根部失效仍受整手显示时限约束；暂估、历史保持和源时间分别标明。
 输入监视采用独立快照，不等待解算；约 200 ms 稳定恢复仅用于显示状态，日志/ROS 有效性没有该延迟。
 展示缓存 `display_pose/display_geometry` 不作为测量发布；局部模型使用历史显示值时，
 `joint_positions_m=[]`，其他结果仍来自原始解算及其质量 mask，不把历史几何塞入 ROS。
@@ -332,8 +359,14 @@ ros2 bag record -s mcap /gloves/right/state
 
 ## 6. 可配置项与故障排查
 
+- 工作台无法打开标定窗口时，先查看设备进程组的具体原因。外部发布程序可能在窗口关闭后
+  仍运行，需确认并退出原程序；串口不存在时，在“设备 → 配置设备”选择实际手套端口后
+  保存并应用。不要把触觉串口指定为姿态手套串口，也不要删除锁文件来绕过正在运行的程序。
 - `launch_gui:=false`：只启动 ROS 桥接；GUI 不受桥接重启影响。
-- `config:=/absolute/config.json`：选择手套配置，默认使用现有右手配置。
+- `config:=/absolute/config.json`：选择手套配置，并固定桥接期望的掌心编号。省略时由
+  GUI/生产端选择配置，桥接按经过校验的数据包读取掌心编号；`launch_gui:=false` 和直接运行
+  桥接节点也使用这一规则。直接运行节点时可用 `reference_node_id` 参数指定期望编号，
+  默认 `0` 表示读取数据包中的编号，`0` 本身不是有效 IMU 编号。
 - `topic:=/gloves/right/state`：修改发布名，但同步更新录制/对齐配置。
 - `allow_replay:=true replay_raw:=/absolute/raw.csv`：仅用于明确的离线测试，消息带 `source_mode=replay`。
   历史单调时钟不能当当前实时源使用，默认拒绝 replay；不要混入正式 live bag。

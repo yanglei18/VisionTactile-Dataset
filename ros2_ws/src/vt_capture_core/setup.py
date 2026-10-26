@@ -5,7 +5,7 @@ PACKAGE_NAME = "vt_capture_core"
 
 setup(
     name=PACKAGE_NAME,
-    version="0.5.0",
+    version="0.6.0",
     packages=find_packages(exclude=["test", "test.*"]),
     package_data={PACKAGE_NAME: ["resources/*.xml"]},
     data_files=[

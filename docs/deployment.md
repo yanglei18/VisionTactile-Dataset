@@ -6,6 +6,14 @@ Users with a complete delivery should start with the [user quick start](quicksta
 
 This maintainer guide applies to the `source-preview-20261019` branch. It brings environment installation into one place; the individual module manuals cover configuration and operation after installation. Run the commands on the target computer in section order. If a command fails, stop and resolve the error before continuing.
 
+**New right-hand IMU glove:** after installing the gesture environment, select the
+LSM6DSR firmware version and proximal/distal layout in Devices → Configure devices →
+Right hand. Saving generates a private configuration with a compatible 104 Hz output
+limit. Existing custom files are preserved. Recalibrate before checking gesture
+accuracy. Firmware v2 requires coordinated master/slave flashing; installing the
+desktop software does not flash hardware. See the [glove guide (Chinese)](../tools/fsglove12/README.md#图形化配置与可靠性固件-v2)
+and [firmware build and upgrade guide](../data_imu_stm32/README.md).
+
 | Your use case | Installation path | Completion criterion |
 | --- | --- | --- |
 | Standalone Windows Tactile 3D Viewer only | Go directly to [section 1](#windows) | Select a COM port, connect, and see tactile values change with contact |

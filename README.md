@@ -48,7 +48,7 @@ without ROS, sensors, private Tracker inputs, or MANO models.
 > kept outside Git. A clean clone does not include a configured hardware rig.
 
 This repository publishes a **source development preview**; matching Ubuntu graphical installers are delivered separately through complete sign-in-free links. The workbench
-package version `0.5.0` identifies that component; it does not mean that these
+package version `0.6.0` identifies that component; it does not mean that these
 changes have been published under a matching project tag. See
 [Unreleased changes](CHANGELOG.md#unreleased) for the candidate scope.
 The independent tactile viewer has its own version, `0.5.1`, and bilingual
@@ -345,6 +345,13 @@ a configured FSGlove Python environment. Missing model assets do not turn
 synthetic or neutral geometry into live pose data. See the
 [workbench guide](tools/capture_console/README.md) and
 [single/dual-hand guide](ros2_ws/src/vt_glove_bridge/README.md#22-单手双手和仅触觉统一入口).
+
+New physical hand-calibration sessions explicitly record the `reported_motion_v2`
+gyro policy: finite non-boundary rates, including fast turns and short pulses,
+are integrated in order; a rate jump alone is diagnostic evidence, not proof of
+corruption. Boundary candidates still require confirmation, and actual input
+faults still block calibration. Historical raw replay retains its recorded
+policy and configuration digest. See the [hand calibration input-policy guide](tools/fsglove12/README.md#解算输入保护当前右手配置启用旧配置保持兼容).
 
 Enabling a preview does **not** add its Topic to the recording allowlist. The
 following CLI steps describe the default three-camera/three-Tracker recording

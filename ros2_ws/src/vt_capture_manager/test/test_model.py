@@ -47,6 +47,23 @@ def make(kind="glove"):
     return model, clock, identity
 
 
+def test_glove_preview_preserves_per_frame_sources_and_clears_unknown_metadata():
+    model, clock, identity = make()
+    sources = dict(reference_node_id=11,
+        segment_observed_mask=[i not in (2, 5, 8, 11, 13) for i in range(16)],
+        joint_observed_mask=[i in (0, 1, 4, 7, 10, 15) for i in range(16)],
+        inferred_mask=[i not in (0, 1, 4, 7, 10, 15) for i in range(16)])
+    msg = message("glove", clock, **sources)
+    model.observe(identity, msg)
+    preview = model.snapshot()["devices"][0]["preview"]
+    assert preview["valid"] and preview["glove_sources"] == sources
+    msg.segment_observed_mask[0] = False
+    assert preview["glove_sources"]["segment_observed_mask"][0]
+    clock.ns += 1_000_000
+    model.observe(identity, message("glove", clock))
+    assert "glove_sources" not in model.snapshot()["devices"][0]["preview"]
+
+
 @pytest.mark.parametrize("kind", ["camera", "tracker", "glove", "tactile"])
 def test_unknown_fresh_stale_offline_and_protocol(kind):
     model, clock, identity = make(kind)

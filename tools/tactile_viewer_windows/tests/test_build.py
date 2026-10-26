@@ -160,6 +160,17 @@ def test_offline_install_has_no_package_index(tmp_path):
     assert arguments[-1] == str(tmp_path / "wheel house")
 
 
+def test_frozen_theme_resources_follow_the_same_owner_as_runtime():
+    import re
+
+    theme_path = "tools/fsglove12/src/vt_fsglove12/ui_theme/theme.qss"
+    assert (theme_path, "vt_fsglove12/ui_theme") in build.APPLICATION_DATA
+    assert not any("vt_capture_console/theme" in source for source, _ in build.APPLICATION_DATA)
+    theme = (build.REPOSITORY / theme_path).read_text(encoding="utf-8")
+    for icon in set(re.findall(r'@THEME_DIR@/([^\"\s]+)', theme)):
+        assert (build.REPOSITORY / Path(theme_path).parent / icon).is_file()
+
+
 def test_build_env_cannot_inherit_external_python_or_qt(monkeypatch):
     for key in ("PYTHONHOME", "PYTHONPATH", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
                 "VIRTUAL_ENV", "QT_API", "QT_QPA_PLATFORM"):

@@ -364,3 +364,36 @@ def test_serial_choices_enumerate_only_and_prefer_stable_identity(tmp_path, monk
     choices = serial_ports(dev)
     assert [value["path"] for value in choices] == [str(by_id / "usb-explicit-device"), str(second)]
     assert "ttyACM0" in choices[0]["label"]
+
+
+@pytest.mark.parametrize("startup", [False, True])
+def test_only_explicit_save_binds_selected_glove_identity_without_assigning_other_roles(tmp_path, monkeypatch, startup):
+    from vt_capture_console.backend import serial_ports as ports
+    dev = tmp_path / "dev"
+    by_id = dev / "serial/by-id"
+    by_id.mkdir(parents=True)
+    tty = dev / "ttyACM0"
+    tty.touch()
+    identity = by_id / "usb-confirmed-right-glove"
+    identity.symlink_to(tty)
+    monkeypatch.setattr(ports, "DEV_ROOT", dev)
+    settings = WorkstationSettings(tmp_path / "repo", tmp_path / "private")
+    value = settings.configuration
+    right = next(group for group in value["process_groups"] if group["id"] == "right_glove")
+    right["parameters"]["port"] = str(tty)
+    if startup:
+        # Model a legacy saved tty choice. Merely constructing settings must
+        # leave it unchanged until startup admission has completed.
+        from vt_capture_console.backend.workstation_settings import atomic_json
+        atomic_json(settings.path, value)
+        settings = WorkstationSettings(tmp_path / "repo", settings.directory)
+        assert settings.configuration == value
+        result = settings.prepare_for_startup()
+        assert ("right_glove", "port") not in result.updated_fields
+    else:
+        settings.save(value)
+    saved = {group["id"]: group["parameters"] for group in settings.configuration["process_groups"]}
+    assert saved["right_glove"]["port"] == str(tty if startup else identity)
+    assert right["parameters"]["port"] == str(tty)  # the caller's draft is untouched
+    assert all(saved[group]["port"] == "" for group in ("left_glove", "right_tactile", "left_tactile"))
+    assert json.loads(settings.path.read_text()) == settings.configuration

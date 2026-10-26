@@ -40,8 +40,8 @@ LOCAL_PACKAGES = (
 # List the data used by the tactile entry point explicitly. Collecting all data
 # from the shared packages also ships unrelated workstation/gesture profiles.
 APPLICATION_DATA = (
-    ("tools/capture_console/src/vt_capture_console/theme/theme.qss", "vt_capture_console/theme"),
-    ("tools/capture_console/src/vt_capture_console/theme/icons/*.svg", "vt_capture_console/theme/icons"),
+    ("tools/fsglove12/src/vt_fsglove12/ui_theme/theme.qss", "vt_fsglove12/ui_theme"),
+    ("tools/fsglove12/src/vt_fsglove12/ui_theme/icons/*.svg", "vt_fsglove12/ui_theme/icons"),
     ("tools/capture_console/src/vt_capture_console/i18n/*.json", "vt_capture_console/i18n"),
     ("ros2_ws/src/vt_tactile_capture/vt_tactile_capture/layouts/right_glove_candidate.json",
      "vt_tactile_capture/layouts"),
@@ -65,8 +65,8 @@ FORBIDDEN_RESOURCE_PATTERNS = (
 )
 REQUIRED_RESOURCES = (
     "vt_capture_console/assets/tactile/right_hand.json",
-    "vt_capture_console/theme/theme.qss",
-    "vt_capture_console/theme/icons/check.svg",
+    "vt_fsglove12/ui_theme/theme.qss",
+    "vt_fsglove12/ui_theme/icons/check.svg",
     "vt_capture_console/i18n/catalog_a.json",
     "vt_tactile_capture/layouts/right_glove_candidate.json",
     "PySide6/plugins/platforms/qwindows.dll",

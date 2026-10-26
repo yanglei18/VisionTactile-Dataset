@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "input_contract": {
+    "schema_version": 1,
+    "sensor_model": "LSM6DSRTR",
+    "model_source": "user_reported",
+    "scale_source": "empirical_validation"
+  },
+  "hand": "right",
+  "layout": "right_palm11_tip_first",
+  "node_to_slot": {
+    "1": 15,
+    "2": 14,
+    "3": 2,
+    "4": 1,
+    "5": 5,
+    "6": 4,
+    "7": 11,
+    "8": 10,
+    "9": 8,
+    "10": 7,
+    "11": 0
+  },
+  "mounting_confirmed": false,
+  "sample_rate_hz": 104.0,
+  "output_rate_hz": 104.0,
+  "gyro_dps_per_lsb": 0.035,
+  "gyro_dps_per_lsb_by_node": {},
+  "accel_g_per_lsb": 0.000244,
+  "vqf": {
+    "biasClip": 8.0
+  },
+  "stale_after_s": 0.15,
+  "filter_reset_gap_s": 1.0,
+  "input_filter": {
+    "enabled": true,
+    "boundary_lsb": 32760,
+    "gyro_jump_dps": 120.0,
+    "accel_jump_g": 1.5,
+    "confirmation_samples": 2,
+    "max_hold_samples": 2,
+    "max_invalid_s": 0.25
+  },
+  "input_health": {
+    "enabled": true
+  },
+  "dip_ratio": 0.65,
+  "units_verified": false,
+  "sample_rate_verified": false,
+  "provenance": "Right-hand layout declared by the user; numerical algorithms retained from 7466ba3be0299f167963e472be520fc03df808a4. Supplied STM32 source ac22963 configures +/-1000 degrees/s and +/-8 g; the flashed configuration has not been verified. At an assumed 104 Hz, two recorded inclination comparisons favor 0.035 over 0.0175 degrees/s/LSB. Independent low-motion raw acceleration norms of about 4113-4264 counts support 0.000244 g/LSB under a near-gravity assumption; normalized direction comparisons cannot verify acceleration scale. Per-node host receive cadence is about 104 Hz. These remain candidate input settings, without register readback, device timestamp verification or physical hand accuracy certification.",
+  "notes": "Raw IDs and counts remain unchanged. Nodes 3/5/7/9 are the user-described fingertip-side sensors and retain the historical model second-segment slots; no new anatomical inference is introduced. Node 12 remains recorded but is not mapped into the hand model. A changed mapping or unit scale requires fresh calibration; historical profiles and their node-specific evidence must not be rebound. Known-stationary, controlled-angle and newly calibrated hand-motion acceptance remains pending."
+}

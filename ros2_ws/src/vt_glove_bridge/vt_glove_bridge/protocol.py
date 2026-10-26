@@ -31,6 +31,10 @@ POSE_ARRAYS = {"mano_pose_rotvec": 48, "root_quat_xyzw": 4, "shape_params": 10,
 MASKS = ("segment_observed_mask", "joint_observed_mask", "inferred_mask")
 MESSAGE_FIELDS = (*STRINGS, *BOOLS, *UINTS, *SOURCE_ARRAYS, *POSE_ARRAYS, *MASKS,
                   "source_labels")
+# JSON extension contract shared with the producer; the ROS message ABI stays
+# unchanged. Keep this small validator independent of the optional solver.
+JOINT_QUALITY_V2 = "local_joint_geometry_v2"
+_JOINT_PARENTS = (0, 0, 1, 2, 0, 4, 5, 0, 7, 8, 0, 10, 11, 0, 13, 14)
 
 
 def _uint(value, bits, name):
@@ -51,10 +55,15 @@ def _unique_pairs(pairs):
     return output
 
 
-def _validate_joint_quality(quality, *, pose_valid):
+def _validate_joint_quality(quality, *, pose_valid, required=False):
     """Validate optional per-joint extensions without changing the ROS ABI."""
+    independent = "joint_quality_revision" in quality
+    if independent and quality["joint_quality_revision"] != JOINT_QUALITY_V2:
+        raise ValueError("unsupported joint_quality_revision")
     keys = ("joint_valid_mask", "joint_display_available_mask", "joint_quality")
     supplied = [key in quality for key in keys]
+    if (required or independent) and not all(supplied):
+        raise ValueError("this algorithm revision requires explicit joint quality masks")
     if any(supplied):
         if not all(supplied):
             raise ValueError("joint quality requires both masks and joint_quality")
@@ -63,17 +72,22 @@ def _validate_joint_quality(quality, *, pose_valid):
             if (not isinstance(values, list) or len(values) != 16
                     or any(type(item) is not bool for item in values)):
                 raise ValueError(f"{key} must contain 16 bool values")
-        values = quality["joint_quality"]
-        if (not isinstance(values, list) or len(values) != 16
-                or any(item not in ("valid", "degraded", "unavailable") for item in values)):
-            raise ValueError("joint_quality must contain 16 valid/degraded/unavailable values")
         expected = {"valid": (True, True), "degraded": (False, True),
                     "unavailable": (False, False)}
+        if independent:
+            expected["valid_hidden"] = (True, False)
+        values = quality["joint_quality"]
+        if (not isinstance(values, list) or len(values) != 16
+                or any(not isinstance(item, str) or item not in expected for item in values)):
+            raise ValueError("joint_quality must contain 16 supported quality values")
         for index, value in enumerate(values):
             actual = (quality["joint_valid_mask"][index],
                       quality["joint_display_available_mask"][index])
             if actual != expected[value]:
                 raise ValueError(f"joint quality masks disagree at slot {index}")
+            if (independent and index and actual[1]
+                    and not quality["joint_display_available_mask"][_JOINT_PARENTS[index]]):
+                raise ValueError(f"displayable joint requires its parent geometry at slot {index}")
         if pose_valid and any(value != "valid" for value in values):
             raise ValueError("valid pose requires all joint_quality entries to be valid")
     if "joint_estimation" in quality and not isinstance(quality["joint_estimation"], dict):
@@ -123,6 +137,7 @@ def decode_state(payload: bytes, *, allow_replay=False, expected_hand=None,
         raise ValueError("replay input disabled; explicitly enable allow_replay for testing")
     if state["anatomical_accuracy_verified"] or state["yaw_drift_corrected"]:
         raise ValueError("schema v1 does not claim anatomical validation or corrected yaw drift")
+    documents = {}
     for key in ("quality_json", "metadata_json"):
         try:
             nested = json.loads(state[key], parse_constant=_reject_constant,
@@ -131,8 +146,12 @@ def decode_state(payload: bytes, *, allow_replay=False, expected_hand=None,
             raise ValueError(f"{key} is not valid JSON") from exc
         if not isinstance(nested, dict):
             raise ValueError(f"{key} must encode an object")
-        if key == "quality_json":
-            _validate_joint_quality(nested, pose_valid=state["pose_valid"])
+        documents[key] = nested
+    required_quality = state["algorithm"] in {
+        "official_fsglove_raw2mano_with_explicit_sparse_adapter_v3",
+        "official_fsglove_with_qmt_functional_adapter_v2"} or any(
+            item.get("quality_policy_revision") == "calibration_kinematics_v1" for item in documents.values())
+    _validate_joint_quality(documents["quality_json"], pose_valid=state["pose_valid"], required=required_quality)
     size = None
     for key, bits in SOURCE_ARRAYS.items():
         values = state[key]

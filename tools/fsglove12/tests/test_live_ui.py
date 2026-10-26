@@ -12,6 +12,7 @@ from PyQt5 import QtWidgets
 
 from vt_fsglove12.config import PARENTS, load_config as _load_config
 from vt_fsglove12 import live_ui
+from vt_fsglove12.ui_theme import text_style
 
 
 def load_config():
@@ -114,6 +115,38 @@ def test_independent_left_and_right_windows_keep_hand_and_controls_separate(monk
         app.processEvents()
 
 
+@pytest.mark.parametrize("new_layout", [False, True], ids=["historical", "tip_first"])
+def test_thumb_scale_summary_tracks_model_slots_on_creation_and_contract_refresh(
+        monkeypatch, tmp_path, new_layout):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setattr(live_ui, "list_serial_ports", lambda: [])
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    config = load_config()
+    if new_layout:
+        config["node_to_slot"] = {
+            "1": 15, "2": 14, "3": 2, "4": 1, "5": 5, "6": 4,
+            "7": 11, "8": 10, "9": 8, "10": 7, "11": 0,
+        }
+    proximal, distal = (2, 1) if new_layout else (5, 6)
+    # Distinct values make a stale reference to the old physical IDs observable.
+    config["gyro_dps_per_lsb_by_node"] = {str(node): .001 * node for node in range(1, 13)}
+    controller = Controller()
+    window = live_ui.LiveWindow(config, Backend(), output_root=tmp_path, controller=controller)
+    try:
+        expected = f"本窗口陀螺换算：{proximal}号={.001 * proximal:g} / {distal}号={.001 * distal:g} °/s/LSB；"
+        assert window._gyro_scale_text.startswith(expected)
+        updated = deepcopy(config)
+        updated["gyro_dps_per_lsb_by_node"][str(proximal)] = .035
+        contract = live_ui.describe_input_contract(updated)
+        window._sync_active_input_contract({"runtime": {"active_input_contract": contract}})
+        expected = f"本窗口陀螺换算：{proximal}号=0.035 / {distal}号={.001 * distal:g} °/s/LSB；"
+        assert window._gyro_scale_text.startswith(expected)
+        assert controller.commands == []
+    finally:
+        window.close()
+        app.processEvents()
+
+
 def test_tactile_colors_never_replace_pose_mesh_and_disable_restores_base(window):
     w, controller, _backend = window
     colors = w.view.colors.copy()
@@ -165,6 +198,7 @@ def test_tactile_reference_is_not_imu_calibration_and_stale_overlay_keeps_hand(w
 
 def test_per_joint_quality_is_text_only_and_unavailable_legacy_geometry_does_not_replace_display(window, monkeypatch):
     w, controller, backend = window
+    w.toggle_joints(True)  # Optional markers are now off in the compact default view.
     clock = [10.]
     monkeypatch.setattr(live_ui.time, "monotonic", lambda: clock[0])
     make_measured(controller)
@@ -338,8 +372,7 @@ def test_input_protection_main_and_read_only_detail_show_same_actions(window):
     assert "快照 #99" in w.input_status.text() and "快照 #99" in w.input_contract_status.text()
     assert w.input_contract_table.item(4, 11).text() == "陀螺：保持上次有效输入\n加速度：跳过更新"
     assert w.input_contract_table.item(4, 6).text() == "20 / 2 / -10"
-    assert "#ffe0a3" not in w.badges[5].styleSheet()
-    assert "#dceefe" in w.badges[5].styleSheet()
+    assert w.badges[5].property("statusState") == "info"
     assert w.step_buttons["neutral"].isEnabled() and w._last_pose is not None
     assert controller.commands == []
 
@@ -356,9 +389,8 @@ def test_main_handled_boundary_is_information_not_an_unhandled_alarm(window):
     assert "累计已拦截 9 条" in w.input_status.text()
     assert "编码边界提示" not in w.input_status.text()
     assert "32760" not in w.input_status.text()
-    assert "#fff3d9" not in w.input_status.styleSheet()
-    assert "#dceefe" in w.badges[5].styleSheet()
-    assert "#ffe0a3" not in w.badges[5].styleSheet()
+    assert w.input_status.property("statusState") != "warning"
+    assert w.badges[5].property("statusState") == "info"
     assert "当前帧编码边界提示" in w.input_contract_status.text()
     assert w.input_contract_table.item(4, 6).text() == "32760 / 2 / -32764"
     assert w.step_buttons["neutral"].isEnabled()
@@ -433,18 +465,18 @@ def test_new_boundary_status_keeps_badges_stable_and_does_not_hide_pose_or_disab
     w, controller, _ = window
     make_measured(controller)
     w.input_contract_button.click()
-    styles = []
+    states = []
     for at_boundary in (True, False, True, False):
         frame = with_axis_input_protection(quality_frame(time.monotonic(), active=at_boundary))
         controller.state["orientation"] = frame
         before = deepcopy(frame)
         w.refresh()
-        styles.append(w.badges[5].styleSheet())
-        assert "#fff3d9" not in w.input_status.styleSheet()
+        states.append(w.badges[5].property("statusState"))
+        assert w.input_status.property("statusState") != "warning"
         assert "编码边界累计（按轴）：5号(X 8 / Z 2)" in w.input_status.text()
         assert w.step_buttons["neutral"].isEnabled() and w._last_pose is not None
         assert controller.state["orientation"] == before and controller.commands == []
-    assert len(set(styles)) == 1 and "#d6f3e7" in styles[0]
+    assert set(states) == {"success"}
 
 
 def test_main_keeps_degraded_pose_warning_after_prolonged_rejection():
@@ -493,7 +525,7 @@ def test_input_quality_warning_does_not_disable_calibration_or_hide_fresh_pose(w
     assert "不丢弃或截断数据" in w.input_status.text()
     assert "放慢动作" not in w.input_status.text()
     assert "5号(X/Z)" in w.input_status.text()
-    assert "#ffe0a3" in w.badges[5].styleSheet()
+    assert w.badges[5].property("statusState") == "warning"
     assert w.step_buttons["neutral"].isEnabled()
     assert w._last_pose is not None
     assert controller.commands == []
@@ -536,7 +568,7 @@ def test_input_quality_recent_clear_keeps_history_without_green_accuracy_claim(w
     assert "疑似截顶" not in w.input_status.text()
     assert "无编码边界事件" in w.input_status.text()
     assert "硬件饱和未确认" in w.input_status.text()
-    assert "#ffe0a3" not in w.badges[5].styleSheet()
+    assert w.badges[5].property("statusState") != "warning"
     assert controller.commands == []
 
 
@@ -581,7 +613,7 @@ def test_main_and_child_share_input_snapshot_but_child_table_updates_at_most_ten
     w.input_contract_button.click()
     w.refresh()
     assert w.input_contract_table.item(4, 6).text() == "32764 / 0 / 0"
-    assert "#ffe0a3" in w.badges[5].styleSheet()
+    assert w.badges[5].property("statusState") == "warning"
     now += .02
     fusion.update([RawSample(5, (8000, 0, 0, 0, 0, 8197), now, 200.02)])
     controller.state["orientation"] = fusion.snapshot(now)
@@ -594,7 +626,7 @@ def test_main_and_child_share_input_snapshot_but_child_table_updates_at_most_ten
     assert len(calls) == 1
     assert w.input_contract_table.item(4, 6).text() == "32764 / 0 / 0"
     assert "当前输入已通过过滤检查" in w.input_status.text()
-    assert "#ffe0a3" not in w.badges[5].styleSheet()
+    assert w.badges[5].property("statusState") != "warning"
     now += .1
     w.refresh()
     assert w.input_status.text().splitlines()[0] == w.input_contract_status.text().splitlines()[0]
@@ -766,7 +798,7 @@ def test_official_five_finger_controls_and_checkbox_refresh_is_read_only(officia
         w.functional_capture.click()
         assert controller.commands[-1] == ("capture_functional", {"finger": finger})
         assert "functional_" + finger in w._demonstrations
-    assert "IP" in w.functional_selector.currentText() and "MCP/CMC" in w.functional_selector.currentText()
+    assert "拇指末节" in w.functional_selector.currentText()
     count = len(controller.commands)
     controller.state["calibration"]["functional_enabled"] = False
     for _ in range(3):
@@ -819,6 +851,10 @@ def test_official_whole_hand_stages_are_explicit_cached_demos_and_cancellable(
     w.backend.fail = True  # All demonstration geometry must already be cached.
     w.refresh()
     assert all(word in w.instructions.text() for word in words)
+    assert not w.capture_guidance.isHidden()
+    assert not w.sidebar_scroll.isAncestorOf(w.capture_guidance)
+    assert all(word in w.capture_guidance.text() for word in words)
+    assert f"{duration / 2.:.1f} 秒" in w.capture_guidance.text()
     assert w.progress.value() == 50
     assert f"{duration / 2.:.1f} 秒" in w.progress.format()
     assert w._demo_key == demo and w.view.mesh.visible() and not w._render_error
@@ -902,18 +938,19 @@ def test_whole_hand_terminal_refresh_clears_busy_instruction_on_repeated_runs(of
             active=dict(kind="functional_hand", phase="moving_thumb", remaining_s=0.))
         w.refresh()
         assert "正在逐指计算" in w.instructions.text()
-        assert "font-weight: bold" in w.instructions.styleSheet()
+        assert w.instructions.styleSheet() == text_style("instruction_active")
         calibration.update(active=None, profile_status="fitted",
                            functional_hand_result={"status": status, "fingers": {}})
         before = deepcopy(controller.state)
         w.refresh()
         assert controller.state == before and controller.commands == []
+        assert w.capture_guidance.isHidden()
         for text in (w.instructions.text(), w.progress.format(), w.functional_hand_feedback.text()):
             assert "正在计算" not in text and "正在逐指计算" not in text
             assert "现在只弯伸" not in text
         assert expected in w.instructions.text()
         assert "只补采未更新的手指" in w.instructions.text()
-        assert "font-weight: bold" not in w.instructions.styleSheet()
+        assert w.instructions.styleSheet() == text_style("instruction")
         assert w.functional_capture.isEnabled() and w.functional_hand_capture.isEnabled()
         assert not w.cancel_capture.isEnabled()
         terminal = w.instructions.text()
@@ -1125,6 +1162,7 @@ def test_official_functional_residual_warning_does_not_hide_fresh_geometry(offic
 def test_functional_coverage_summary_is_read_only_and_does_not_hide_base_pose(
         official_window, saved_slots, trusted_slots, enabled):
     w, controller = official_window
+    w.toggle_joints(True)
     make_measured(controller)
     pose = controller.state['pose']
     pose.update(mano_pose_rotvec=[[0., 0., 0.]] * 16,
@@ -1172,10 +1210,10 @@ def test_official_sidebar_fits_1080p_and_keeps_controls_scroll_accessible(offici
     assert scroll.isAncestorOf(w.functional_selector)
     assert scroll.isAncestorOf(w.functional_hand_capture)
     assert scroll.isAncestorOf(w.functional_hand_feedback)
-    assert scroll.isAncestorOf(w.cancel_capture)
+    assert not scroll.isAncestorOf(w.cancel_capture)
     assert scroll.isAncestorOf(w.functional_capture)
-    assert scroll.isAncestorOf(w.functional_enabled)
-    assert scroll.isAncestorOf(w.details)
+    assert w.diagnostics_scroll.isAncestorOf(w.functional_enabled)
+    assert w.diagnostics_scroll.isAncestorOf(w.details)
 
 
 def test_official_ui_has_distinct_calibration_and_direct_mesh_path(monkeypatch, tmp_path):
@@ -1190,7 +1228,9 @@ def test_official_ui_has_distinct_calibration_and_direct_mesh_path(monkeypatch, 
     w = live_ui.LiveWindow(load_config(), backend, output_root=tmp_path,
                            controller=controller, upstream_checkout="explicit_mock_checkout")
     try:
-        assert "官方核心" in w.windowTitle()
+        assert w.windowTitle() == "手套姿态标定 · 右手"
+        assert any("FSGlove Raw2MANO 原始核心" in label.text()
+                   for label in w.diagnostics_scroll.findChildren(QtWidgets.QLabel))
         assert w.reanchor.isHidden() and all(b.isHidden() for b in w.functional_buttons.values())
         w.capture("fingers_down")
         assert "向上" in w.instructions.text()
@@ -1214,7 +1254,7 @@ def test_official_ui_has_distinct_calibration_and_direct_mesh_path(monkeypatch, 
         assert w.view.mesh.visible()  # Guidance must not reject otherwise fresh data.
         assert "标定方向需核对" in w.view_state.text()
         assert "48.5°" in w.view_state.text() and "48.2°" in w.view_state.text()
-        assert "#fff3d9" in w.view_state.styleSheet()
+        assert w.view_state.property("statusState") == "warning"
         assert "末节推算：食指 26.0°" in w.joint_status.text()
         assert "非实测" in w.joint_status.text()
         controller.state["calibration"]["motion_diagnostics"]["warnings"] = []
@@ -1367,7 +1407,7 @@ def test_limit_banner_is_warning_not_accuracy_green_and_stale_angles_are_hidden(
     w.refresh()
     assert "动作死区" in w.view_state.text()
     assert "软件下限" in w.joint_status.text()
-    assert "#fff3d9" in w.view_state.styleSheet()
+    assert w.view_state.property("statusState") == "warning"
     controller.state["runtime"]["last_sample_age_s"] = 1.
     w.refresh()
     assert "软件下限" not in w.joint_status.text()

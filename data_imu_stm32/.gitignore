@@ -1,0 +1,8 @@
+# Generated build outputs and host-specific IDE state
+build/
+**/Debug/
+**/Release/
+**/.settings/
+**/*.launch
+**/.mxproject
+__pycache__/

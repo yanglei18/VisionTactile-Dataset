@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>vt_capture_core</name>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <description>Pure Python capture workbench models and local protocol; no ROS or Qt runtime dependency.</description>
   <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
   <license>Apache-2.0</license>

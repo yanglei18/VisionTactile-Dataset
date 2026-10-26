@@ -33,6 +33,8 @@ from .scale_capture_buffer import ScaleCaptureBuffer, ScaleHistoryEvictedError
 from .live_stream import OnlineFusion as _OnlineFusion
 from .neutral_reference import reanchor_neutral_reference
 from .functional_axes import apply_functional_axes, fit_functional_finger
+from .functional_capture import FunctionalReferenceCapture
+from .upstream_functional import FINGER_SLOTS as OFFICIAL_FUNCTIONAL_SLOTS
 from .solver import SparseHandSolver
 
 STEP_KEYS = ("neutral", "fingers_down", "thumb_up")
@@ -600,6 +602,14 @@ class LiveController(ShapeCalibrationMixin):
             elif self._active.get("kind") == "functional_hand":
                 phase, boundary = self._functional_hand_phase(self._active, now)
                 active.update(phase=phase, remaining_s=max(0., boundary - now))
+            reference = self._active.get("reference_capture")
+            if reference is not None and reference.selected is None and not preparing:
+                status = reference.summary(now)
+                active.update(phase="collecting_neutral", reference_waiting=True,
+                    remaining_s=max(0., reference.deadline_s - now),
+                    reference_wait_elapsed_s=status["wait_elapsed_s"],
+                    reference_wait_limit_s=status["wait_limit_s"],
+                    reference_status=status["status"], unstable_slots=status["unstable_slots"])
         return dict(active=active, captured_steps=[key for key in STEP_KEYS if key in self._captures],
                     shape_calibration=self._shape_state(now),
                     clear_generation=self._clear_generation,
@@ -1340,8 +1350,11 @@ class LiveController(ShapeCalibrationMixin):
                                 collect_at=now + PREPARE_SECONDS, neutral_end_at=neutral_end,
                                 end_at=neutral_end + FUNCTIONAL_MOTION_SECONDS,
                                 seen=None, rows=[], motion_rows=[])
+            if self._pose_backend is not None:
+                self._active["reference_capture"] = FunctionalReferenceCapture(
+                    OFFICIAL_FUNCTIONAL_SLOTS[args["finger"]], now + PREPARE_SECONDS)
             self._profile_status = "collecting_functional_axis"
-            self._message("先自然张手：准备 3 秒、保持 2 秒；看到“现在弯伸”后，再弯伸所选手指 2–3 次。")
+            self._message("先自然张手：准备 3 秒后等待取得连续 2 秒稳定参考；看到“现在弯伸”后，再弯伸所选手指 2–3 次。")
         elif name == "capture_functional_hand":
             if self._pose_backend is None:
                 raise ValueError("全手功能轴采集仅用于官方 FSGlove 模式。")
@@ -1360,8 +1373,11 @@ class LiveController(ShapeCalibrationMixin):
                                 thumb_start_at=thumb_start, end_at=thumb_start + FUNCTIONAL_MOTION_SECONDS,
                                 seen=None, capture_phase=None, rows=[], finger_rows=[], thumb_rows=[],
                                 cancel=self._functional_hand_cancel)
+            self._active["reference_capture"] = FunctionalReferenceCapture(
+                [slot for slots in OFFICIAL_FUNCTIONAL_SLOTS.values() for slot in slots],
+                now + PREPARE_SECONDS)
             self._profile_status = "collecting_functional_hand"
-            self._message("全手共 24 秒：准备 3 秒、伸直保持 2 秒、四指慢弯伸 8 秒；"
+            self._message("全手通常约 24 秒，等待稳定时延长：准备 3 秒、取得伸直参考、四指慢弯伸 8 秒；"
                           "再准备 3 秒、仅拇指 IP 慢弯伸 8 秒。按当前提示动作，不必逐指点击。")
         elif name == "capture":
             if self._active is not None:
@@ -1400,6 +1416,8 @@ class LiveController(ShapeCalibrationMixin):
                 return
         if active is not None and active.get("kind") == "functional_hand":
             self._capture_functional_hand(session, frame, now)
+            return
+        if active is not None and self._capture_functional_reference(session, frame, now):
             return
         if active is None or now < active["collect_at"]:
             return
@@ -1519,11 +1537,60 @@ class LiveController(ShapeCalibrationMixin):
 
     @staticmethod
     def _functional_hand_phase(active, now):
+        reference = active.get("reference_capture")
+        if reference is not None and reference.selected is None:
+            return (("preparing", active["collect_at"]) if now < active["collect_at"]
+                    else ("collecting_neutral", reference.deadline_s))
         for phase, key in (("preparing", "collect_at"), ("collecting_neutral", "neutral_end_at"),
                            ("moving_fingers", "fingers_end_at"), ("preparing_thumb", "thumb_start_at")):
             if now < active[key]:
                 return phase, active[key]
         return "moving_thumb", active["end_at"]
+
+    def _capture_functional_reference(self, session, frame, now):
+        """Select a real stable reference before scheduling any motion phase."""
+        active = self._active
+        reference = active.get("reference_capture")
+        if reference is None or reference.selected is not None:
+            return False
+        if now < active["collect_at"]:
+            return True
+        rotations = (self._pose_backend.functional_reference_rotations(
+            frame, self._profile, [int(slot) for slot in reference.slots])
+            if reference.needs_sample(now) else {})
+        status = reference.observe(frame, rotations, now)
+        if status not in {"accepted", "partial", "failed"}:
+            return True
+        selection = reference.summary(now)
+        if status == "failed":
+            reason = "尚未取得连续 2 秒稳定的伸直参考；本次已结束，已有标定保留。请伸直手指后重试或单指补采。"
+            if active["kind"] == "functional_hand":
+                self._functional_hand_result = dict(status="failed", reason=reason,
+                    updated_fingers=[], errors={"reference": reason}, partial_slots={}, fingers={})
+            self._event(session, "functional_reference_failed", capture_kind=active["kind"],
+                        reference_selection=selection)
+            self._active, self._functional_hand_cancel = None, None
+            self._profile_status = self._profile["status"]
+            self._message(reason, reason)
+            return True
+        active["rows"] = reference.selected
+        active["neutral_end_at"] = now
+        active["seen"] = {node: (data.get("epoch"), data.get("sample_index"))
+                          for node, data in frame["nodes"].items()}
+        if active["kind"] == "functional_hand":
+            active["fingers_end_at"] = now + FUNCTIONAL_MOTION_SECONDS
+            active["thumb_start_at"] = active["fingers_end_at"] + PREPARE_SECONDS
+            active["end_at"] = active["thumb_start_at"] + FUNCTIONAL_MOTION_SECONDS
+        else:
+            active["end_at"] = now + FUNCTIONAL_MOTION_SECONDS
+        active["reference_selection"] = selection
+        self._event(session, "functional_reference_selected", capture_kind=active["kind"],
+                    finger=active.get("finger"), reference_selection=selection,
+                    motion_start_s=now, motion_end_s=active["end_at"],
+                    fingers_end_s=active.get("fingers_end_at"), thumb_start_s=active.get("thumb_start_at"))
+        self._message("已取得伸直参考；现在按提示弯伸。" if status == "accepted" else
+                      "已取得部分关节的伸直参考；现在按提示弯伸，未稳定关节保留原参数并可单指补采。")
+        return True
 
     def _cancel_functional_hand(self, session):
         if self._functional_hand_cancel is not None:
@@ -1544,6 +1611,8 @@ class LiveController(ShapeCalibrationMixin):
         if active["cancel"].is_set():
             self._cancel_functional_hand(session)
             return
+        if self._capture_functional_reference(session, frame, now):
+            return
         if now >= active["end_at"]:
             try:
                 self._fit_functional_hand_profile(session, active)
@@ -1556,6 +1625,9 @@ class LiveController(ShapeCalibrationMixin):
             # Rebase at every boundary: no last-frame carry-over from another
             # phase, even when the same IMU state is polled more than once.
             active["capture_phase"], active["seen"] = phase, indices
+            if session is not None:
+                self._event(session, "functional_capture_phase", capture_kind=active["kind"], phase=phase,
+                            phase_started_s=now, phase_end_s=self._functional_hand_phase(active, now)[1])
             return
         if phase in {"preparing", "preparing_thumb"}:
             active["seen"] = indices
@@ -1577,13 +1649,15 @@ class LiveController(ShapeCalibrationMixin):
         try:
             result = self._pose_backend.fit_functional_hand(
                 active["rows"], active["finger_rows"], active["thumb_rows"], deepcopy(self._profile),
-                session_id=session.session_id)
+                session_id=session.session_id, reference_selection=active.get("reference_selection"))
             entries, errors = result["entries"], result["errors"]
+            failures = result.get("failures", {})
             if not isinstance(entries, dict) or not isinstance(errors, dict) or any(
                     finger not in OFFICIAL_FUNCTIONAL_FINGERS for finger in (*entries, *errors)):
                 raise ValueError("全手功能轴结果格式无效；原标定保留。")
         except ValueError as exc:
             entries, errors = {}, {finger: str(exc) for finger in OFFICIAL_FUNCTIONAL_FINGERS}
+            failures = {}
         if active["cancel"].is_set() or self._stop.is_set() or session.stop.is_set():
             self._cancel_functional_hand(session)
             return
@@ -1597,7 +1671,8 @@ class LiveController(ShapeCalibrationMixin):
                                                       if slot not in entry.get("rejected_slots", {})), key=int),
                                 rejected_slots=deepcopy(entry.get("rejected_slots", {})))
                    for finger, entry in entries.items()}
-        fingers.update({finger: dict(status="failed", error=reason, updated_slots=[], rejected_slots={})
+        fingers.update({finger: dict(status="failed", error=reason, updated_slots=[],
+                                     **failures.get(finger, dict(rejected_slots={})))
                         for finger, reason in errors.items() if finger not in entries})
         report = dict(status="partial" if errors or partial else "complete", updated_fingers=updated,
                       errors=deepcopy(errors), partial_slots=partial, fingers=fingers)
@@ -1609,6 +1684,9 @@ class LiveController(ShapeCalibrationMixin):
             self._event(session, "functional_hand_failed", result=report)
             return
         profile = deepcopy(self._profile)
+        if active.get("reference_selection"):
+            for entry in entries.values():
+                entry["reference_selection"] = deepcopy(active["reference_selection"])
         profile.setdefault("functional_fingers", {}).update(deepcopy(entries))
         profile.setdefault("functional_enabled", True)
         if active["cancel"].is_set() or self._stop.is_set() or session.stop.is_set():
@@ -1708,7 +1786,8 @@ class LiveController(ShapeCalibrationMixin):
             if self._pose_backend is not None:
                 entry = self._pose_backend.fit_functional_finger(
                     active["rows"], active["motion_rows"], deepcopy(self._profile),
-                    finger=active["finger"], session_id=session.session_id)
+                    finger=active["finger"], session_id=session.session_id,
+                    reference_selection=active.get("reference_selection"))
             else:
                 entry = fit_functional_finger(active["rows"], active["motion_rows"], self._profile,
                                               self.rest, self.config, finger=active["finger"],
@@ -1716,13 +1795,18 @@ class LiveController(ShapeCalibrationMixin):
         except ValueError as exc:
             self._profile_status = self._profile["status"]
             self._message("弯曲方向未更新；原标定与其他手指保留，只需重采这根手指。", str(exc))
-            self._event(session, "functional_axis_failed", finger=active["finger"], error=str(exc))
+            self._event(session, "functional_axis_failed", finger=active["finger"], error=str(exc),
+                        diagnostics=deepcopy(getattr(exc, "diagnostics", {})),
+                        rejected_slots=deepcopy(getattr(exc, "rejected_slots", {})),
+                        reference_selection=active.get("reference_selection"))
             return
         if self._stop.is_set() or session.stop.is_set():
             return
         if not self._capture_save_healthy(session, self._profile):
             return
         profile = deepcopy(self._profile)
+        if active.get("reference_selection"):
+            entry["reference_selection"] = deepcopy(active["reference_selection"])
         profile.setdefault("functional_fingers", {})[active["finger"]] = entry
         if self._pose_backend is not None:
             profile.setdefault("functional_enabled", True)

@@ -174,6 +174,17 @@ def test_disabled_empty_groups_can_be_saved(settings):
     assert not any(g["enabled"] for g in runtime.applications[0][0]["process_groups"])
 
 
+def test_explicit_glove_configuration_and_rate_are_preserved(settings):
+    dialog, runtime, _ = settings
+    enable_complete(dialog, "right_glove")
+    fill(dialog, "right_glove", "config", "/private/custom.json")
+    fill(dialog, "right_glove", "output_rate_hz", "119")
+    dialog.apply()
+    requested = next(g for g in runtime.applications[0][0]["process_groups"] if g["id"] == "right_glove")
+    assert requested["parameters"]["config"] == "/private/custom.json"
+    assert requested["parameters"]["output_rate_hz"] == "119"
+
+
 def finding(group_id, key, status, value="", candidates=()):
     return SimpleNamespace(group_id=group_id, key=key, status=status,
                            value=value, candidates=candidates)

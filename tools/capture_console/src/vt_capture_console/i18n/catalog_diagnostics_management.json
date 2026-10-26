@@ -161,5 +161,10 @@
   "检测到外部录制，暂不启停设备。": "External recording was detected; device start and stop are unavailable.",
   "正在应用工作台配置，请等待后台重新连接后再操作。": "Workstation configuration is being applied; wait for backend reconnection before operating.",
   "标定任务正在运行，请等待结束后再开始录制。": "Calibration is running; wait for it to finish before recording.",
-  "设备启停正在进行，请等待操作结束后再开始录制。": "Device control is in progress; wait for it to finish before recording."
+  "设备启停正在进行，请等待操作结束后再开始录制。": "Device control is in progress; wait for it to finish before recording.",
+  "串口路径未配置；请检查设备启动配置。": "No serial port is configured; check the device launch configuration.",
+  "串口 {path} 不存在；请检查 USB 连接、设备枚举和配置端口。": "Serial port {path} does not exist; check the USB connection, detected devices and configured port.",
+  "串口 {path} 已断开或不存在；请检查 USB 连接和配置端口。": "Serial port {path} is disconnected or missing; check the USB connection and configured port.",
+  "无法检查串口 {path}：{error}；设备未启动。": "Cannot inspect serial port {path}: {error}; the device was not started.",
+  "无法检查串口 {path} 的有效身份读写权限；设备未启动。": "Cannot check serial port {path} read/write access for the current process; the device was not started."
 }

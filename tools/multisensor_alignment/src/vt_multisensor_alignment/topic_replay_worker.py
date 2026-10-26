@@ -124,6 +124,8 @@ def _device(topic, type_name, message, sample_ns, time_ns, warnings):
         preview.update(position=position, orientation=orientation, valid=True,
                        frame_id=frame_id, source_realtime_ns=source_ns)
     elif kind == 'glove':
+        from vt_capture_core.glove_sources import glove_sources
+
         if not (message.pose_valid and message.time_valid):
             warnings.append('该条手套姿态或时间无效；保留原始字段供检查')
             return None
@@ -145,6 +147,9 @@ def _device(topic, type_name, message, sample_ns, time_ns, warnings):
         if not preview.get('valid'):
             warnings.append('该条消息不含可显示的关节点或 MANO 参数')
             return None
+        sources = glove_sources(message)
+        if sources:
+            preview['glove_sources'] = sources
     elif type_name == 'vt_tactile_msgs/msg/TactileState':
         rows, cols = int(message.rows), int(message.cols)
         if (int(message.schema_version), rows, cols) not in ((1, 80, 80), (2, 20, 20)):

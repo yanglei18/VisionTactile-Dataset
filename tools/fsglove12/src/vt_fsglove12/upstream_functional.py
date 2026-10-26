@@ -27,6 +27,9 @@ import warnings
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from .functional_quality import (FUNCTIONAL_REFERENCE_P95_MAX_DEG,
+                                 functional_fit_acceptance)
+
 
 KIND = "qmt_functional_axis_adapter_v1"
 SUPPRESSED_ROTATION_WARNING_DEG = 10.
@@ -38,6 +41,15 @@ _ANCHORS = ("session_id", "upstream_state_sha256", "config_sha256", "rest_sha256
 
 class FunctionalDependencyError(RuntimeError):
     """The optional, real QMT projection dependency cannot be used."""
+
+
+class FunctionalCalibrationRejected(ValueError):
+    """No candidate can be installed; preserve inspectable rejection evidence."""
+
+    def __init__(self, message, *, diagnostics, rejected_slots):
+        super().__init__(message)
+        self.diagnostics = deepcopy(diagnostics)
+        self.rejected_slots = deepcopy(rejected_slots)
 
 
 def _qmt():
@@ -221,6 +233,7 @@ def fit_functional_finger(neutral_results, motion_results, *, finger, binding, p
                  basis_convention="minimum_rotation_from_model_positive_z_to_fitted_flexion_axis")
     fitted = 0
     for slot in FINGER_SLOTS[finger]:
+        candidate_diagnostic = None
         try:
             dependencies = _dependencies(binding, slot)
             seen = set()
@@ -228,8 +241,9 @@ def fit_functional_finger(neutral_results, motion_results, *, finger, binding, p
             motion, skipped_motion = _collect(motion_results, slot, dependencies, seen)
             reference = neutral.mean()
             neutral_p95 = float(np.percentile(np.rad2deg((reference.inv() * neutral).magnitude()), 95))
-            if neutral_p95 > 5.:
-                raise ValueError(f"关节 {slot} 静止参考不稳定（p95 {neutral_p95:.1f}° > 5°）；请保持静止重采")
+            if neutral_p95 > FUNCTIONAL_REFERENCE_P95_MAX_DEG:
+                raise ValueError(f"关节 {slot} 静止参考不稳定（p95 {neutral_p95:.1f}° > "
+                                 f"{FUNCTIONAL_REFERENCE_P95_MAX_DEG:g}°）；请保持静止重采")
             delta = reference.inv() * motion
             angles = np.rad2deg(delta.magnitude())
             if np.any(angles > 170.):
@@ -258,18 +272,15 @@ def fit_functional_finger(neutral_results, motion_results, *, finger, binding, p
                 a2, _ = _principal_axis(moving[len(moving)//2:])
                 split_angle = float(np.rad2deg(np.arccos(np.clip(abs(np.dot(a1, a2)), 0., 1.))))
             messages = []
-            if holdout_p95 > 10. or moving_residual_p95 > 10.:
-                messages.append(f"关节 {slot} 偏轴残差较大（留出 p95 {holdout_p95:.1f}°）；仅保存功能方向，不能据此认定安装或滑动已修复")
+            if max(holdout_p95, moving_residual_p95) > SUPPRESSED_ROTATION_WARNING_DEG:
+                messages.append(f"关节 {slot} 偏轴残差较大（留出 p95 {holdout_p95:.1f}°）；不能据此认定安装或滑动已修复")
             if split_angle is not None and split_angle > 15.:
                 messages.append(f"关节 {slot} 前后动作轴相差 {split_angle:.1f}°；可能含非铰链动作、滑动或滤波/同步误差")
             mode = "mcp_two_dof" if slot in _MCP else "hinge_projection"
-            entry["slot_refs"][str(slot)] = dict(
-                neutral_local_xyzw=reference.as_quat().tolist(), axis_local=axis.tolist(),
-                axis_basis_xyzw=basis.as_quat().tolist(), mode=mode, dependency_nodes=dependencies,
-                sign_convention="dominant_capture_projection_energy_positive",
-                source="official_observed_parent_child_functional_motion_not_anatomical_truth")
-            entry["diagnostics"][str(slot)] = dict(
-                status="fitted", mode=mode, neutral_samples=len(neutral), motion_samples=len(motion),
+            acceptance = functional_fit_acceptance(mode, holdout_p95_deg=holdout_p95,
+                                                   moving_p95_deg=moving_residual_p95)
+            candidate_diagnostic = dict(
+                status="candidate", mode=mode, neutral_samples=len(neutral), motion_samples=len(motion),
                 skipped_neutral=skipped_neutral, skipped_motion=skipped_motion,
                 neutral_p95_deg=neutral_p95, moving_samples=len(moving),
                 principal_axis_energy=overall_energy, train_principal_axis_energy=train_energy,
@@ -280,7 +291,19 @@ def fit_functional_finger(neutral_results, motion_results, *, finger, binding, p
                 observed_range_deg=[float(angles.min()), float(angles.max())], warnings=messages,
                 holdout_used_for_axis_fitting=False,
                 validation_scope="interleaved_samples_same_capture_not_independent_session",
-                basis_twist_observed=False, anatomical_angle_ground_truth_available=False)
+                basis_twist_observed=False, anatomical_angle_ground_truth_available=False,
+                acceptance=acceptance)
+            if acceptance["status"] != "accepted":
+                raise ValueError(
+                    f"关节 {slot} 弯曲轴未通过模型验收（留出 p95 {holdout_p95:.1f}°，"
+                    f"运动 p95 {moving_residual_p95:.1f}°，允许 {acceptance['residual_limit_deg']:g}°）；"
+                    "本次不替换该关节参数。请单指补采，从伸直到舒适弯曲再回位，减少同时侧摆。")
+            entry["slot_refs"][str(slot)] = dict(
+                neutral_local_xyzw=reference.as_quat().tolist(), axis_local=axis.tolist(),
+                axis_basis_xyzw=basis.as_quat().tolist(), mode=mode, dependency_nodes=dependencies,
+                sign_convention="dominant_capture_projection_energy_positive",
+                source="official_observed_parent_child_functional_motion_not_anatomical_truth")
+            entry["diagnostics"][str(slot)] = {**candidate_diagnostic, "status": "fitted"}
             entry["warnings"].extend(messages)
             fitted += 1
         except (ValueError, KeyError, TypeError, np.linalg.LinAlgError) as exc:
@@ -292,8 +315,12 @@ def fit_functional_finger(neutral_results, motion_results, *, finger, binding, p
                 entry["diagnostics"][str(slot)] = dict(status="retained_previous", reason=str(exc))
             else:
                 entry["diagnostics"][str(slot)] = dict(status="rejected", reason=str(exc))
+            if candidate_diagnostic is not None:
+                entry["diagnostics"][str(slot)]["candidate"] = candidate_diagnostic
     if not fitted:
-        raise ValueError("本次没有可更新的功能轴；原标定保持不变。" + "；".join(entry["rejected_slots"].values()))
+        raise FunctionalCalibrationRejected(
+            "本次没有可更新的功能轴；原标定保持不变。" + "；".join(entry["rejected_slots"].values()),
+            diagnostics=entry["diagnostics"], rejected_slots=entry["rejected_slots"])
     entry["qmt"] = _qmt_provenance()
     return entry
 

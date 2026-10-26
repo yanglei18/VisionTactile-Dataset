@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vt-multisensor-alignment"
-version = "0.1.0"
+version = "0.1.1"
 description = "Offline alignment for unified VisionTactile ROS 2 bags"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
+replay = ["vt-capture-core>=0.6.0"]
 
 [project.scripts]
 vt-multisensor-align = "vt_multisensor_alignment.cli:entrypoint"

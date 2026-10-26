@@ -60,7 +60,7 @@ def _run_application(args, width, height, instance=None):
     from .backend.scene_backend import SceneBackend
     from .backend.scene_demo import DemoSceneBackend
     from .ui.main_window import MainWindow
-    from .theme import stylesheet
+    from .theme import FONT_FAMILIES, FONT_POINT_SIZE, stylesheet
 
     application = QApplication([sys.argv[0]])
     application.setStyle("Fusion")
@@ -68,8 +68,8 @@ def _run_application(args, width, height, instance=None):
     application.setOrganizationName("VisionTactile")
     initialize(override=getattr(args, "language", None))
     font = QFont()
-    font.setFamilies(["Inter", "Noto Sans", "Noto Sans CJK SC"])
-    font.setPointSize(10)
+    font.setFamilies(list(FONT_FAMILIES))
+    font.setPointSize(FONT_POINT_SIZE)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
     application.setFont(font)
     application.setStyleSheet(stylesheet())

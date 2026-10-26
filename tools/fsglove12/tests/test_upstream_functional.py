@@ -292,19 +292,97 @@ def test_three_moving_samples_are_enough_and_135_degrees_not_clipped():
     assert entry["diagnostics"]["2"]["holdout_samples"] == 1
 
 
-def test_large_holdout_residual_warns_without_rejecting_a_dominant_axis():
+def _mixed_axis_capture(finger="index", off_axis_deg=18.):
+    neutral, _, make_angles, _ = synthetic(finger=finger)
+    motion = [result(make_angles({slot: np.deg2rad([(-1) ** i * off_axis_deg, 0., angle])
+                                         for slot in functional.FINGER_SLOTS[finger]}), 30 + i)
+              for i, angle in enumerate(np.linspace(60., 110., 36))]
+    return neutral, motion
+
+
+def test_dominant_axis_with_high_residual_is_rejected_for_hinge_but_not_two_dof_mcp():
+    # A dominant SVD axis alone does not establish a usable single-axis model.
+    # Previously both joints were saved with warnings, even though the PIP
+    # capture already violated the online hinge's existing 15-degree limit.
+    neutral, motion = _mixed_axis_capture()
+    entry = functional.fit_functional_finger(neutral, motion, finger="index", binding=binding())
+    assert set(entry["slot_refs"]) == {"1"}
+    assert set(entry["rejected_slots"]) == {"2"}
+    mcp = entry["diagnostics"]["1"]
+    pip = entry["diagnostics"]["2"]["candidate"]
+    for diagnostic in (mcp, pip):
+        assert diagnostic["principal_axis_energy"] > .75
+        assert diagnostic["holdout_p95_residual_deg"] > 15.
+        assert not diagnostic["anatomical_angle_ground_truth_available"]
+    assert mcp["acceptance"]["status"] == "accepted"
+    assert mcp["acceptance"]["criterion"] == "axis_direction_only"
+    assert mcp["acceptance"]["residual_limit_deg"] is None
+    assert pip["acceptance"]["status"] == "rejected"
+    assert pip["acceptance"]["reason_codes"] == ["hinge_model_residual_too_large"]
+    assert "单指补采" in entry["rejected_slots"]["2"]
+
+
+def test_rejected_hinge_candidate_keeps_previous_axis_and_its_evidence_separate():
+    previous, _, _ = fit()
+    saved = deepcopy(previous)
+    neutral, motion = _mixed_axis_capture()
+    entry = functional.fit_functional_finger(neutral, motion, finger="index",
+                                             binding=binding(), previous=previous)
+    assert entry["slot_refs"]["2"] == saved["slot_refs"]["2"]
+    assert entry["diagnostics"]["2"]["status"] == "retained_previous"
+    assert entry["diagnostics"]["2"]["candidate"]["acceptance"]["status"] == "rejected"
+    assert previous == saved
+
+
+def test_entire_finger_rejection_retains_numeric_candidate_evidence_and_previous():
+    previous, _, _ = fit(finger="thumb")
+    saved = deepcopy(previous)
+    neutral, motion = _mixed_axis_capture("thumb")
+    with pytest.raises(functional.FunctionalCalibrationRejected, match="模型验收") as error:
+        functional.fit_functional_finger(neutral, motion, finger="thumb",
+                                         binding=binding(), previous=previous)
+    diagnostic = error.value.diagnostics["15"]
+    assert diagnostic["status"] == "retained_previous"
+    assert diagnostic["candidate"]["holdout_p95_residual_deg"] > 15.
+    assert diagnostic["candidate"]["acceptance"]["status"] == "rejected"
+    assert set(error.value.rejected_slots) == {"15"}
+    assert previous == saved
+
+
+def test_usable_hinge_candidate_above_warning_level_still_passes_online_model_limit():
+    neutral, motion = _mixed_axis_capture(off_axis_deg=12.)
+    entry = functional.fit_functional_finger(neutral, motion, finger="index", binding=binding())
+    assert set(entry["slot_refs"]) == {"1", "2"}
+    pip = entry["diagnostics"]["2"]
+    assert 10. < pip["holdout_p95_residual_deg"] < 15.
+    assert pip["warnings"]
+    assert pip["acceptance"]["status"] == "accepted"
+
+
+def test_legacy_reference_retention_does_not_invent_acceptance_evidence():
+    previous, _, _ = fit()
+    for value in previous["diagnostics"].values():
+        value.pop("acceptance")
+    saved = deepcopy(previous)
+    neutral, motion = _mixed_axis_capture()
+    entry = functional.fit_functional_finger(neutral, motion, finger="index",
+                                             binding=binding(), previous=previous)
+    assert entry["slot_refs"]["2"] == saved["slot_refs"]["2"]
+    assert "acceptance" not in entry["diagnostics"]["2"]
+    assert entry["diagnostics"]["2"]["candidate"]["acceptance"]["status"] == "rejected"
+    assert previous == saved
+
+
+def test_mcp_two_dof_capture_does_not_claim_hinge_validation():
     neutral, _, make_angles, _ = synthetic()
     motion = [result(make_angles({slot: np.deg2rad([(-1) ** i * 18., 0., angle])
                                          for slot in (1, 2)}), 30 + i)
               for i, angle in enumerate(np.linspace(60., 110., 36))]
     entry = functional.fit_functional_finger(neutral, motion, finger="index", binding=binding())
-    assert set(entry["slot_refs"]) == {"1", "2"}
-    assert not entry["rejected_slots"]
-    for diagnostic in entry["diagnostics"].values():
-        assert diagnostic["principal_axis_energy"] > .75
-        assert diagnostic["holdout_p95_residual_deg"] > 10.
-        assert diagnostic["warnings"]
-        assert not diagnostic["anatomical_angle_ground_truth_available"]
+    diagnostic = entry["diagnostics"]["1"]
+    assert diagnostic["warnings"]
+    assert diagnostic["acceptance"]["criterion"] == "axis_direction_only"
+    assert not diagnostic["acceptance"]["anatomical_accuracy_verified"]
 
 
 def test_no_entries_needs_no_qmt_and_missing_qmt_never_uses_replacement(monkeypatch):

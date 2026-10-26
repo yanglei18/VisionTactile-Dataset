@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 import subprocess
 import sys
@@ -11,7 +12,7 @@ def test_core_imports_without_ros_qt_or_array_runtime():
     result = subprocess.run([
         sys.executable, "-c",
         "import sys; import vt_capture_core; "
-        "from vt_capture_core import recipes, timebase; "
+        "from vt_capture_core import recipes, timebase, glove_sources; "
         "assert not any(name.startswith(('rclpy', 'PyQt', 'PySide', 'numpy', 'serial')) "
         "for name in sys.modules); "
         "assert vt_capture_core.decode_message(vt_capture_core.encode_message("
@@ -23,7 +24,11 @@ def test_core_imports_without_ros_qt_or_array_runtime():
 def test_ament_manifest_matches_python_distribution():
     root = ET.parse(PACKAGE_ROOT / "package.xml").getroot()
     assert root.findtext("name") == "vt_capture_core"
-    assert root.findtext("version") == "0.5.0"
+    tree = ast.parse((PACKAGE_ROOT / "setup.py").read_text())
+    setup = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == "setup")
+    python_version = next(ast.literal_eval(item.value) for item in setup.keywords if item.arg == "version")
+    assert root.findtext("version") == python_version
     assert root.findtext("export/build_type") == "ament_python"
     assert root.findall("exec_depend") == []
     assert (PACKAGE_ROOT / "resource/vt_capture_core").exists()

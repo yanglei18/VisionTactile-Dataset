@@ -1,0 +1,27 @@
+/* Calibration-only layout rules; all colors come from the shared palette. */
+QWidget#body { background: @background@; }
+QTabWidget#calibrationTabs::pane { border: none; background: transparent; padding: 0; }
+QTabWidget#calibrationTabs QTabBar::tab { color: @muted@; background: transparent;
+    border: none; border-bottom: 2px solid @selection@; padding: 10px 12px; }
+QTabWidget#calibrationTabs QTabBar::tab:selected { color: @emphasis@;
+    border-bottom-color: @emphasis@; font-weight: 600; }
+QTabWidget#calibrationTabs QTabBar::tab:hover { color: @emphasis@; background: @raised@; }
+QTabWidget#calibrationTabs QTabBar::tab:disabled { color: @disabled@; }
+QGroupBox { color: @text@; background: @surface@; border: 1px solid @selection@;
+            border-radius: 2px; margin-top: 12px; padding: 12px; font-weight: 600; }
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left;
+                   left: 10px; padding: 0 4px; color: @secondary@; }
+QPushButton:checked { color: @emphasis@; background: @selection@; border-color: @secondary@; }
+QPushButton:checked:disabled { color: @disabled@; background: @surface@; border-color: @selection@; }
+QPushButton#disclosure, QToolButton#disclosure { text-align: left; color: @secondary@;
+    background: transparent; border: none; padding: 6px 2px; font-weight: 500; }
+QPushButton#disclosure:hover, QToolButton#disclosure:hover { color: @emphasis@; }
+QPushButton#disclosure:checked, QToolButton#disclosure:checked { color: @emphasis@;
+    background: transparent; border: none; }
+QPushButton#disclosure:disabled, QToolButton#disclosure:disabled { color: @disabled@; }
+QProgressBar#calibrationProgress { border: 1px solid @selection@; border-radius: 2px;
+    min-height: 24px; max-height: 24px; background: @surface@;
+    color: @emphasis@; text-align: center; }
+QProgressBar#calibrationProgress::chunk { background: @border@; }
+QMessageBox { background: @background@; }
+QSplitter::handle { background: @selection@; }

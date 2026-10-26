@@ -27,9 +27,15 @@ from .live_display import (JOINT_LABELS, JointQualityPresentation, StableDisplay
                            unavailable_pose_message)
 from .live_process import ProcessLiveController
 from .live_runtime import FINGER_NAMES, OFFICIAL_FUNCTIONAL_FINGERS
-from .live_shape_ui import ShapeCalibrationPanel, shape_busy, workflow_status_text
+from .live_shape_ui import ShapeCalibrationPanel
+from .calibration_actions import CalibrationSaveActions
+from .calibration_presentation import (calibration_status, storage_status,
+                                       shape_busy, workflow_status_text)
 from .live_stream import list_serial_ports
 from .mano import ManoBackend
+from .ui_sections import CollapsibleSection
+from .ui_theme import (FONT_FAMILIES, FONT_POINT_SIZE, calibration_stylesheet,
+                       status_style, text_style)
 
 
 _ROLE_NAMES = {"palm": "掌参考", "unmapped_auxiliary": "辅助·未映射",
@@ -44,7 +50,7 @@ for _finger, _label in (("index", "食指"), ("middle", "中指"),
     for _part, _suffix in (("proximal", "近"), ("middle", "中"), ("distal", "远")):
         _ROLE_NAMES[f"{_finger}_{_part}"] = f"{_label}·{_suffix}"
 _FUNCTIONAL_HAND_PHASES = {
-    "preparing": (3., "neutral", "全手校准 1/5：准备 3 秒。五指自然伸直、手掌停稳；随后先静止，再四指一起弯伸，最后只弯伸拇指 IP。全程约 24 秒。",
+    "preparing": (3., "neutral", "全手校准 1/5：准备 3 秒。五指自然伸直、手掌停稳；取得稳定参考后，再按提示弯伸四指和拇指末节。通常约 24 秒，等待稳定时会延长。",
                   "1/5 全手准备，暂未采集"),
     "collecting_neutral": (2., "neutral", "全手校准 2/5：保持五指伸直静止 2 秒，正在采集中立参考。先不要弯曲，等待“现在四指弯伸”。",
                            "2/5 中立采集，请保持不动"),
@@ -55,19 +61,14 @@ _FUNCTIONAL_HAND_PHASES = {
     "moving_thumb": (8., "functional_hand_thumb", "全手校准 5/5：现在只弯伸拇指末节 IP，再伸直，8 秒内慢做 2–3 次。拇指近节尽量不动，四指放松伸直；不校正 MCP / CMC，不必用力到极限。",
                      "5/5 拇指 IP 弯伸，正在采集运动"),
 }
-_STYLE = """
-QMainWindow, QWidget#body { background: #f2f5f7; color: #20323b; }
-QGroupBox { background: white; border: 1px solid #d5e1e5; border-radius: 8px;
-            margin-top: 12px; padding: 12px; font-weight: bold; }
-QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }
-QPushButton { background: white; border: 1px solid #bad1d0; border-radius: 6px; padding: 9px; }
-QPushButton:hover { background: #e6f5f0; border-color: #209178; }
-QPushButton:disabled { color: #99a6ad; background: #edf1f4; border-color: #dde4e8; }
-QPushButton#primary { color: white; background: #187965; border: 0; font-weight: bold; }
-QComboBox, QPlainTextEdit { background: white; border: 1px solid #cbdadf; border-radius: 5px; padding: 5px; }
-QProgressBar { border: 1px solid #cfdfdf; border-radius: 5px; background: white; text-align: center; min-height: 24px; }
-QProgressBar::chunk { background: #57b89d; border-radius: 4px; }
-"""
+
+
+def _thumb_gyro_scale_text(contract):
+    nodes = contract["nodes"]
+    thumb_nodes = [node for slot in (14, 15) for node, data in nodes.items() if data.get("slot") == slot]
+    return "本窗口陀螺换算：" + " / ".join(
+        f"{node}号={nodes[node]['gyro_dps_per_lsb']:g}" for node in thumb_nodes) + (
+        " °/s/LSB；不是固件量程读回。其余通道见“输入配置与原始实时值”。")
 
 
 def compact_view_status(text, *, replay=False):
@@ -480,12 +481,10 @@ class LiveWindow(QtWidgets.QMainWindow):
         hand_label = "右手" if self.hand == "right" else "左手"
         self.official = upstream_checkout is not None
         self._steps = tuple({**step, "instruction": step["instruction"].replace("右手", hand_label)} for step in STEPS) if not self.official else (
-            {"key": "neutral", "title": "1. 官方基准 · 平掌", "instruction": f"{hand_label}掌心朝下、五指伸直；保持静止 2 秒。这是官方 base_pose。"},
-            {"key": "fingers_down", "title": "2. 官方轴标定 · 指尖上倾", "instruction": "五指保持伸直，转动整掌使指尖向上倾约 50°，停稳 2 秒；不要弯曲手指或同时侧翻，不要勉强到疼痛。"},
-            {"key": "thumb_up", "title": "3. 官方轴标定 · 指尖下倾", "instruction": "五指保持伸直，沿同一手腕转轴使指尖向下倾约 50°，停稳 2 秒；不是拇指侧上抬。上下总角差建议至少 90°，不要勉强到疼痛。"},
+            {"key": "neutral", "title": "1. 平掌", "instruction": f"{hand_label}掌心朝下、五指伸直；保持静止 2 秒。"},
+            {"key": "fingers_down", "title": "2. 指尖上倾", "instruction": "五指保持伸直，转动整掌使指尖向上倾约 50°，停稳 2 秒；不要弯曲手指或同时侧翻，不要勉强到疼痛。"},
+            {"key": "thumb_up", "title": "3. 指尖下倾", "instruction": "五指保持伸直，沿同一手腕转轴使指尖向下倾约 50°，停稳 2 秒；不是拇指侧上抬。上下总角差建议至少 90°，不要勉强到疼痛。"},
         )
-        self.setWindowTitle(("FSGlove 官方核心 · 12 路适配" if self.official else
-                            "12 路 IMU → MANO · 旧实验求解器") + f" · {hand_label}" + (" · ROS 2 结果发布" if ros_socket else ""))
         self.resize(1220, 860)
         self.backend = backend
         self.config = deepcopy(config)
@@ -499,14 +498,17 @@ class LiveWindow(QtWidgets.QMainWindow):
             replay_raw=replay_raw, replay_speed=replay_speed, upstream_checkout=upstream_checkout,
             ros_socket=ros_socket)
         self.input_contract = describe_input_contract(getattr(self.controller, "config", config))
-        self._gyro_scale_text = "本窗口陀螺换算：" + " / ".join(
-            f"{node}号={self.input_contract['nodes'][node]['gyro_dps_per_lsb']:g}"
-            for node in ("5", "6")) + " °/s/LSB；不是固件量程读回。其余通道见“12 路输入配置 / 实时值”。"
+        self._gyro_scale_text = _thumb_gyro_scale_text(self.input_contract)
         self.input_contract_dialog = None
         self.input_scale_dialog = None
         self._input_scale_details_snapshot = None
         self._input_scale_apply_pending_generation = None
         self._local_recording_warning = ""
+        self._recording_context = None
+        self._recording_summary = {}
+        self._storage_context = None
+        self._storage_sources = {}
+        self._save_actions = CalibrationSaveActions(self.send)
         # Instructions are static. Compute them before acquisition starts, not
         # inside a paint timer while the numerical solver is running.
         self._demonstrations = {step["key"]: (
@@ -609,25 +611,47 @@ class LiveWindow(QtWidgets.QMainWindow):
         label.setTextFormat(QtCore.Qt.PlainText)
         return label
 
+    @staticmethod
+    def _scroll_page():
+        content = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(content)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+        return scroll, layout
+
     def _build_ui(self, port):
+        font = QtGui.QFont()
+        font.setFamilies(list(FONT_FAMILIES))
+        font.setPointSize(FONT_POINT_SIZE)
+        self.setFont(font)
+        hand_label = "右手" if self.hand == "right" else "左手"
+        self.setWindowTitle(f"手套姿态标定 · {hand_label}" + (" · 回放" if self.replay_raw else ""))
         body = QtWidgets.QWidget(objectName="body")
         self.setCentralWidget(body)
         outer = QtWidgets.QVBoxLayout(body)
-        title = self._label("12 IMU → MANO    " + ("右手" if self.hand == "right" else "左手"))
-        title.setStyleSheet("font-size: 22px; font-weight: 700;")
+        outer.setContentsMargins(16, 12, 16, 12)
+        outer.setSpacing(10)
+        title = self._label(f"手套姿态标定 · {hand_label}")
+        title.setStyleSheet(text_style("title"))
         outer.addWidget(title)
-        mode = "CSV 回放模式：非实时硬件" if self.replay_raw else "独立实时原型 · 手动连接 · 不沿用旧安装标定"
-        mode += (" · 官方 Raw2MANO 原始核心 / 12 路显式缺测适配" if self.official else
-                 " · 旧版自写实验算法（非官方 FSGlove）")
+        mode = "历史数据回放 · 非实时设备" if self.replay_raw else "连接设备后，按步骤完成姿态与弯伸标定"
         if self.hand == "left" and not self.config.get("mounting_confirmed", False):
-            mode += " · 左手候选映射未实测：请确认每路安装及输入单位"
+            mode += " · 左手候选映射未实测，请先核对安装"
         self.mode = self._label(mode)
+        self.mode.setStyleSheet(text_style("muted"))
         outer.addWidget(self.mode)
         row = QtWidgets.QHBoxLayout()
+        row.addWidget(self._label("设备", wrap=False))
         self.ports = QtWidgets.QComboBox()
         self.ports.setEditable(True)
-        self.ports.setMinimumWidth(420)
-        self.scan = QtWidgets.QPushButton("刷新串口")
+        self.ports.setMinimumWidth(280)
+        self.scan = QtWidgets.QPushButton("刷新")
+        self.scan.setToolTip("刷新可用串口")
         self.scan.clicked.connect(self.refresh_ports)
         self.connect_button = QtWidgets.QPushButton("开始回放" if self.replay_raw else "连接")
         self.connect_button.setObjectName("primary")
@@ -638,59 +662,48 @@ class LiveWindow(QtWidgets.QMainWindow):
         outer.addLayout(row)
 
         split = QtWidgets.QHBoxLayout()
-        left = QtWidgets.QVBoxLayout()
-        sensors = QtWidgets.QGroupBox("12 路数据 · 绿=新鲜 · 蓝=已过滤 · 橙=需关注")
-        grid = QtWidgets.QGridLayout(sensors)
-        self.badges = {}
-        for node in range(1, 13):
-            role = self.input_contract["nodes"][str(node)]["role"]
-            badge = self._label(f"{node:02d}  {_ROLE_NAMES.get(role, role)}")
-            self.badges[node] = badge
-            grid.addWidget(badge, (node - 1) // 3, (node - 1) % 3)
-        left.addWidget(sensors)
-        self.input_contract_button = QtWidgets.QPushButton("12 路输入配置 / 实时值")
-        self.input_contract_button.setToolTip("查看每路映射、换算系数、接收频率和原始六轴值；只读，不向设备发送命令。")
-        self.input_contract_button.clicked.connect(self.show_input_contract)
-        left.addWidget(self.input_contract_button)
-        tactile_group = QtWidgets.QGroupBox("3D 手表面触觉 · 只读显示")
-        tactile_layout = QtWidgets.QVBoxLayout(tactile_group)
-        tactile_row = QtWidgets.QHBoxLayout()
-        self.tactile_enabled = QtWidgets.QCheckBox("叠加触觉")
-        self.tactile_enabled.setEnabled(False)
-        self.tactile_enabled.toggled.connect(self.refresh_tactile)
-        tactile_row.addWidget(self.tactile_enabled)
-        self.tactile_range = QtWidgets.QComboBox()
-        self.tactile_range.addItem("轻触 ±3000 ADC", 3000.)
-        self.tactile_range.addItem("强触 ±16000 ADC", 16000.)
-        self.tactile_range.currentIndexChanged.connect(self.refresh_tactile)
-        tactile_row.addWidget(self.tactile_range)
-        tactile_layout.addLayout(tactile_row)
-        self.tactile_reference = QtWidgets.QPushButton("采集触觉无载参考（3 秒）")
-        self.tactile_reference.setEnabled(False)
-        self.tactile_reference.setToolTip("松开全部触觉区域；仅设置显示用 ADC 零点，不清除或改变 IMU 标定。")
-        self.tactile_reference.clicked.connect(self.start_tactile_reference)
-        tactile_layout.addWidget(self.tactile_reference)
-        mapping_note = ("左手 3D 需显式左手映射；原始二维触觉矩阵可单独使用。" if self.hand == "left" else
-                        "映射核对信息在启用叠加后显示；其余位置为候选。")
-        self.tactile_mapping_note = self._label("蓝=负变化 · 本色=±200 · 黄→红=正变化\nΔADC 不是压力；" + mapping_note)
-        tactile_layout.addWidget(self.tactile_mapping_note)
-        self.tactile_status = self._label("未启用；ROS 联合启动增加 tactile_overlay:=true。")
-        self.tactile_status.setMinimumHeight(54)
-        tactile_layout.addWidget(self.tactile_status)
-        left.addWidget(tactile_group)
-        self.workflow_panel = QtWidgets.QGroupBox("标定流程 / 尚未解决的项目")
+        split.setSpacing(16)
+        self.workspace_tabs = QtWidgets.QTabWidget(objectName="calibrationTabs")
+        self.workspace_tabs.setFixedWidth(405)
+        self.sidebar_scroll, left = self._scroll_page()
+        self.shape_scroll, shape_layout = self._scroll_page()
+        self.diagnostics_scroll, diagnostics = self._scroll_page()
+        self.workspace_tabs.addTab(self.sidebar_scroll, "姿态标定")
+        if self.official:
+            self.workspace_tabs.addTab(self.shape_scroll, "个性化手形")
+        self.workspace_tabs.addTab(self.diagnostics_scroll, "诊断")
+        split.addWidget(self.workspace_tabs)
+
+        self._build_calibration_page(left)
+        self._build_shape_page(shape_layout)
+        self._build_diagnostics_page(diagnostics)
+        right = self._build_preview()
+        split.addLayout(right, 1)
+        outer.addLayout(split, 1)
+
+        self._build_footer(outer)
+        self.setStyleSheet(calibration_stylesheet())
+        if self.replay_raw:
+            self.ports.setCurrentText(str(Path(self.replay_raw).resolve()))
+            self.ports.setEnabled(False)
+            self.scan.setEnabled(False)
+        else:
+            self.refresh_ports()
+            if port:
+                self.ports.setCurrentText(port)
+        self.workspace_tabs.currentChanged.connect(self.refresh)
+
+    def _build_calibration_page(self, left):
+        self.device_summary = self._label("设备未连接")
+        left.addWidget(self.device_summary)
+        self.workflow_panel = QtWidgets.QGroupBox("标定进度")
         workflow_layout = QtWidgets.QVBoxLayout(self.workflow_panel)
         self.workflow_status = self._label()
         workflow_layout.addWidget(self.workflow_status)
-        self.shape_navigation_button = QtWidgets.QPushButton("前往个性化手形 / 触指标定")
-        self.shape_navigation_button.setToolTip("滚动到触指标定面板；不会连接、采集或采用任何手形。")
-        self.shape_navigation_button.clicked.connect(
-            lambda: self.sidebar_scroll.ensureWidgetVisible(self.shape_panel))
-        workflow_layout.addWidget(self.shape_navigation_button)
         left.addWidget(self.workflow_panel)
         if not self.official:
             self.workflow_panel.hide()
-        guide = QtWidgets.QGroupBox("三步标定 · 每一步可单独重采")
+        guide = QtWidgets.QGroupBox("基础姿态")
         steps = QtWidgets.QVBoxLayout(guide)
         self.step_buttons = {}
         for item in self._steps:
@@ -698,122 +711,131 @@ class LiveWindow(QtWidgets.QMainWindow):
             button.clicked.connect(lambda checked=False, key=item["key"]: self.capture(key))
             self.step_buttons[item["key"]] = button
             steps.addWidget(button)
-        self.instructions = self._label(self._steps[0]["instruction"])
-        self.instructions.setMinimumHeight(80)
-        self.instructions.setStyleSheet("font-size: 14px; color: #254e52;")
-        steps.addWidget(self.instructions)
-        self.progress = QtWidgets.QProgressBar()
-        self.progress.setValue(0)
-        self.progress.setFormat("点击步骤后：3 秒准备 → 2 秒保持采集")
-        steps.addWidget(self.progress)
-        self.cancel_capture = QtWidgets.QPushButton("取消当前采集")
-        self.cancel_capture.clicked.connect(lambda: self.send("cancel_capture"))
-        steps.addWidget(self.cancel_capture)
-        self.input_scale_panel = QtWidgets.QGroupBox("三姿态输入尺度检查 · 自动随采集执行")
+        left.addWidget(guide)
+
+        functional_group = QtWidgets.QGroupBox("弯伸校准")
+        functional_layout = QtWidgets.QVBoxLayout(functional_group)
+        self.functional_hand_capture = QtWidgets.QPushButton("开始全手弯伸校准")
+        self.functional_hand_capture.setObjectName("primary")
+        self.functional_hand_capture.setToolTip("完成基础三姿态后，先取得稳定参考，再按提示完成四指和拇指末节弯伸。通常约 24 秒，等待稳定时会延长；可以取消或单指补采。")
+        self.functional_hand_capture.clicked.connect(lambda: self.send("capture_functional_hand"))
+        functional_layout.addWidget(self.functional_hand_capture)
+        self.functional_hand_feedback = self._label()
+        functional_layout.addWidget(self.functional_hand_feedback)
+        self.single_finger_section = CollapsibleSection("单指补采")
+        self.functional_selector = QtWidgets.QComboBox()
+        for finger in OFFICIAL_FUNCTIONAL_FINGERS:
+            self.functional_selector.addItem("拇指末节" if finger == "thumb" else FINGER_NAMES[finger], finger)
+        self.functional_capture = QtWidgets.QPushButton("采集所选手指")
+        self.functional_capture.setToolTip("3 秒准备、2 秒伸直静止、8 秒慢弯伸；失败或取消保留原结果。")
+        self.functional_capture.clicked.connect(lambda: self.send("capture_functional", finger=self.functional_selector.currentData()))
+        self.single_finger_section.content_layout.addWidget(self.functional_selector)
+        self.single_finger_section.content_layout.addWidget(self.functional_capture)
+        functional_layout.addWidget(self.single_finger_section)
+        left.addWidget(functional_group)
+        if not self.official:
+            functional_group.hide()
+            self.functional_hand_capture.hide()
+            self.functional_hand_feedback.hide()
+            self.functional_selector.hide()
+            self.functional_capture.hide()
+
+        # Historical controls retain their commands, but are not shown in the official workflow.
+        self.reanchor = QtWidgets.QPushButton("重设伸直参考")
+        self.reanchor.setToolTip("保留安装轴；不重启滤波器，也不校正持续漂移。")
+        self.reanchor.clicked.connect(lambda: self.send("reanchor_neutral"))
+        left.addWidget(self.reanchor)
+        self.functional_buttons = {}
+        for finger, name in (("thumb", "拇指"), ("little", "小指")):
+            button = QtWidgets.QPushButton(name + "弯曲方向校准")
+            button.clicked.connect(lambda checked=False, value=finger: self.send("capture_functional", finger=value))
+            self.functional_buttons[finger] = button
+            left.addWidget(button)
+        if self.official:
+            self.reanchor.hide()
+            for button in self.functional_buttons.values():
+                button.hide()
+        self.shape_navigation_button = QtWidgets.QPushButton("个性化手形（可选）")
+        self.shape_navigation_button.setToolTip("进入触指与手形设置；不连接设备、不开始采集。")
+        self.shape_navigation_button.clicked.connect(lambda: self.workspace_tabs.setCurrentWidget(self.shape_scroll))
+        left.addWidget(self.shape_navigation_button)
+        if not self.official:
+            self.shape_navigation_button.hide()
+        self.clear = QtWidgets.QPushButton("重新开始标定…")
+        self.clear.clicked.connect(self.clear_calibration)
+        left.addWidget(self.clear)
+        left.addStretch()
+    def _build_shape_page(self, shape_layout):
+        self.shape_panel = ShapeCalibrationPanel(self)
+        shape_layout.addWidget(self.shape_panel)
+        shape_layout.addStretch()
+
+    def _build_diagnostics_page(self, diagnostics):
+        diagnostics.addWidget(self._label("查看输入状态、配置和运行记录。"))
+        sensors = QtWidgets.QGroupBox("通道状态 · 新鲜度不代表精度")
+        grid = QtWidgets.QGridLayout(sensors)
+        self.badges = {}
+        for node in range(1, 13):
+            role = self.input_contract["nodes"][str(node)]["role"]
+            badge = self._label(f"{node:02d}  {_ROLE_NAMES.get(role, role)}")
+            self.badges[node] = badge
+            grid.addWidget(badge, (node - 1) // 3, (node - 1) % 3)
+        diagnostics.addWidget(sensors)
+        self.input_contract_button = QtWidgets.QPushButton("输入配置与原始实时值")
+        self.input_contract_button.setToolTip("原始角速度未减零偏；详情同时保留偏置估计与输入状态。")
+        self.input_contract_button.clicked.connect(self.show_input_contract)
+        diagnostics.addWidget(self.input_contract_button)
+        self.input_scale_panel = QtWidgets.QGroupBox("输入尺度检查")
         scale_layout = QtWidgets.QVBoxLayout(self.input_scale_panel)
         self.input_scale_summary = self._label()
         scale_layout.addWidget(self.input_scale_summary)
         self.input_scale_guidance = self._label(_INPUT_SCALE_GUIDANCE)
         scale_layout.addWidget(self.input_scale_guidance)
         scale_actions = QtWidgets.QHBoxLayout()
-        self.input_scale_details_button = QtWidgets.QPushButton("查看逐路结果")
+        self.input_scale_details_button = QtWidgets.QPushButton("逐路结果")
         self.input_scale_details_button.clicked.connect(self.show_input_scale_check)
         scale_actions.addWidget(self.input_scale_details_button)
-        self.input_scale_report_button = QtWidgets.QPushButton("打开报告目录")
+        self.input_scale_report_button = QtWidgets.QPushButton("报告目录")
         self.input_scale_report_button.clicked.connect(self.open_input_scale_report_directory)
         scale_actions.addWidget(self.input_scale_report_button)
         scale_layout.addLayout(scale_actions)
-        self.input_scale_apply_button = QtWidgets.QPushButton("采用候选并断开（重新连接标定）")
-        self.input_scale_apply_button.setToolTip("仅显式采用后台验证通过的候选；正常断开当前采集后生效，不自动连接。旧姿态标定不可沿用。")
+        self.input_scale_apply_button = QtWidgets.QPushButton("采用候选并断开连接…")
+        self.input_scale_apply_button.setToolTip("仅采用已验证候选；断开后重新连接和标定，旧姿态标定不能沿用。")
         self.input_scale_apply_button.clicked.connect(self.use_input_scale_candidate)
         scale_layout.addWidget(self.input_scale_apply_button)
-        steps.addWidget(self.input_scale_panel)
+        diagnostics.addWidget(self.input_scale_panel)
         if not self.official:
             self.input_scale_panel.hide()
-        self.reanchor = QtWidgets.QPushButton("仅重设伸直参考（保留安装轴）")
-        self.reanchor.setToolTip("三步标定后使用：五指自然伸直，3 秒准备、2 秒保持；不重启滤波器、不重置手掌朝向，也不校正持续漂移。")
-        self.reanchor.clicked.connect(lambda: self.send("reanchor_neutral"))
-        steps.addWidget(self.reanchor)
-        functional_row = QtWidgets.QHBoxLayout()
-        self.functional_buttons = {}
-        for finger, name in (("thumb", "拇指"), ("little", "小指")):
-            button = QtWidgets.QPushButton(name + "弯曲方向校准")
-            button.setToolTip("先张手保持，再按提示只弯伸这根手指；学习运动轴与正方向，不自动拉伸角度或认定人体极限。")
-            button.clicked.connect(lambda checked=False, value=finger: self.send("capture_functional", finger=value))
-            self.functional_buttons[finger] = button
-            functional_row.addWidget(button)
-        steps.addLayout(functional_row)
-        if self.official:
-            self.reanchor.hide()
-            for button in self.functional_buttons.values():
-                button.hide()
-        self.functional_hand_capture = QtWidgets.QPushButton("一键全手弯伸校准")
-        self.functional_hand_capture.setToolTip(
-            "先完成官方三姿势。3 秒准备 + 2 秒静止 + 8 秒四指同步弯伸 + 3 秒伸直准备 + 8 秒拇指 IP，共 24 秒。可取消；结果逐指保存，不保证每指都通过。")
-        self.functional_hand_capture.clicked.connect(lambda: self.send("capture_functional_hand"))
-        steps.addWidget(self.functional_hand_capture)
-        self.functional_hand_feedback = self._label()
-        steps.addWidget(self.functional_hand_feedback)
-        self.functional_selector = QtWidgets.QComboBox()
-        for finger in OFFICIAL_FUNCTIONAL_FINGERS:
-            self.functional_selector.addItem("拇指 IP（不改 MCP/CMC）" if finger == "thumb" else FINGER_NAMES[finger], finger)
-        self.functional_capture = QtWidgets.QPushButton("校准所选手指")
-        self.functional_capture.setToolTip("3 秒准备 → 2 秒伸直静止 → 8 秒慢弯伸。失败或取消保留原结果；不是人体精度标定。")
-        self.functional_capture.clicked.connect(lambda: self.send("capture_functional", finger=self.functional_selector.currentData()))
-        official_functional_row = QtWidgets.QHBoxLayout()
-        official_functional_row.addWidget(self.functional_selector, 1)
-        official_functional_row.addWidget(self.functional_capture)
-        steps.addLayout(official_functional_row)
-        self.functional_enabled = QtWidgets.QCheckBox("启用单指轴校正 + 关节约束（非实测精度）")
-        self.functional_enabled.setToolTip("关闭以对比官方原始输出；不删除已采参数、不修改官方基础标定，也不自动重采。")
+        self.functional_enabled = QtWidgets.QCheckBox("启用单指轴校正与关节约束")
+        self.functional_enabled.setToolTip("用于算法对照；关闭不删除已采参数，也不重新采集。")
         self.functional_enabled.toggled.connect(lambda enabled: self.send("set_functional_enabled", enabled=bool(enabled)))
-        steps.addWidget(self.functional_enabled)
+        diagnostics.addWidget(self.functional_enabled)
         if not self.official:
-            self.functional_hand_capture.hide()
-            self.functional_hand_feedback.hide()
-            self.functional_selector.hide()
-            self.functional_capture.hide()
             self.functional_enabled.hide()
-        self.clear = QtWidgets.QPushButton("清除本次标定 / 重新开始")
-        self.clear.clicked.connect(self.clear_calibration)
-        steps.addWidget(self.clear)
-        left.addWidget(guide)
-        self.shape_panel = ShapeCalibrationPanel(self)
-        left.addWidget(self.shape_panel)
-        self.status = self._label()
-        self.status.setMinimumHeight(65)
-        left.addWidget(self.status)
-        self.local_recording_status = self._label()
-        self.local_recording_status.setStyleSheet("color: #8a4e00;")
-        self.local_recording_status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        self.local_recording_status.hide()
-        left.addWidget(self.local_recording_status)
+        self.joint_status = self._label()
+        diagnostics.addWidget(self.joint_status)
+        self.stats = self._label()
+        diagnostics.addWidget(self.stats)
         self.details = QtWidgets.QPlainTextEdit()
         self.details.setReadOnly(True)
-        self.details.setMaximumHeight(120)
+        self.details.setMinimumHeight(120)
+        self.details.setMaximumHeight(220)
         self.details.setPlaceholderText("标定反馈与局部缺测说明")
-        left.addWidget(self.details)
-        left.addStretch()
-        left_widget = QtWidgets.QWidget()
-        left_widget.setLayout(left)
-        left_widget.setFixedWidth(385)
-        # Larger desktop fonts and long instructions must not force a window
-        # taller than the screen. Only the controls scroll; the hand stays put.
-        self.sidebar_scroll = QtWidgets.QScrollArea()
-        self.sidebar_scroll.setWidgetResizable(True)
-        self.sidebar_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        self.sidebar_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.sidebar_scroll.setFixedWidth(405)
-        self.sidebar_scroll.setWidget(left_widget)
-        split.addWidget(self.sidebar_scroll)
+        diagnostics.addWidget(self.details)
+        self.recording_path = self._label()
+        self.recording_path.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        diagnostics.addWidget(self.recording_path)
+        algorithm = ("FSGlove Raw2MANO 原始核心，12 路缺测适配。" if self.official else "旧版自写实验求解器。")
+        diagnostics.addWidget(self._label(algorithm + "远节含推断，拇指根部缺少独立观测；六轴相对航向漂移与人体精度尚未验收。原始 Gyro 非零不等于补偿失败。"))
+        diagnostics.addStretch()
+
+    def _build_preview(self):
         right = QtWidgets.QVBoxLayout()
-        # Keep long and changing diagnostics out of the 3D layout. They remain
-        # live/readable in an optional nonmodal detail window, not discarded.
+        right.setSpacing(8)
         self.visual_details_content = QtWidgets.QWidget(self)
         visual_details_layout = QtWidgets.QVBoxLayout(self.visual_details_content)
         visual_details_layout.addWidget(self._label("画面状态"))
         self.view_state = self._label()
-        self.view_state.setStyleSheet("background: #fff3d9; padding: 10px; font-weight: bold;")
         self.view_state.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         visual_details_layout.addWidget(self.view_state)
         visual_details_layout.addWidget(self._label("输入状态"))
@@ -831,18 +853,36 @@ class LiveWindow(QtWidgets.QMainWindow):
         self.visual_status.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         compact_layout.addWidget(self.visual_status, 1)
         self.visual_details_button = QtWidgets.QPushButton("状态详情")
-        self.visual_details_button.setToolTip("查看完整画面与输入诊断；不影响采集、标定或 ROS 输出。")
         self.visual_details_button.clicked.connect(self.show_visual_details)
         compact_layout.addWidget(self.visual_details_button)
         right.addWidget(self.visual_status_bar)
+        # A single fixed guidance area remains visible while any page is scrolled.
+        self.instructions = self._label(self._steps[0]["instruction"])
+        self.instructions.setStyleSheet(text_style("instruction"))
+        self.instructions.setMinimumHeight(60)
+        self.capture_guidance = self._label()
+        self.capture_guidance.setStyleSheet(status_style("info"))
+        self.capture_guidance.setMinimumHeight(60)
+        self.capture_guidance.hide()
+        right.addWidget(self.instructions)
+        right.addWidget(self.capture_guidance)
+        self.capture_controls = QtWidgets.QWidget()
+        capture_row = QtWidgets.QHBoxLayout(self.capture_controls)
+        capture_row.setContentsMargins(0, 0, 0, 0)
+        self.progress = QtWidgets.QProgressBar(objectName="calibrationProgress")
+        self.progress.setValue(0)
+        self.cancel_capture = QtWidgets.QPushButton("取消采集")
+        self.cancel_capture.clicked.connect(lambda: self.send("cancel_capture"))
+        capture_row.addWidget(self.progress, 1)
+        capture_row.addWidget(self.cancel_capture)
+        right.addWidget(self.capture_controls)
         self.shape_view_status = self._label(wrap=False)
         self.shape_view_status.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
-        self.shape_view_status.setStyleSheet("color: #52636c; background: #f2f5f7; padding: 3px;")
+        self.shape_view_status.setStyleSheet(status_style("neutral", compact=True))
         if not self.official:
             self.shape_view_status.hide()
         self.view = HandView(self.neutral, self.axes)
-        # A compact in-view source label preserves the existing 1080p minimum
-        # height; additional wizard controls live only in the scrollable side.
+        self.view.setMinimumHeight(340)
         shape_overlay = QtWidgets.QVBoxLayout(self.view)
         shape_overlay.setContentsMargins(8, 8, 8, 8)
         shape_overlay.addWidget(self.shape_view_status, 0, QtCore.Qt.AlignTop)
@@ -853,32 +893,188 @@ class LiveWindow(QtWidgets.QMainWindow):
             button = QtWidgets.QPushButton(text)
             button.clicked.connect(lambda checked=False, palm=palmar: self.view.reset_camera(palm))
             view_controls.addWidget(button)
+        self.display_options = CollapsibleSection("显示选项")
         joints = QtWidgets.QCheckBox("关节透视标记")
-        joints.setChecked(True)
+        joints.setChecked(False)
+        self.toggle_joints(False)
         joints.toggled.connect(self.toggle_joints)
-        view_controls.addWidget(joints)
+        self.display_options.content_layout.addWidget(joints)
+        self.display_options.content_layout.addWidget(self._label("浅青为掌面，深青为手背；拖动旋转，滚轮缩放。"))
+        view_controls.addStretch()
         right.addLayout(view_controls)
-        right.addWidget(self._label("浅青 = 掌面    深青 = 手背    鼠标拖动旋转 / 滚轮缩放"))
-        self.joint_status = self._label("关节角与软件限位：完成标定后显示（不是人体极限测量）。")
-        self.joint_status.setMinimumHeight(65)
-        right.addWidget(self.joint_status)
-        self.stats = self._label()
-        right.addWidget(self.stats)
-        split.addLayout(right, 1)
-        outer.addLayout(split, 1)
-        self.output = self._label("连接后创建独立记录目录；不覆盖旧文件。")
-        self.output.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        outer.addWidget(self.output)
-        outer.addWidget(self._label("边界：远节含推断，拇指第一掌骨未测；六轴相对航向漂移尚未校正。画面流畅不代表人体精度已验收。"))
-        self.setStyleSheet(_STYLE)
-        if self.replay_raw:
-            self.ports.setCurrentText(str(Path(self.replay_raw).resolve()))
-            self.ports.setEnabled(False)
-            self.scan.setEnabled(False)
+        right.addWidget(self.display_options)
+
+        self.tactile_section = CollapsibleSection("触觉叠加")
+        tactile_layout = self.tactile_section.content_layout
+        tactile_row = QtWidgets.QHBoxLayout()
+        self.tactile_enabled = QtWidgets.QCheckBox("叠加触觉")
+        self.tactile_enabled.setEnabled(False)
+        self.tactile_enabled.toggled.connect(self.refresh_tactile)
+        tactile_row.addWidget(self.tactile_enabled)
+        self.tactile_range = QtWidgets.QComboBox()
+        self.tactile_range.addItem("轻触 ±3000 ADC", 3000.)
+        self.tactile_range.addItem("强触 ±16000 ADC", 16000.)
+        self.tactile_range.currentIndexChanged.connect(self.refresh_tactile)
+        tactile_row.addWidget(self.tactile_range)
+        tactile_layout.addLayout(tactile_row)
+        self.tactile_reference = QtWidgets.QPushButton("采集触觉无载参考（3 秒）")
+        self.tactile_reference.setEnabled(False)
+        self.tactile_reference.setToolTip("松开触觉区域；只设置触觉显示零点，不改变姿态标定。")
+        self.tactile_reference.clicked.connect(self.start_tactile_reference)
+        tactile_layout.addWidget(self.tactile_reference)
+        mapping_note = ("左手 3D 需显式左手映射。" if self.hand == "left" else "映射核对信息在启用叠加后显示。")
+        self.tactile_mapping_note = self._label("蓝=负变化，本色=±200，黄→红=正变化；ΔADC 不是压力。" + mapping_note)
+        tactile_layout.addWidget(self.tactile_mapping_note)
+        self.tactile_status = self._label("等待触觉输入")
+        tactile_layout.addWidget(self.tactile_status)
+        right.addWidget(self.tactile_section)
+        self.tactile_section.setVisible(bool(self._tactile_socket))
+        return right
+
+    def _build_footer(self, outer):
+        # Storage and operational failures stay visible on every page.
+        self.status = self._label()
+        self.status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        outer.addWidget(self.status)
+        self.local_recording_status = self._label()
+        self.local_recording_status.setStyleSheet(status_style("warning"))
+        self.local_recording_status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.local_recording_status.hide()
+        outer.addWidget(self.local_recording_status)
+        self.storage_error_status = self._label()
+        self.storage_error_status.setStyleSheet(status_style("error"))
+        self.storage_error_status.hide()
+        outer.addWidget(self.storage_error_status)
+        result_row = QtWidgets.QHBoxLayout()
+        self.result_status = self._label("尚未标定")
+        result_row.addWidget(self.result_status, 1)
+        self.retry_recording_save = QtWidgets.QPushButton("重试保存")
+        self.retry_recording_save.clicked.connect(self.retry_calibration_save)
+        self.choose_recording_directory = QtWidgets.QPushButton("另选保存目录")
+        self.choose_recording_directory.clicked.connect(self.choose_calibration_save_directory)
+        result_row.addWidget(self.retry_recording_save)
+        result_row.addWidget(self.choose_recording_directory)
+        self.output = self._label("连接后自动记录")
+        self.output.setStyleSheet(text_style("muted"))
+        result_row.addWidget(self.output)
+        self.open_recording_button = QtWidgets.QPushButton("打开记录目录")
+        self.open_recording_button.clicked.connect(self.open_recording_directory)
+        result_row.addWidget(self.open_recording_button)
+        outer.addLayout(result_row)
+
+    def _set_status_style(self, widget, state, *, compact=False):
+        if widget.property("statusState") != state:
+            widget.setProperty("statusState", state)
+        self._set_changed(widget, "setStyleSheet", status_style(state, compact=compact))
+
+    def open_recording_directory(self):
+        directory = (self.controller.latest_snapshot().get("runtime") or {}).get("output_dir")
+        if directory and Path(directory).is_dir():
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(Path(directory).resolve())))
         else:
-            self.refresh_ports()
-            if port:
-                self.ports.setCurrentText(port)
+            self.status.setText("本次记录目录尚未创建。")
+
+    def _presentation_snapshot(self, snapshot):
+        """Keep acknowledged storage facts across sparse IPC, scoped to their owner.
+
+        These small UI caches never enter pose calculation or recording. Explicit
+        success/clear fields replace old failures; missing fields do not do so.
+        """
+        runtime = snapshot.get("runtime") or {}
+        calibration = snapshot.get("calibration") or {}
+        context = (runtime.get("session_id"), calibration.get("clear_generation"),
+                   (snapshot.get("pose") or {}).get("profile_version"))
+        if context != self._recording_context:
+            self._recording_context = context
+            self._recording_summary = {}
+        recording = runtime.get("local_recording")
+        if isinstance(recording, dict):
+            self._recording_summary.update({key: recording[key] for key in
+                                           ("enabled", "profile_saved") if key in recording})
+        owner = context[:2]
+        if owner != self._storage_context:
+            self._storage_context, self._storage_sources = owner, {}
+        shape = calibration.get("shape_calibration") or {}
+        fields = ("storage_error", "storage_message", "can_retry_save")
+        sources = {"files": runtime.get("calibration_storage"),
+                   "touch": {key: shape[key] for key in fields if key in shape}}
+        for source, value in sources.items():
+            if isinstance(value, dict):
+                self._storage_sources.setdefault(source, {}).update(value)
+        return {**snapshot,
+            "runtime": {**runtime,
+                "local_recording": {**(recording or {}), **self._recording_summary},
+                "calibration_storage": dict(self._storage_sources.get("files", {}))},
+            "calibration": {**calibration,
+                "shape_calibration": {**shape, **self._storage_sources.get("touch", {})}}}
+
+    def _save_snapshot(self):
+        snapshot, clearing = self._calibration_display_snapshot(self.controller.latest_snapshot())
+        snapshot = self._presentation_snapshot(snapshot)
+        return snapshot, storage_status(snapshot), clearing
+
+    def _submit_calibration_save(self, name, **args):
+        snapshot, storage, clearing = self._save_snapshot()
+        accepted = self._save_actions.submit(name, snapshot, storage, clearing=clearing,
+            official=self.official, other_pending=self.shape_panel._pending is not None, **args)
+        self.refresh()
+        return accepted
+
+    def retry_calibration_save(self):
+        return self._submit_calibration_save("retry_calibration_save")
+
+    def choose_calibration_save_directory(self):
+        snapshot, storage, clearing = self._save_snapshot()
+        if not self._save_actions.allowed(snapshot, storage, clearing=clearing,
+                official=self.official, other_pending=self.shape_panel._pending is not None):
+            return False
+        directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "另选目录保存待保存标定 / 触指任务", "")
+        if directory:
+            # Dialogs run a nested event loop; recheck current state on submit.
+            return self._submit_calibration_save("retry_calibration_save_to", directory=directory)
+        return False
+
+    def _refresh_workspace_status(self, snapshot, input_snapshot, fresh, calibration_ready,
+                                  presentation, storage, *, clearing=False):
+        runtime, calibration = snapshot.get("runtime") or {}, snapshot.get("calibration") or {}
+        connected = bool((input_snapshot.get("runtime") or {}).get("connected"))
+        required = set(map(str, self.config["node_to_slot"]))
+        received = required.intersection(map(str, fresh)) if connected else set()
+        missing = sorted(required - received, key=int)
+        blocked = blocked_input_nodes(input_snapshot.get("orientation") or {}, self.config["node_to_slot"])
+        if not connected:
+            text, state = "设备未连接", "neutral"
+        elif missing:
+            text, state = f"所需通道 {len(received)}/{len(required)} · 等待 { '、'.join(missing) } 号数据", "warning"
+        elif not calibration_ready:
+            suffix = " · 请检查 " + "、".join(blocked) + " 号输入" if blocked else " · 等待输入检查"
+            text, state = f"所需通道 {len(received)}/{len(required)} 已收到{suffix}", "warning"
+        else:
+            text, state = f"所需通道 {len(received)}/{len(required)} 就绪 · 可采集", "success"
+        self._set_changed(self.device_summary, "setText", text)
+        self._set_status_style(self.device_summary, state, compact=True)
+        local = runtime.get("local_recording") or {}
+        self._set_changed(self.result_status, "setText", presentation.summary)
+        text = storage.notice_text
+        if self._save_actions.pending:
+            text += "\n正在请求保存，等待后台确认。"
+        self._set_changed(self.storage_error_status, "setText", text)
+        self._set_changed(self.storage_error_status, "setVisible", bool(text))
+        self._set_status_style(self.storage_error_status, "error" if storage.has_errors else "warning")
+        allowed = self._save_actions.allowed(snapshot, storage, clearing=clearing,
+            official=self.official, other_pending=self.shape_panel._pending is not None)
+        for button in (self.retry_recording_save, self.choose_recording_directory):
+            button.setVisible(storage.has_errors)
+            button.setEnabled(allowed)
+        directory = runtime.get("output_dir")
+        self.open_recording_button.setEnabled(bool(directory))
+        self._set_changed(self.recording_path, "setText", "本次记录：" + str(directory) if directory else "尚未创建记录目录")
+        self._set_changed(self.output, "setToolTip", str(directory or ""))
+        recording_text = ("本地记录已暂停" if local.get("enabled") is False else
+                          "正在记录" if connected and directory else
+                          "记录已保留" if directory else "连接后自动记录")
+        self._set_changed(self.output, "setText", recording_text)
 
     def start_tactile_reference(self):
         if self.tactile_controller is not None:
@@ -1057,9 +1253,7 @@ class LiveWindow(QtWidgets.QMainWindow):
         except (KeyError, TypeError, ValueError):
             return  # A partial worker update must not erase a known contract.
         self.input_contract = deepcopy(contract)
-        self._gyro_scale_text = "本窗口陀螺换算：" + " / ".join(
-            f"{node}号={contract['nodes'][node]['gyro_dps_per_lsb']:g}" for node in ("5", "6")) + (
-            " °/s/LSB；不是固件量程读回。其余通道见“12 路输入配置 / 实时值”。")
+        self._gyro_scale_text = _thumb_gyro_scale_text(contract)
         for node, badge in self.badges.items():
             role = contract['nodes'][str(node)]['role']
             self._set_changed(badge, "setText", f"{node:02d}  {_ROLE_NAMES.get(role, role)}")
@@ -1169,7 +1363,7 @@ class LiveWindow(QtWidgets.QMainWindow):
         self.functional_selector.setCurrentIndex(0)
         self.shape_panel.reset()
         self._set_changed(self.instructions, "setText", "请从第1步开始：" + self._steps[0]["instruction"])
-        self._set_changed(self.instructions, "setStyleSheet", "font-size: 14px; color: #254e52;")
+        self._set_changed(self.instructions, "setStyleSheet", text_style("instruction"))
 
     def _clear_display_cache(self):
         """Session/reference changes and demonstrations never reuse an old hand."""
@@ -1220,7 +1414,10 @@ class LiveWindow(QtWidgets.QMainWindow):
             calibration = dict(active=None, captured_steps=[], calibrated_nodes=[],
                 functional_fingers=[], functional_enabled=True, functional_hand_result=None,
                 functional_diagnostics={}, profile_status="clearing", motion_diagnostics={},
-                rejected_nodes={}, warnings=[], clear_generation=calibration.get("clear_generation", 0))
+                rejected_nodes={}, warnings=[], clear_generation=calibration.get("clear_generation", 0),
+                shape_calibration={key: value for key, value in
+                    (calibration.get("shape_calibration") or {}).items()
+                    if key in {"storage_error", "storage_message", "can_retry_save"}})
             runtime = {**runtime, "message": "正在清除本次标定；完成后请从第1步开始。", "error": None}
             snapshot = {**snapshot, "runtime": runtime, "calibration": calibration,
                         "pose": None, "geometry": None, "geometry_error": "",
@@ -1306,13 +1503,15 @@ class LiveWindow(QtWidgets.QMainWindow):
     def _functional_hand_result_text(result):
         """Describe only this run, never infer success from saved old entries."""
         if not isinstance(result, dict):
-            return "全手流程约 24 秒；也可用下方逐指补采。已存参数不代表本次采集结果。"
+            return "通常约 24 秒，取得稳定参考后按提示弯伸。"
         status = result.get("status")
-        titles = {"complete": "最近一次全手采集结束（非人体精度验收）",
-                  "partial": "最近一次全手仅部分更新，可逐指补采",
+        titles = {"complete": "最近一次全手采集结束，参数已更新；请验证弯伸与回位",
+                  "partial": "最近一次全手仅部分更新；已更新部分待动作验证，可逐指补采",
                   "failed": "最近一次全手未更新，原有参数保留",
                   "cancelled": "最近一次全手采集已取消，未更新参数"}
         lines = [titles.get(status, "最近一次全手结果待确认")]
+        if result.get("reason"):
+            lines.append(str(result["reason"]))
         if status == "cancelled":
             return lines[0]
         fingers = result.get("fingers", {})
@@ -1322,10 +1521,12 @@ class LiveWindow(QtWidgets.QMainWindow):
                 item.get("status"), "本次未更新")
             name = "拇指 IP" if finger == "thumb" else FINGER_NAMES[finger]
             lines.append(f"{name}：{label}")
-            if item.get("error"):
+            rejected = item.get("rejected_slots", {})
+            if item.get("error") and not rejected:
                 lines.append(str(item["error"]))
-            for slot, reason in item.get("rejected_slots", {}).items():
-                lines.append(f"关节 {slot} 未更新：{reason}")
+            for slot, reason in rejected.items():
+                text = str(reason)
+                lines.append(text if text.startswith(f"关节 {slot} ") else f"关节 {slot} 未更新：{text}")
         return "\n".join(lines)
 
     def _capture_completion_text(self, capture, runtime, calibration):
@@ -1359,72 +1560,12 @@ class LiveWindow(QtWidgets.QMainWindow):
                         lines.append(str(item["reason"]))
         return "\n".join([*lines, guidance])
 
-    def refresh(self):
-        started = time.perf_counter()
-        snapshot = self.controller.latest_snapshot()
-        snapshot, clearing = self._calibration_display_snapshot(snapshot)
-        now = time.monotonic()
-        runtime, calibration = snapshot.get("runtime", {}), snapshot.get("calibration", {})
-        input_snapshot = input_display_snapshot(snapshot)
-        input_runtime = input_snapshot.get("runtime", {})
+    def _refresh_capture_controls(self, snapshot, presentation, *, calibration_ready, clearing):
+        calibration = snapshot.get("calibration") or {}
+        connected = (input_display_snapshot(snapshot).get("runtime") or {}).get("connected", False)
         active = calibration.get("active")
-        connected = input_runtime.get("connected", False)
-        session = input_runtime.get("session_id") or runtime.get("session_id")
         base_fitting = calibration.get("profile_status") == "fitting"
-        if session != self._capture_session:
-            self._capture_context = self._capture_completion = self._single_capture_feedback = None
-            self._capture_session = session
-        if active:
-            self._capture_context = {key: active[key] for key in ("kind", "step", "finger") if key in active}
-            self._capture_completion = self._single_capture_feedback = None
-        elif self._capture_context is not None and not base_fitting and not clearing:
-            if connected:
-                self._capture_completion = self._capture_completion_text(self._capture_context, runtime, calibration)
-                if self._capture_context.get("kind") == "functional":
-                    self._single_capture_feedback = self._capture_completion
-            else:
-                self._capture_completion = "连接已结束，本次采集已停止；重新连接后请以新会话的标定状态为准。"
-            self._capture_context = None
-        profile = (snapshot.get("pose") or {}).get("profile_version")
-        if ((session is not None and session != self._display_session)
-                or (profile is not None and self._display_profile is not None and profile != self._display_profile)):
-            self._clear_display_cache()
-        if session is not None:
-            self._display_session = session
-        if profile is not None:
-            self._display_profile = profile
-        self.connect_button.setText("断开" if connected else ("开始回放" if self.replay_raw else "连接"))
-        self.ports.setEnabled(not connected and not self.replay_raw)
-        self.scan.setEnabled(not connected and not self.replay_raw)
-        frame = input_snapshot.get("orientation") or {}
-        health_blocked = blocked_input_nodes(frame, self.config["node_to_slot"])
-        health = frame.get("input_health") or {}
-        health_faulted = (set(health.get("faulted_nodes", ()))
-                          | set(health.get("recovering_nodes", ()))) & set(self.config["node_to_slot"])
-        calibration_ready = calibration_input_ready(frame, self.config)
-        self._refresh_input_scale_check(snapshot, clearing)
-        self.shape_panel.refresh(snapshot, clearing=clearing)
-        self._set_changed(self.workflow_status, "setText", workflow_status_text(calibration))
         shape_active = shape_busy(calibration)
-        self._refresh_input_contract(snapshot, now)
-        input_text, warning_nodes = solver_input_status(frame, now, connected=connected)
-        self._set_changed(self.input_status, "setText", input_text)
-        self._set_changed(self.input_status, "setStyleSheet",
-                          "background: #fff3d9; padding: 6px; color: #8a4e00;" if warning_nodes else
-                          "padding: 6px; color: #52636c;")
-        fresh = frame.get("nodes", {})
-        published = input_runtime.get("published_monotonic_s", 0.)
-        if not isinstance(published, (float, int)) or now - published > .25:
-            fresh = {}
-        for node, badge in self.badges.items():
-            color = "#d6f3e7" if str(node) in fresh and connected else "#e6eaed"
-            status = fresh.get(str(node), {}).get("input_filter", {})
-            if (str(node) in fresh and connected and frame.get("input_filter", {}).get("enabled")
-                    and (status.get("gyro_rejected") or status.get("accel_rejected"))):
-                color = "#dceefe"
-            if connected and str(node) in warning_nodes:
-                color = "#ffe0a3"
-            self._set_changed(badge, "setStyleSheet", f"background: {color}; border-radius: 4px; padding: 5px; font-size: 11px;")
         captured = calibration.get("captured_steps", [])
         for item in self._steps:
             key = item["key"]
@@ -1437,7 +1578,9 @@ class LiveWindow(QtWidgets.QMainWindow):
             button.setEnabled(self.reanchor.isEnabled())
             name = "拇指" if finger == "thumb" else "小指"
             button.setText(name + "弯曲方向" + (" ✓ 重采" if finger in calibration.get("functional_fingers", []) else "校准"))
-        functional_ready = self.official and bool(connected) and active is None and not base_fitting and not clearing and not shape_active and bool(calibration.get("calibrated_nodes")) and calibration_ready
+        functional_ready = (self.official and bool(connected) and active is None and not base_fitting
+            and not clearing and not shape_active and presentation.has_profile
+            and not presentation.requires_recalibration and calibration_ready)
         self.functional_hand_capture.setEnabled(functional_ready and all(item["key"] in captured for item in self._steps))
         self.functional_selector.setEnabled(functional_ready)
         self.functional_capture.setEnabled(functional_ready)
@@ -1446,7 +1589,7 @@ class LiveWindow(QtWidgets.QMainWindow):
         self.functional_enabled.setChecked(bool(calibration.get("functional_enabled", True)))
         self.functional_enabled.blockSignals(blocked)
         for index, finger in enumerate(OFFICIAL_FUNCTIONAL_FINGERS):
-            label = "拇指 IP（不改 MCP/CMC）" if finger == "thumb" else FINGER_NAMES[finger]
+            label = "拇指末节" if finger == "thumb" else FINGER_NAMES[finger]
             self.functional_selector.setItemText(index, label + ("（已存参数）" if finger in calibration.get("functional_fingers", []) else ""))
         hand_fitting = bool(active and active.get("kind") == "functional_hand"
                             and calibration.get("profile_status") == "fitting_functional_hand")
@@ -1483,54 +1626,63 @@ class LiveWindow(QtWidgets.QMainWindow):
                     instruction = ("现在弯伸拇指 IP：近节尽量不动，只弯伸末节，再伸直；慢慢重复 2–3 次。不校正 MCP / CMC，不必用力到极限。"
                                    if active.get("phase") == "moving" else
                                    "拇指 IP 校准：先自然伸直并停稳；等提示变为“现在弯伸”再动。仅校正末节 IP，不改变 MCP / CMC。")
+            reference_waiting = bool(active.get("reference_waiting"))
+            if reference_waiting:
+                name = ("拇指末节" if active.get("finger") == "thumb" else
+                        FINGER_NAMES.get(active.get("finger"), "五指"))
+                instruction = (f"保持{name}自然伸直，正在选取连续 2 秒的稳定参考。"
+                               "先不要弯曲，等出现弯伸提示再动；可以取消。")
             self._set_changed(self.instructions, "setText", instruction)
-            self._set_changed(self.instructions, "setStyleSheet", "font-size: 14px; font-weight: bold; color: #254e52;")
+            self._set_changed(self.instructions, "setStyleSheet", text_style("instruction_active"))
             remaining = max(0., active.get("remaining_s", 0.))
             preparing = active.get("phase") == "preparing"
             moving = active.get("phase") == "moving"
             duration = hand_phase[0] if hand_phase else 3. if preparing else 8. if moving else 2.
-            self.progress.setValue(round(100 * max(0., min(1., 1. - remaining / duration))))
+            if reference_waiting:
+                elapsed = max(0., active.get("reference_wait_elapsed_s", 0.))
+                limit = max(.1, active.get("reference_wait_limit_s", 12.))
+                self.progress.setValue(round(100 * min(1., elapsed / limit)))
+            else:
+                self.progress.setValue(round(100 * max(0., min(1., 1. - remaining / duration))))
             progress_label = (hand_phase[3] if hand_phase else
                               "准备动作，暂未采集" if preparing else "现在弯伸，正在采集运动" if moving else "正在采集，请保持不动")
-            self.progress.setFormat("正在计算全手结果，请放松；可取消" if hand_fitting else
+            self.progress.setFormat(f"等待稳定参考  {elapsed:.0f}/{limit:.0f} 秒" if reference_waiting else
+                                    "正在计算全手结果，请放松；可取消" if hand_fitting else
                                     progress_label + f"  {remaining:.1f} 秒")
+            self._set_changed(self.capture_guidance, "setText",
+                              instruction + "\n" + self.progress.format())
+            self.instructions.hide()
+            self.capture_guidance.show()
         else:
+            self.capture_guidance.hide()
+            self.instructions.show()
             self.progress.setValue(round(100 * len(captured) / 3))
             self.progress.setFormat("正在清除标定，请稍候" if clearing else
                                     "正在计算基础标定，请放松" if base_fitting else
                                     f"已采集 {len(captured)}/3 步；可单独重采")
-            if clearing or calibration.get("profile_status") == "not_calibrated" and not captured:
+            if presentation.requires_recalibration:
+                instruction = presentation.mounting_text + "。请在姿态标定页重新采集基础姿态；已保存文件仍保留。"
+            elif self.official and self.workspace_tabs.currentWidget() is self.shape_scroll:
+                instruction = ("请先在“姿态标定”页完成基础标定，再采集触指姿态。"
+                               if not calibration.get("calibrated_nodes") else
+                               "按左侧提示采集触指姿态；完成后优化、预览并采用手形。")
+            elif clearing or calibration.get("profile_status") == "not_calibrated" and not captured:
                 instruction = "请从第1步开始：" + self._steps[0]["instruction"]
             elif base_fitting:
                 instruction = "三步动作采集已结束，正在计算基础标定。请放松，无需继续保持姿势；完成后查看结果。"
             elif self._capture_completion:
                 instruction = self._capture_completion
             elif calibration.get("calibrated_nodes"):
-                instruction = "基础标定已执行（非实物精度验收）；可按需重复采集任一步，或进行功能轴校准。"
+                instruction = "基础标定已完成。下一步进行弯伸校准；需要时可单独重采任一步。"
             else:
                 instruction = next(item["instruction"] for item in self._steps if item["key"] == self._step)
             self._set_changed(self.instructions, "setText", instruction)
-            self._set_changed(self.instructions, "setStyleSheet", "font-size: 14px; color: #254e52;")
-        motion = calibration.get("motion_diagnostics", {})
-        motion_warnings = motion.get("warnings", []) if self.official else []
-        status_message = runtime.get("message", "等待手动连接")
-        pose_reason = (snapshot.get("pose") or {}).get("reason")
-        input_age = input_runtime.get("last_sample_age_s")
-        input_healthy = (connected and not health_blocked and bool(fresh) and isinstance(input_age, (int, float))
-                         and not isinstance(input_age, bool) and np.isfinite(input_age)
-                         and 0 <= input_age <= .25)
-        automatic_stale = str(status_message).startswith(("手掌数据缺失或已过期", "计算进程暂未响应"))
-        if (not runtime.get("error") and input_healthy and automatic_stale
-                and pose_reason in {"missing_or_stale_root", "process_unresponsive"}):
-            # A stale solved frame is not evidence that the independent serial
-            # acquisition stopped. Explicit I/O errors/calibration feedback win.
-            status_message = "输入正常，解算 / 显示等待更新；采集仍在继续。"
-        if health_faulted:
-            status_message = "输入异常保护中；请先恢复实时数据，暂不重新标定。"
-        self._set_changed(self.status, "setText", runtime.get("error") or status_message)
-        self._set_changed(self.status, "setStyleSheet", "color: #b33d30;" if runtime.get("error") else
-                          "color: #8a4e00;" if health_faulted else "color: #206b5b;")
-        self._refresh_local_recording(runtime)
+            self._set_changed(self.instructions, "setStyleSheet", text_style("instruction"))
+        self.capture_controls.setVisible(bool(active) or self.workspace_tabs.currentWidget() is not self.shape_scroll)
+        return hand_fitting
+
+    def _refresh_diagnostic_feedback(self, snapshot, frame):
+        calibration = snapshot.get("calibration") or {}
         lines = [self._gyro_scale_text, *calibration.get("warnings", [])]
         gaps = frame.get("gap_diagnostics", {})
         if gaps:
@@ -1585,6 +1737,103 @@ class LiveWindow(QtWidgets.QMainWindow):
         if self._render_error:
             lines.insert(0, "渲染更新失败；如有已展示手形则保留冻结参照：" + self._render_error)
         self._set_changed(self.details, "setPlainText", "\n".join(lines))
+
+    def refresh(self):
+        started = time.perf_counter()
+        snapshot = self.controller.latest_snapshot()
+        snapshot, clearing = self._calibration_display_snapshot(snapshot)
+        snapshot = self._presentation_snapshot(snapshot)
+        self._save_actions.observe(snapshot)
+        now = time.monotonic()
+        presentation = calibration_status(snapshot, now=now)
+        storage = storage_status(snapshot)
+        runtime, calibration = snapshot.get("runtime", {}), snapshot.get("calibration", {})
+        input_snapshot = input_display_snapshot(snapshot)
+        input_runtime = input_snapshot.get("runtime", {})
+        active = calibration.get("active")
+        connected = input_runtime.get("connected", False)
+        session = input_runtime.get("session_id") or runtime.get("session_id")
+        base_fitting = calibration.get("profile_status") == "fitting"
+        if session != self._capture_session:
+            self._capture_context = self._capture_completion = self._single_capture_feedback = None
+            self._capture_session = session
+        if active:
+            self._capture_context = {key: active[key] for key in ("kind", "step", "finger") if key in active}
+            self._capture_completion = self._single_capture_feedback = None
+        elif self._capture_context is not None and not base_fitting and not clearing:
+            if connected:
+                self._capture_completion = self._capture_completion_text(self._capture_context, runtime, calibration)
+                if self._capture_context.get("kind") == "functional":
+                    self._single_capture_feedback = self._capture_completion
+            else:
+                self._capture_completion = "连接已结束，本次采集已停止；重新连接后请以新会话的标定状态为准。"
+            self._capture_context = None
+        profile = (snapshot.get("pose") or {}).get("profile_version")
+        if ((session is not None and session != self._display_session)
+                or (profile is not None and self._display_profile is not None and profile != self._display_profile)):
+            self._clear_display_cache()
+        if session is not None:
+            self._display_session = session
+        if profile is not None:
+            self._display_profile = profile
+        self.connect_button.setText("断开" if connected else ("开始回放" if self.replay_raw else "连接"))
+        self.ports.setEnabled(not connected and not self.replay_raw)
+        self.scan.setEnabled(not connected and not self.replay_raw)
+        frame = input_snapshot.get("orientation") or {}
+        health_blocked = blocked_input_nodes(frame, self.config["node_to_slot"])
+        health = frame.get("input_health") or {}
+        health_faulted = (set(health.get("faulted_nodes", ()))
+                          | set(health.get("recovering_nodes", ()))) & set(self.config["node_to_slot"])
+        calibration_ready = calibration_input_ready(frame, self.config)
+        self._refresh_input_scale_check(snapshot, clearing)
+        self.shape_panel.refresh(snapshot, clearing=clearing, storage=storage, presentation=presentation)
+        self._set_changed(self.workflow_status, "setText", workflow_status_text(snapshot, status=presentation))
+        self._refresh_input_contract(snapshot, now)
+        input_text, warning_nodes = solver_input_status(frame, now, connected=connected)
+        self._set_changed(self.input_status, "setText", input_text)
+        self._set_status_style(self.input_status, "warning" if warning_nodes else "neutral")
+        fresh = frame.get("nodes", {})
+        published = input_runtime.get("published_monotonic_s", 0.)
+        if not isinstance(published, (float, int)) or now - published > .25:
+            fresh = {}
+        for node, badge in self.badges.items():
+            state = "success" if str(node) in fresh and connected else "muted"
+            status = fresh.get(str(node), {}).get("input_filter", {})
+            if (str(node) in fresh and connected and frame.get("input_filter", {}).get("enabled")
+                    and (status.get("gyro_rejected") or status.get("accel_rejected"))):
+                state = "info"
+            if connected and str(node) in warning_nodes:
+                state = "warning"
+            self._set_status_style(badge, state, compact=True)
+            label = {"success": "已收到", "muted": "未收到", "info": "已过滤", "warning": "需关注"}[state]
+            role = self.input_contract["nodes"][str(node)]["role"]
+            self._set_changed(badge, "setText", f"{node:02d} {_ROLE_NAMES.get(role, role)}\n{label}")
+        self._refresh_workspace_status(snapshot, input_snapshot, fresh, calibration_ready,
+                                       presentation, storage, clearing=clearing)
+        hand_fitting = self._refresh_capture_controls(snapshot, presentation,
+            calibration_ready=calibration_ready, clearing=clearing)
+        motion = calibration.get("motion_diagnostics", {})
+        motion_warnings = motion.get("warnings", []) if self.official else []
+        status_message = runtime.get("message", "等待手动连接")
+        pose_reason = (snapshot.get("pose") or {}).get("reason")
+        input_age = input_runtime.get("last_sample_age_s")
+        input_healthy = (connected and not health_blocked and bool(fresh) and isinstance(input_age, (int, float))
+                         and not isinstance(input_age, bool) and np.isfinite(input_age)
+                         and 0 <= input_age <= .25)
+        automatic_stale = str(status_message).startswith(("手掌数据缺失或已过期", "计算进程暂未响应"))
+        if (not runtime.get("error") and input_healthy and automatic_stale
+                and pose_reason in {"missing_or_stale_root", "process_unresponsive"}):
+            # A stale solved frame is not evidence that the independent serial
+            # acquisition stopped. Explicit I/O errors/calibration feedback win.
+            status_message = "输入正常，解算 / 显示等待更新；采集仍在继续。"
+        if health_faulted:
+            status_message = "输入异常保护中；请先恢复实时数据，暂不重新标定。"
+        self._set_changed(self.status, "setText", runtime.get("error") or status_message)
+        self._set_status_style(self.status, "error" if runtime.get("error") else
+                               "warning" if health_faulted else "neutral", compact=True)
+        self._refresh_local_recording(runtime)
+        self._refresh_diagnostic_feedback(snapshot, frame)
+        functional_adapter = (snapshot.get("pose") or {}).get("functional_adapter", {})
         visible = measured_pose_visible(snapshot, now) and not health_blocked
         quality_pose = snapshot.get("pose") or {}
         joint_style = self._joint_quality_presentation.update(quality_pose, now, session=session)
@@ -1616,8 +1865,8 @@ class LiveWindow(QtWidgets.QMainWindow):
             self._clear_display_cache()
             self.view.set_hand_visible(False)
             self.view_state.setText("正在清除本次标定 · 已隐藏模型；完成后请从第1步开始")
-            self._set_changed(self.view_state, "setStyleSheet", "background: #fff3d9; padding: 10px; font-weight: bold;")
-        elif active or not calibrated and not self._has_display_cache:
+            self._set_status_style(self.view_state, "warning")
+        elif active or not presentation.has_profile and not self._has_display_cache:
             # Instruction geometry is never admitted into the measurement /
             # continuity cache, even if it happens to look like the last hand.
             if self._has_display_cache:
@@ -1634,7 +1883,7 @@ class LiveWindow(QtWidgets.QMainWindow):
                 except (KeyError, ValueError, RuntimeError, OSError) as exc:
                     self._render_error = str(exc)
             self.view_state.setText("动作示意 · 人工指定模型姿态，不是你的实时手势")
-            self._set_changed(self.view_state, "setStyleSheet", "background: #fff3d9; padding: 10px; font-weight: bold;")
+            self._set_status_style(self.view_state, "warning")
         else:
             new_contract = "display_pose" in snapshot or "display_geometry" in snapshot
             candidate = snapshot.get("display_pose") if new_contract else quality_pose if visible else None
@@ -1778,17 +2027,18 @@ class LiveWindow(QtWidgets.QMainWindow):
             if display_warnings:
                 messages.extend(display_warnings)
             self._set_changed(self.view_state, "setText", "\n".join(messages))
-            self._set_changed(self.view_state, "setStyleSheet", "background: "
-                + ("#fff3d9" if pending or display_warnings else "#d6f3e7") + "; padding: 10px; font-weight: bold;")
+            self._set_status_style(self.view_state, "warning" if pending or display_warnings else "success")
         summary = compact_view_status(self.view_state.text(), replay=bool(self.replay_raw))
+        if presentation.requires_recalibration:
+            summary = ("部分骨段标定不可用 · 请查看详情" if presentation.state == "partial"
+                       else "标定已失效 · 请查看详情")
         if warning_nodes:
             summary += " · 输入有提示"
         self._set_changed(self.visual_status, "setText", summary)
-        # Preserve existing warning/recovery colors, but only in a single-line
-        # badge. Numbers and per-joint details cannot resize this fixed row.
-        background = "#fff3d9" if warning_nodes or "#fff3d9" in self.view_state.styleSheet() else "#d6f3e7"
-        self._set_changed(self.visual_status, "setStyleSheet",
-            f"background: {background}; padding: 6px; border-radius: 5px;")
+        # Status semantics are independent of palette and never inferred from CSS.
+        state = "warning" if (presentation.requires_recalibration or warning_nodes
+                              or self.view_state.property("statusState") == "warning") else "success"
+        self._set_status_style(self.visual_status, state, compact=True)
         self._set_changed(self.visual_status, "setToolTip", summary + "；完整信息见右侧“状态详情”。")
         shape_state = calibration.get("shape_calibration") or {}
         preview_mode = shape_state.get("preview_mode", "current")
@@ -1802,6 +2052,9 @@ class LiveWindow(QtWidgets.QMainWindow):
         if self._demo_key is not None or not self._has_display_cache:
             shape_text = "无实时手形预览；示意 / 保留图像不证明接触"
         self._set_changed(self.shape_view_status, "setText", shape_text)
+        self.shape_view_status.setVisible(self.official and (
+            self.workspace_tabs.currentWidget() is self.shape_scroll
+            or shown_mode != "current" or preview_mode != "current"))
         self._render_times = [stamp for stamp in self._render_times if now - stamp < 1.]
         age = input_runtime.get("last_sample_age_s")
         age_text = f"{age * 1000:.0f} ms" if isinstance(age, (float, int)) and np.isfinite(age) else "—"
@@ -1838,8 +2091,6 @@ class LiveWindow(QtWidgets.QMainWindow):
                            f"  ·  提交网格时姿态年龄 {pose_age}\n"
                            f"{timing_text}  ·  界面更新 {self._refresh_ms:.1f} ms（不含 GPU 显示延迟）"
                            f"{processing_text}{receive_text}{ros_text}")
-        if runtime.get("output_dir"):
-            self.output.setText("本次记录：" + str(runtime["output_dir"]))
         self._tactile_pose_current = bool(
             not clearing and not active and not self.replay_raw and not health_blocked
             and self._demo_key is None and self._has_display_cache
@@ -1883,7 +2134,10 @@ def run_live(config, mano_assets, *, output_root, port="", replay_raw=None, repl
     backend = ManoBackend(mano_assets, hand=config["hand"])
     backend.export_rest()  # Fail clearly before opening any GUI or device.
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    app.setFont(QtGui.QFont("Noto Sans CJK SC", 10))
+    font = QtGui.QFont()
+    font.setFamilies(list(FONT_FAMILIES))
+    font.setPointSize(FONT_POINT_SIZE)
+    app.setFont(font)
     window = LiveWindow(config, backend, output_root=output_root, port=port,
                         replay_raw=replay_raw, replay_speed=replay_speed, upstream_checkout=upstream_checkout,
                         ros_socket=ros_socket, tactile_socket=tactile_socket, tactile_layout=tactile_layout)

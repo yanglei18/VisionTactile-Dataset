@@ -9,6 +9,7 @@ from ...i18n import tr
 from ...i18n.messages import message as display_message
 
 import math
+from copy import deepcopy
 
 from PySide6 import QtCore, QtGui
 from ...i18n import widgets as QtWidgets
@@ -17,6 +18,8 @@ from ...backend.pose_preview import key_for, pose_preview
 
 
 class Glove3DWidget(QtWidgets.QWidget):
+    display_changed = QtCore.Signal()
+
     def __init__(self, hand, parent=None):
         super().__init__(parent)
         self.setObjectName("handCanvas")
@@ -29,6 +32,7 @@ class Glove3DWidget(QtWidgets.QWidget):
         self._desired_key = self._display_key = None
         self._session = None
         self._current = None
+        self._displayed_frame = None
         self._invalid = True
         self._disposed = False
         self._palmar, self._auto_fit = False, True
@@ -78,6 +82,20 @@ class Glove3DWidget(QtWidgets.QWidget):
         self.worker.ready.connect(self._ready)
         self.worker.failed.connect(self._failed)
 
+    @property
+    def displayed_frame(self):
+        """Isolated frame whose geometry is installed, or None before display.
+
+        Pending inputs never change this state. A held mesh retains its own
+        source metadata; a replaced/cleared surface has no displayed frame.
+        """
+        return deepcopy(self._displayed_frame)
+
+    def _commit_display(self, frame):
+        if frame != self._displayed_frame:
+            self._displayed_frame = frame
+            self.display_changed.emit()
+
     def clear_sample(self):
         """Discard this view's pose, including hidden and asynchronous state.
 
@@ -94,6 +112,7 @@ class Glove3DWidget(QtWidgets.QWidget):
         self._hide_hand = False
         if self.view is not None:
             self.view.set_hand_visible(False)
+        self._commit_display(None)
         self.message.setText(tr('等待有效手势；请打开标定工具连接 IMU 并完成标定。'))
         self.message.show()
         self.retry_button.hide()
@@ -140,13 +159,14 @@ class Glove3DWidget(QtWidgets.QWidget):
         if self._session is not None and self._session != session:
             self._display_key = None
             self._hide_hand = True
+            self._commit_display(None)
             self.message.setText(tr('新会话或标定结果，等待对应的三维姿态…'))
             self.message.show()
         self._session = session
         if key != self._desired_key:
             self._pending_result = None
         self._desired_key = key
-        self._current = (mano, frame.get("joints") or None)
+        self._current = deepcopy(frame)
         self._sync_visible()
 
     def _sync_visible(self):
@@ -163,7 +183,7 @@ class Glove3DWidget(QtWidgets.QWidget):
                 self._fit_camera()
         if self._invalid or self._current is None:
             return
-        self.worker.submit(*self._current)
+        self.worker.submit(self._current["mano"], self._current.get("joints") or None)
         bundle = self.worker.bundle if self.worker.bundle is not None else self._pending_bundle
         if bundle is not None:
             self._initialized(bundle)
@@ -209,6 +229,7 @@ class Glove3DWidget(QtWidgets.QWidget):
             self.view, self._bundle = view, bundle
             self._pending_bundle = None
             self._display_key = None
+            self._commit_display(None)
             view.installEventFilter(self)
             self.layout.addWidget(view, 1)
             self.message.setText(tr('正在重建收到的 MANO 姿态…'))
@@ -234,17 +255,19 @@ class Glove3DWidget(QtWidgets.QWidget):
             self._pending_result = None
             self.message.hide()
             self.retry_button.hide()
+            self._commit_display(self._current)
             return
         try:
             self.view.set_geometry(result["geometry"])
+            self._display_key = result["key"]
+            self._pending_result = None
+            self._commit_display(self._current)
             # Only camera translation follows the wrist-relative object bounds;
             # measured root rotation is retained, never applied twice/cancelled.
             vertices = self.view.mesh_data.vertexes()
             center = (vertices.min(axis=0) + vertices.max(axis=0)) * .5
             self.view.opts["center"] = QtGui.QVector3D(*[float(v) for v in center])
             self.view.update()
-            self._display_key = result["key"]
-            self._pending_result = None
             self.message.hide()
             self.retry_button.hide()
         except (ValueError, TypeError) as exc:
@@ -265,7 +288,7 @@ class Glove3DWidget(QtWidgets.QWidget):
         self.retry_button.hide()
         self.message.setText(tr('正在重新加载 MANO…'))
         if self._current is not None and self.isVisible():
-            self.worker.submit(*self._current)
+            self.worker.submit(self._current["mano"], self._current.get("joints") or None)
         else:
             self.message.setText(tr('等待新的有效手势；请确认原工具已连接并完成标定。'))
 

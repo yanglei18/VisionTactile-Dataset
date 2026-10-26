@@ -1,15 +1,4 @@
-"""Capture console design system and install-safe stylesheet resources."""
+"""Capture entry point for the Qt-independent shared workstation theme."""
+from vt_fsglove12.ui_theme import FONT_FAMILIES, FONT_POINT_SIZE, stylesheet
 
-from importlib.resources import files
-
-
-def stylesheet() -> str:
-    """Load the theme with absolute icon paths, independent of process cwd.
-
-    Qt's stylesheet URL loader does not resolve package-relative resources.
-    Normal wheel installations expose these small packaged SVGs as files.
-    """
-    root = files(__package__)
-    return root.joinpath("theme.qss").read_text(encoding="utf-8").replace(
-        "@THEME_DIR@", str(root).replace("\\", "/").replace('"', '\\"')
-    )
+__all__ = ["FONT_FAMILIES", "FONT_POINT_SIZE", "stylesheet"]

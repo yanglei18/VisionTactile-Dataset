@@ -9,6 +9,14 @@ permissions:
   contents: read
 
 jobs:
+  imu-firmware-host:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Test firmware with address and undefined-behavior sanitizers
+        run: python3 data_imu_stm32/tests/run_tests.py
+
   repository-contract:
     runs-on: ubuntu-24.04
     env:

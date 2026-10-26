@@ -142,6 +142,23 @@ def test_glove_replay_uses_recorded_joints_without_wall_clock():
     device = _device('/glove', 'vt_glove_msgs/msg/GloveState', message, 100, 100, [])
     assert len(device['preview']['joints']) == 21
     assert device['preview']['mode'] == 'replay'
+    assert 'glove_sources' not in device['preview']
+
+
+@pytest.mark.parametrize('reference', [11, 12])
+def test_glove_replay_preserves_each_recorded_layout(reference):
+    masks = dict(reference_node_id=reference,
+        segment_observed_mask=[i not in (2, 5, 8, 11, 13) for i in range(16)],
+        joint_observed_mask=[i in (0, 1, 4, 7, 10, 15) for i in range(16)],
+        inferred_mask=[i not in (0, 1, 4, 7, 10, 15) for i in range(16)])
+    message = NS(pose_valid=True, time_valid=True, hand='right', joint_positions_m=list(range(63)),
+                 header=NS(stamp=NS(sec=1, nanosec=0)), **masks)
+    device = _device('/glove', 'vt_glove_msgs/msg/GloveState', message, 100, 100, [])
+    assert device['preview']['glove_sources'] == masks
+    message.reference_node_id = 1
+    message.segment_observed_mask[0] = False
+    assert device['preview']['glove_sources']['reference_node_id'] == reference
+    assert device['preview']['glove_sources']['segment_observed_mask'][0]
 
 
 def test_tactile_state_preserves_recorded_mask_without_wall_clock():

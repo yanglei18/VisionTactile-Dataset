@@ -19,6 +19,34 @@ SPEC.loader.exec_module(policy)
 
 
 class ArtifactBoundaryTests(unittest.TestCase):
+    def test_firmware_source_and_portable_project_files_are_allowed(self) -> None:
+        for relative in ("README.md", "build.py", ".gitignore", "common/vt_imu_common.h",
+                         "IMU_SLV_MCU/.project", "IMU_SLV_MCU/.cproject", "IMU_SLV_MCU/IMU_SLV.ioc",
+                         "IMU_SLV_MCU/Core/Src/main.c", "IMU_SLV_MCU/STM32C011F6UX_FLASH.ld",
+                         "IMU_SLV_MCU/Core/Startup/startup_stm32c011f6ux.s",
+                         "IMU_MST_2/Drivers/STM32F4xx_HAL_Driver/LICENSE.txt",
+                         "IMU_MST_2/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Src/usbd_cdc.c"):
+            with self.subTest(relative=relative):
+                self.assertFalse(policy.forbidden_path("data_imu_stm32/" + relative))
+
+    def test_firmware_ide_state_and_compiler_products_are_rejected(self) -> None:
+        for relative in ("IMU_SLV_MCU/Debug/makefile", "IMU_MST_2/Release/sources.mk",
+                         "IMU_MST_2/debug/session.txt", "IMU_MST_2/.settings/preferences",
+                         "IMU_SLV_MCU/.mxproject", "IMU_SLV_MCU/board.launch",
+                         *("IMU_MST_2/output." + suffix for suffix in
+                           ("elf", "bin", "hex", "map", "o", "a", "d", "su", "list", "ELF", "BIN"))):
+            with self.subTest(relative=relative):
+                self.assertTrue(policy.forbidden_path("data_imu_stm32/" + relative))
+
+    def test_firmware_rules_do_not_expand_other_tool_boundaries(self) -> None:
+        for path in ("tools/example/debug/guide.md", "tools/example/.settings/source.json",
+                     "tools/example/example.launch", "tools/example/.mxproject",
+                     *("tools/example/reference." + suffix for suffix in
+                       ("elf", "bin", "hex", "map", "o", "a", "d", "su", "list")),
+                     "data_imu_stm32_backup/Debug/source.c"):
+            with self.subTest(path=path):
+                self.assertFalse(policy.forbidden_path(path))
+
     def test_static_geometry_is_detected_even_when_renamed(self) -> None:
         model = {"schema_version": 1, "neutral_geometry": {
             "vertices_m": [[0, 0, 0]], "faces": [[0, 0, 0]], "joints_m": [[0, 0, 0]],
@@ -155,6 +183,18 @@ class AlternateIndexTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+
+    def test_force_tracked_firmware_outputs_are_rejected_from_index(self) -> None:
+        paths = ("data_imu_stm32/IMU_SLV_MCU/Debug/makefile",
+                 "data_imu_stm32/IMU_MST_2/firmware.elf",
+                 "data_imu_stm32/IMU_MST_2/.mxproject")
+        for path in paths:
+            self.add_index_blob(path, "synthetic generated output\n")
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("forbidden tracked path: " + paths[0], result.stderr)
+        for path in paths[1:]:
+            self.assertIn("forbidden tracked artifact: " + path, result.stderr)
 
     def test_required_worktree_file_must_be_in_index(self) -> None:
         self.assertTrue((ROOT / "LICENSE").is_file())

@@ -16,6 +16,7 @@ from pyqtgraph.opengl import shaders
 
 from .live_display import display_basis, neutral_geometry_slot_map
 from .live_mesh import FixedTopologyMeshData
+from .ui_theme import CANVAS_BACKGROUND
 
 
 def _local_shader(parts):
@@ -57,7 +58,7 @@ class HandView(gl.GLViewWidget):
     def __init__(self, neutral_geometry, model_axes, parent=None):
         super().__init__(parent)
         self.setMinimumSize(500, 430)
-        self.setBackgroundColor("#e9f0f2")
+        self.setBackgroundColor(CANVAS_BACKGROUND)
         self.basis = display_basis(model_axes)
         self.faces = np.asarray(neutral_geometry["faces"], dtype=int)
         original = np.asarray(neutral_geometry["vertices_m"])

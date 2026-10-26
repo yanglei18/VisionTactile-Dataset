@@ -98,6 +98,13 @@ Chinese mode uses Chinese action labels, built-in device categories, Tracker rol
 5. Tracker 尚未初始化时，先用 **标定与离线工具 → Tracker 初始化向导**；完成后点击 **启动读取并查看 Tracker**。已有连续有效位姿时，不需要为了使用工作台而重做初始化或配对。
 6. 在“预览”查看所需数据源。然后进入 **录制**，创建或选择批次，填写试次名称、录制时长，点击 **开始录制**。等待结束或在录制页手动停止。
 7. 进入 **档案**，选中试次并打开 **试次详情 / 质检**，查看实际 bag 路径、元信息和质量报告；通过“打开数据目录”访问文件。需要时间对齐时，使用 **标定与离线工具 → 离线检查与时间对齐**。
+
+右手 LSM6DSR 手套可在“配置设备”中直接选择硬件版本和传感器布局。原固件选择
+**LSM6DSR · 原固件 · 104 Hz**，本款新布局选择**近节＋末节，掌心 11，辅助腕部 12**。
+保存时后台自动生成私有配置并匹配输出频率，无需手动填写 JSON 路径；已有配置文件保持原选择。
+“按近节与末节约束估算缺测中节”属于模型推断，需要重新标定和真机验证。
+固件 v2 选项仅供已经配套刷写主从机的设备使用，选择它不会刷写硬件。
+详见[手套配置与验证说明](../fsglove12/README.md#图形化配置与可靠性固件-v2)。
 8. 结束工作时先停止录制，再逐组停止设备。只关闭工作台窗口不会自动关闭后台或传感器；重新打开会复用原本机后台。
 
 “实时预览在线”与“被录入 bag”不是一回事。**录制 Topic 清单由相机页选中的采集配置决定**，界面筛选、勾选启动某个手套不会自动把对应 Topic 加入 bag。需要手势或触觉时，选择 `ros2_ws/src/vt_realsense_capture/config/cameras.with_*.yaml` 中与本次组合相符的现有配置。
@@ -331,6 +338,7 @@ Page changes preserve the session; reopening the workspace restores the manager'
 - 中文 Immersive Studio 界面，包含设备、预览、空间、录制和档案五个主题页面；适配 1080×720 起的窗口尺寸。录制设置与控制集中在录制页；切换页面后录制继续，录制标签显示状态与计时，点击即可返回操作。
 - 相机 RGB 和深度预览、Tracker 坐标轴与相对轨迹、手势的动态 MANO 三维手形／21 关节点骨架，以及触觉的二维手形、20×20 矩阵、静态 MANO 三维手形切换与放大查看。
 - 手势卡片和大图可调用对应手的原标定窗口；已有受管窗口只切换，不重复启动。骨架和 Tracker 视图可拖动旋转、滚轮缩放、双击复位；MANO 视图另有掌面、手背、复位与关节按钮。
+- 姿态标定窗口沿用工作台黑白灰主题，默认突出三步操作与三维手势；设备详情、高级校准和运行诊断按需展开。输入异常、标定失效和保存失败保持可见，操作见[姿态标定窗口说明](../fsglove12/README.md#姿态标定窗口)。
 - 合成演示支持单手、双手、不展示手部，以及数据陈旧和相机离线场景。
 - 真实模式展示 Topic 接收频率、有效样本频率、接收龄期与后台状态；断线后保留可用历史画面并标明陈旧。
 - 创建批次和命名试次，设置 1–300 秒时长，手动开始、提前停止或等待控制器定时结束。
@@ -580,6 +588,24 @@ process_groups:
 
 所有路径参数须为绝对路径或 `~/...`；串口优先使用稳定的 `/dev/serial/by-id/...`。IMU 与触觉使用不同串口，不应让两个读取程序占用同一设备。模板参数只映射到仓库已有启动文件，客户端不能传入任意命令、可执行文件或 shell 脚本。修改配置后需重启后台才能加载新配置；重启不会自动接管旧后台留下的进程。
 
+首次使用在“配置设备”中确认各手的 IMU / 触觉串口。保存配置时，
+程序会把已选中的在线 `/dev/ttyACM*`、`/dev/ttyUSB*` 或 `by-path` 路径自动转换为
+唯一匹配的 `by-id` 身份路径。后续启动按同一设备身份查找实际串口，即使 USB 插口或
+`ttyACM` 编号变化，也不需要重新填写。已有的 `by-id` 绑定不会被其他设备替换；
+设备离线时提示检查；身份有歧义或系统未提供唯一 `by-id` 时保留原选择。
+旧配置中的纯 `tty` 路径不会在程序启动时被自动绑定为此刻插入的设备，需先核对并保存。
+空白的左右手 / 触觉角色不会仅凭“只插着一个串口”自动分配，首次仍需确认设备用途。
+识别端口不自动执行姿态标定；打开标定窗口后连接手套，并按窗口引导完成标定。
+
+On first use, select the IMU and tactile port for each hand in **Configure devices**.
+Saving upgrades a selected, connected `ttyACM`,
+`ttyUSB` or `by-path` port to its unique `by-id` identity when available. Later
+starts resolve that identity again, so a changed USB connector or device number
+does not require another selection. Existing identity bindings, missing devices
+and ambiguous matches are preserved; unassigned roles are never guessed from the
+number of connected ports. Legacy raw tty paths are not bound to a new identity
+at startup; confirm and save them first. Port detection does not perform pose calibration.
+
 串口别名在每次明确启动前重新解析，预检与本次启动使用同一个实际节点；
 已启动组保留原资源身份。日志准备失败且尚未尝试创建进程时，不会留下“不明启动”
 记录。桌面后台自行维护 `manager.log`：每 250 ms 检查，超过 5 MiB 后保留末尾
@@ -775,6 +801,8 @@ env ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 - **三个 Tracker 已在线，空间页提示服务未启动**：旧版 `workstation.json` 可能缺少 `scene_config_path`，因此只有设备预览，尚未启动空间服务。在 **空间 → 空间配置** 选择 [`scene.example.yaml`](../../ros2_ws/src/vt_capture_manager/config/scene.example.yaml)；结束录制、停止受管设备后“保存并应用”，再恢复需要的模块。该模板可直接显示三个 Tracker 的公共坐标，无需相机外参或重新初始化 Tracker。
 
 ## 实现边界与后续阶段
+
+工作台、管理器与共享核心本轮组件版本为 `0.6.0`。工作台和管理器均要求 `vt-capture-core>=0.6.0`；独立回放工具的 `replay` extra 使用同一下限。升级时应一起安装同一源码版本的共享核心和消费者；旧核心 `0.5.0` 不包含当前使用的手套来源接口。组件版本与 socket 协议版本分别管理，本次没有改变消息协议编号。
 
 当前源码主要分为：
 

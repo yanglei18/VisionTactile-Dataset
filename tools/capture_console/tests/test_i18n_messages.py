@@ -51,6 +51,25 @@ def test_concise_archive_spatial_status_is_translated(source, english):
     assert str(displayed) == source
 
 
+@pytest.mark.parametrize("source,english", [
+    ("此手已有外部发布程序；窗口关闭后后台仍可能运行。请退出该外部程序后重试。",
+     "An external program is publishing this hand's data; its background process may still run after the window closes. Exit that program and try again."),
+    ("串口路径未配置；请检查设备启动配置。",
+     "No serial port is configured; check the device launch configuration."),
+    ("串口 /dev/serial/用户-{port} 已断开或不存在；请检查 USB 连接和配置端口。",
+     "Serial port /dev/serial/用户-{port} is disconnected or missing; check the USB connection and configured port."),
+    ("无法检查串口 /dev/serial/用户-{port}：test OS error；设备未启动。",
+     "Cannot inspect serial port /dev/serial/用户-{port}: test OS error; the device was not started."),
+    ("无法检查串口 /dev/serial/用户-{port} 的有效身份读写权限；设备未启动。",
+     "Cannot check serial port /dev/serial/用户-{port} read/write access for the current process; the device was not started."),
+])
+def test_glove_launch_blockers_translate_without_changing_device_paths(source, english):
+    displayed = messages.message(source)
+    assert str(displayed) == english
+    i18n.set_language("zh_CN", persist=False)
+    assert str(displayed) == source
+
+
 def test_complete_template_keeps_path_braces_quotes_and_chinese_opaque():
     path = "/home/操作者/录制/{自定义}/'试次一'.json"
     raw = "拒绝读取非私有或过大的设置文件：" + path

@@ -49,13 +49,17 @@ The caller must additionally verify its configured profile has launch_gui=true.
     owned_pid = group.get("owned") is True and type(group.get("pid")) is int and group["pid"] > 0
     result["can_focus"] = owned_pid and state in _FOCUS_STATES
     if state == "EXTERNAL":
-        result.update(state="EXTERNAL", message="此手已有外部发布器；请手动切换现有窗口，不会接管或再启动。")
+        result.update(state="EXTERNAL", message="此手已有外部发布程序；窗口关闭后后台仍可能运行。请退出该外部程序后重试。")
     elif state == "DISABLED":
         result.update(state="DISABLED", message="此手姿态模块未启用；请先在配置设备中启用。")
     elif state in {"STOPPED", "FAILED"} and not group.get("owned") and group.get("pid") is None:
         allowed = group.get("can_start") is True
+        detail = group.get("detail")
+        # Keep the manager's admission diagnostic intact for the existing UI
+        # translation boundary. Never stringify arbitrary snapshot fields.
+        blocked = detail if isinstance(detail, str) and detail.strip() else "此手进程已停止，但后台当前不允许启动；请核对录制与设备状态。"
         result.update(state="STARTABLE" if allowed else "STOPPED", can_start=allowed,
-                      message="此手进程已停止；可通过托管启动打开标定窗口。" if allowed else "此手进程已停止，但后台当前不允许启动；请核对录制与设备状态。")
+                      message="此手进程已停止；可通过托管启动打开标定窗口。" if allowed else blocked)
     elif state == "STOPPING":
         result.update(state="STOPPING", message="此手进程正在停止；等待退出，不会重复启动。")
     elif not owned_pid or state not in _FOCUS_STATES:

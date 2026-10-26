@@ -105,7 +105,7 @@ def test_independent_input_warning_remains_visible_but_history_is_not_an_alarm(c
     monkeypatch.setattr(live_ui, "solver_input_status", lambda *args, **kwargs: ("当前输入需核对", ["5"]))
     w.refresh()
     assert "输入有提示" in w.visual_status.text()
-    assert "#fff3d9" in w.visual_status.styleSheet()
+    assert w.visual_status.property("statusState") == "warning"
     monkeypatch.setattr(live_ui, "solver_input_status", lambda *args, **kwargs: ("历史已过滤 999 条；当前正常", []))
     w.refresh()
     assert "输入有提示" not in w.visual_status.text()

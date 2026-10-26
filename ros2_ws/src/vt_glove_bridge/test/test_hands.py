@@ -120,7 +120,7 @@ def test_tactile_only_launch_does_not_require_pose_assets_or_start_pose_processe
 
 def test_existing_single_right_defaults_remain_right():
     values = pose_options({})
-    assert values["hand"] == "right" and values["reference_node_id"] == 12
+    assert values["hand"] == "right" and values["reference_node_id"] == 0
     assert values["topic"] == "/gloves/right/state"
     assert values["socket_path"] == default_socket_path()
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from .input_contract import validate_input_contract
 from .input_guard import guard_settings
 from .input_health import health_settings
+from .vqf_settings import vqf_parameters
 
 SLOT_NAMES = (
     "palm", "index_proximal", "index_middle", "index_distal",
@@ -112,6 +113,7 @@ def validate_config(config: dict) -> dict:
         if node not in {str(i) for i in range(1, 13)} or not _finite_number(scale) or not 1e-7 <= scale <= 1:
             raise ValueError("invalid per-node accelerometer scale")
     validate_input_contract(config)
+    vqf_parameters(config)
     effective_guard = guard_settings(config)
     effective_health = health_settings(config)
     validate_solver_constraints(config)

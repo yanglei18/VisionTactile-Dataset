@@ -141,6 +141,12 @@ FORBIDDEN_SUFFIXES = (
     ".zip",
     ".tar", ".tgz", ".tar.gz", ".pth", ".pt", ".onnx", ".pkl",
 )
+# Firmware sources and portable project definitions are public. IDE-local state
+# and compiler products remain excluded even if force-added to Git. Scope these
+# suffixes to the firmware tree: other tools may legitimately contain e.g. maps.
+FIRMWARE_PREFIX = "data_imu_stm32/"
+FIRMWARE_GENERATED_DIRECTORIES = {"debug", "release", ".settings"}
+FIRMWARE_GENERATED_SUFFIXES = (".elf", ".bin", ".hex", ".map", ".o", ".a", ".d", ".su", ".list", ".launch")
 REGULAR_FILE_MODES = {"100644", "100755"}
 EXPECTED_MESSAGES = {
     "CaptureContext.msg",
@@ -360,12 +366,16 @@ PUBLIC_DOCUMENT_PATHS += (
 def _forbidden_directory(path: str) -> bool:
     parts = path.split("/")
     return (path.startswith(FORBIDDEN_EXPLICIT_PREFIXES)
+            or (path.startswith(FIRMWARE_PREFIX)
+                and any(p.lower() in FIRMWARE_GENERATED_DIRECTORIES for p in parts[:-1]))
             or any(p in FORBIDDEN_DIRECTORY_COMPONENTS or p.startswith(".venv") for p in parts[:-1]))
 
 
 def _forbidden_artifact(path: str) -> bool:
+    firmware = path.startswith(FIRMWARE_PREFIX)
     return any(
         p in FORBIDDEN_BASENAMES or p.startswith(FORBIDDEN_BASENAME_PREFIXES)
+        or (firmware and (p.lower() == ".mxproject" or p.lower().endswith(FIRMWARE_GENERATED_SUFFIXES)))
         or p.lower().endswith(FORBIDDEN_SUFFIXES)
         or re.search(r"\.so(?:\.\d+)+$", p.lower()) is not None
         or (p.startswith(".env.") and p != ".env.example")

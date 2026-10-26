@@ -573,7 +573,9 @@ class DesktopRuntime:
                 if problem:
                     raise RuntimeError(problem)
                 with self._lock:
-                    self.settings.save(configuration)
+                    # Retain any normalized serial identity across the backend
+                    # restart; a reused tty number must not rebind this apply.
+                    configuration = self.settings.save(configuration)
                 if not self._stop_owned(record):
                     return
             if self._stop.is_set():

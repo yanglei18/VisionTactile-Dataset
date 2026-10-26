@@ -157,6 +157,39 @@ class PrepareReleaseTests(unittest.TestCase):
             self.assertNotIn(name, files)
             self.assertIn(name, excluded)
 
+    def test_firmware_export_uses_real_boundary_even_for_force_tracked_outputs(self):
+        policy = release.contract(SCRIPT.parents[2])
+        sources = ("data_imu_stm32/README.md", "data_imu_stm32/build.py",
+                   "data_imu_stm32/IMU_SLV_MCU/Core/Src/imu_node.c",
+                   "data_imu_stm32/IMU_SLV_MCU/IMU_SLV.ioc",
+                   "data_imu_stm32/IMU_MST_2/Core/Startup/startup_stm32f446rctx.s")
+        generated = ("data_imu_stm32/IMU_SLV_MCU/Debug/makefile",
+                     "data_imu_stm32/IMU_MST_2/Release/sources.mk",
+                     "data_imu_stm32/IMU_MST_2/.settings/preferences",
+                     "data_imu_stm32/IMU_SLV_MCU/.mxproject",
+                     "data_imu_stm32/IMU_SLV_MCU/debug.launch",
+                     *("data_imu_stm32/IMU_MST_2/firmware." + suffix for suffix in
+                       ("elf", "bin", "hex", "map", "o", "a", "d", "su", "list")))
+        self.write(".gitignore", "data_imu_stm32/**/Debug/\n*.elf\n")
+        for name in sources + generated:
+            self.write(name, "synthetic firmware fixture\n")
+        self.git("add", "-f", "--", *generated)
+        before = self.index_and_objects()
+        with patch.object(release, "contract", return_value=policy), patch.object(
+                policy, "REQUIRED_FILES", {"README.md", "tools/check_public_tree.py"}):
+            files, links, excluded, errors = self.collect()
+        self.assertEqual(errors, [])
+        self.assertTrue(set(sources) <= files.keys())
+        self.assertTrue(set(generated) <= set(excluded))
+        archive_path = self.base / "firmware-source.tar.gz"
+        release.export_archive(archive_path, files, links)
+        with tarfile.open(archive_path, "r:gz") as archive:
+            manifest = json.load(archive.extractfile("Vision-Tactile-Dataset/PUBLIC_SOURCE_MANIFEST.json"))
+            published = {item["path"] for item in manifest["files"]}
+            self.assertTrue(set(sources) <= published)
+            self.assertFalse(set(generated) & published)
+        self.assertEqual(self.index_and_objects(), before)
+
     def test_secret_report_contains_path_but_not_source(self):
         # Deliberately synthetic pattern; never uses any real credential.
         token = "ghp_" + "X" * 40

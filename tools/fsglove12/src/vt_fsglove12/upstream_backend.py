@@ -369,7 +369,7 @@ class OfficialFSGloveBackend:
                         for slot in (1, 2, 4, 5, 7, 8, 10, 11, 15)
                         if slot in inverse and PARENTS[slot] in inverse})
 
-    def _functional_capture_results(self, capture_groups, profile, *, session_id):
+    def _functional_capture_results(self, capture_groups, profile, *, session_id, reference_selection=None):
         """Run each captured frame through the original solver exactly once.
 
         Result lists can be shared by several independent joint fits. Sample
@@ -385,7 +385,7 @@ class OfficialFSGloveBackend:
         binding = self._functional_binding(profile)
         seen = {node: set() for node in profile["nodes"]}
 
-        def convert(frames):
+        def convert(frames, *, reference=False):
             results = []
             for frame in frames:
                 if not isinstance(frame, dict) or frame.get("session_id") != session_id:
@@ -409,12 +409,58 @@ class OfficialFSGloveBackend:
                 joint_mask = list(pose["joint_observed_mask"])
                 for slot, dependencies in binding["dependency_nodes_by_slot"].items():
                     joint_mask[int(slot)] &= all(node in fresh_nodes for node in dependencies)
+                    if reference and reference_selection is not None:
+                        joint_mask[int(slot)] &= slot in reference_selection["stable_slots"]
                 results.append({**pose, "joint_observed_mask": joint_mask})
             return results
 
-        return binding, [convert(frames) for frames in capture_groups]
+        return binding, [convert(frames, reference=index == 0) for index, frames in enumerate(capture_groups)]
 
-    def fit_functional_finger(self, neutral_frames, motion_frames, profile, *, finger, session_id):
+    def functional_reference_rotations(self, frame, profile, slots):
+        """Read measured local rotations in the exact functional-fit domain.
+
+        Uses the cached official installation transforms without composing a
+        MANO mesh, advancing heading estimators or altering a live profile.
+        Independent sensor initial headings are aligned before pairing nodes.
+        """
+        if frame.get("session_id") != profile.get("session_id"):
+            return {}
+        calibrator = self._calibrator(profile)
+        transforms = calibration_rotations(calibrator, cache=self._rotation_cache)
+        binding = self._functional_binding(profile)
+        result = {}
+        for slot in slots:
+            dependencies = binding["dependency_nodes_by_slot"].get(str(slot), ())
+            if len(dependencies) != 2:
+                continue
+            values, identities = [], []
+            for node in dependencies:
+                data = frame.get("nodes", {}).get(node, {})
+                age = data.get("age_s", math.inf)
+                protection = data.get("input_filter", {})
+                if (data.get("epoch") != profile["nodes"][node]["epoch"]
+                        or data.get("orientation_valid") is False
+                        or data.get("input_health", {}).get("healthy") is False
+                        or protection.get("gyro_rejected") or protection.get("accel_rejected")
+                        or type(data.get("sample_index")) is not int or data["sample_index"] <= 0
+                        or not isinstance(age, (int, float)) or isinstance(age, bool)
+                        or not math.isfinite(age) or not 0. <= age <= self.config["stale_after_s"]):
+                    break
+                index = self.config["node_to_slot"][node]
+                try:
+                    rotation = quat(data.get("quat_xyzw"), f"node {node}")
+                except (ValueError, TypeError):
+                    break
+                values.append(transforms.global_error[index] * transforms.base_inv[index]
+                              * rotation * transforms.local_error_inv[index])
+                identities.append((data["epoch"], data["sample_index"]))
+            if len(values) == 2:
+                local = (values[0] * transforms.rest_delta[slot]).inv() * values[1]
+                result[str(slot)] = dict(quat_xyzw=local.as_quat().tolist(), identity=tuple(identities))
+        return result
+
+    def fit_functional_finger(self, neutral_frames, motion_frames, profile, *, finger, session_id,
+                              reference_selection=None):
         """Fit only explicitly labelled motion; never reuse legacy calibration.
 
         Official poses remain the input to this optional model-coordinate
@@ -423,7 +469,8 @@ class OfficialFSGloveBackend:
         """
         from .upstream_functional import FunctionalDependencyError, fit_functional_finger
         binding, (neutral, motion) = self._functional_capture_results(
-            [neutral_frames, motion_frames], profile, session_id=session_id)
+            [neutral_frames, motion_frames], profile, session_id=session_id,
+            reference_selection=reference_selection)
         try:
             return fit_functional_finger(neutral, motion, finger=finger, binding=binding,
                 previous=profile.get("functional_fingers", {}).get(finger))
@@ -432,7 +479,8 @@ class OfficialFSGloveBackend:
             # the existing official installation profile.
             raise ValueError(str(exc)) from exc
 
-    def fit_functional_hand(self, neutral_frames, finger_frames, thumb_frames, profile, *, session_id):
+    def fit_functional_hand(self, neutral_frames, finger_frames, thumb_frames, profile, *, session_id,
+                            reference_selection=None):
         """Batch the existing per-finger fits without inventing a new solver.
 
         One shared neutral, one simultaneous four-finger flexion segment and
@@ -443,8 +491,9 @@ class OfficialFSGloveBackend:
         """
         from .upstream_functional import FINGER_SLOTS, FunctionalDependencyError, fit_functional_finger
         binding, (neutral, fingers, thumb) = self._functional_capture_results(
-            [neutral_frames, finger_frames, thumb_frames], profile, session_id=session_id)
-        entries, errors = {}, {}
+            [neutral_frames, finger_frames, thumb_frames], profile, session_id=session_id,
+            reference_selection=reference_selection)
+        entries, errors, failures = {}, {}, {}
         for finger in FINGER_SLOTS:
             try:
                 entries[finger] = fit_functional_finger(neutral, thumb if finger == "thumb" else fingers,
@@ -452,7 +501,9 @@ class OfficialFSGloveBackend:
                     previous=profile.get("functional_fingers", {}).get(finger))
             except (ValueError, FunctionalDependencyError) as exc:
                 errors[finger] = str(exc)
-        return dict(entries=entries, errors=errors,
+                failures[finger] = dict(diagnostics=deepcopy(getattr(exc, "diagnostics", {})),
+                                        rejected_slots=deepcopy(getattr(exc, "rejected_slots", {})))
+        return dict(entries=entries, errors=errors, failures=failures,
                     capture_protocol="shared_neutral_four_fingers_then_thumb_ip_v1",
                     input_frame_counts=dict(neutral=len(neutral_frames),
                                             four_fingers=len(finger_frames), thumb_ip=len(thumb_frames)))

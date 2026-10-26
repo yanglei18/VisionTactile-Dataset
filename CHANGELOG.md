@@ -5,11 +5,68 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 These changes describe the current source development preview. Component
-versions such as the workbench's `0.5.0` do not establish a published project
+versions such as the workbench's `0.6.0` do not establish a published project
 release or a completed hardware acceptance run.
 
 ### Added
 
+- Explicit offline preparation-uncertainty initialization for native VQF,
+  including per-node evidence age, clock-epoch protection and physical slow-yaw
+  regressions. Whole-hand replay still shows per-joint tradeoffs, so this
+  candidate does not change live defaults or claim that drift is resolved.
+
+- Shared isolated calibration jobs for basic and functional fitting, with
+  bounded asynchronous artifact encoding and durable commit acknowledgements.
+  USB delivery gaps now have a versioned, bounded row-accounting phase; only
+  completed groups can reconcile nominal sample counts. Historical replay
+  policies and actual per-sample integration remain unchanged.
+- Layout-derived functional targets and guidance, including per-joint failure
+  evidence. Unknown display regions and their descendants are hidden while
+  valid regions keep updating; display placeholders never become measurements.
+  Passive fusion diagnostics expose residual-bias contributions without
+  retuning the estimator or claiming verified hardware/anatomical accuracy.
+
+- Read-only glove session analysis with source-identity deduplication,
+  per-joint validity, separate calibration/clock segments, and explicit hold
+  and return windows. Recorded-result cadence and rotational repeatability do
+  not establish device rate or anatomical accuracy. Fusion audits replay
+  explicit preparation events; the hinge audit selects supported single-axis
+  references from the profile and layout. Replay clock transitions now export
+  an unavailable state without reusing old measurements or reporting an IPC
+  failure.
+- Explicit stationary preparation for new physical glove sessions, with
+  per-sensor gyro baselines, continuity invalidation, and sample-boundary event
+  replay. Slow motion is preserved instead of widening automatic zero-bias
+  adaptation. New v3 installation and functional v2 profiles validate capture
+  quality, signed left/right references, sparse dependencies and final joint
+  geometry; rejected candidates preserve the accepted calibration. Rendering
+  and ROS export share mandatory quality masks and retain only trusted history.
+  Raw recording and periodic session metadata I/O use bounded workers with
+  explicit incomplete-recording states; frozen-input detection examines
+  sensor axes, and replay preserves source time independently of playback speed.
+  Historical recordings retain their declared policies. Long-duration physical
+  drift and gesture accuracy remain subject to a fresh hardware acceptance run.
+- Shared Qt-binding-independent studio theme for the workbench and gesture
+  calibration window. Calibration keeps three-pose actions and live source
+  status prominent, with optional controls and diagnostics collapsed; input,
+  calibration and storage failures retain visible feedback and recovery paths.
+- Shared live/replay fusion state machine, including input-health suspension,
+  recovery, epochs and diagnostics; bounded proximal/distal middle-segment
+  inference with explicit estimated provenance and historical defaults intact.
+- Graphical hardware/layout composition with private immutable glove configs,
+  coordinated output limits and fresh-calibration binding. Firmware v2 source,
+  cross-build tooling, HAL mock tests and explicit bounded device readback are
+  included; flashing and physical gesture acceptance remain separate actions.
+
+- Explicit, versioned STM32/LSM6DSR input profile for the reviewed 104 Hz,
+  ±8 g and ±1000 degrees/s firmware, independent of hand placement. The
+  `configure-input` command creates a new bound configuration without changing
+  historical defaults or recordings. Live and offline conversion use the
+  recorded profile; changed inputs require fresh calibration.
+- Passive per-node MCU counter diagnostics for this declared firmware protocol,
+  with live/offline records and Chinese input details. Counter discontinuities
+  are observations only: they do not deduplicate samples, change integration
+  time or claim hardware sample loss.
 - Automatic local-path preparation before starting a new desktop backend,
   including saved empty fields and moved software installations. Existing
   backend sessions keep their active settings. Tracker initialization shares the
@@ -105,6 +162,22 @@ release or a completed hardware acceptance run.
 
 ### Fixed
 
+- Separate local joint validity from mesh ancestry with the explicit
+  `joint_quality_revision=local_joint_geometry_v2` contract. A usable local
+  estimate can be `valid_hidden` without claiming complete geometry or an
+  independent measurement. Local and display rejection reasons remain separate;
+  missing-input dependencies and existing model limits still apply. Historical
+  unversioned results retain v1 semantics, unknown revisions fail closed, and
+  whole-hand `pose_valid` still requires every local estimate and geometry to be
+  available. This does not establish anatomical accuracy or resolve drift.
+- Keep glove source annotations bound to the geometry actually displayed by the
+  asynchronous 3D renderer, including held frames, failed reconstruction and
+  session changes. Detail windows refresh on display completion.
+- Require shared capture core 0.6.0 in the workbench, manager and replay extra,
+  so partial upgrades reject older packages without the glove provenance API.
+- Let the pose producer own default IMU layout selection. An unconfigured ROS
+  bridge validates the packet-declared palm instead of maintaining a second
+  default; an explicit configuration still pins the expected palm identity.
 - Public-source checks now reject compiled installers/libraries and exported
   static-hand geometry even when renamed. Vendored installer text keeps its
   original CRLF bytes without failing the source whitespace check.

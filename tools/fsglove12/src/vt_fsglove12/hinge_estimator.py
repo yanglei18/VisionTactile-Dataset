@@ -14,6 +14,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from .config import digest
+from .functional_quality import HINGE_RESIDUAL_MAX_DEG
 from .heading_correction import CausalHeadingCorrector, HINGES, _finite, _rotation, _wrap
 from .heading_window import FunctionalHeadingWindow, WINDOW_DEFAULTS
 from .upstream_functional import FunctionalDependencyError, KIND, _project, _same_binding
@@ -21,7 +22,7 @@ from .upstream_functional import FunctionalDependencyError, KIND, _project, _sam
 
 METHOD = "qmt_excited_window_functional_hinge_v3"
 DEFAULTS = dict(max_age_s=.15, max_pair_skew_s=.03, max_gap_s=.25,
-                rating_min=.2, residual_max_deg=15.,
+                rating_min=.2, residual_max_deg=HINGE_RESIDUAL_MAX_DEG,
                 smoothing_tau_s=.75, max_correction_rate_deg_s=5.,
                 max_parameter_angle_rate_deg_s=10., **WINDOW_DEFAULTS)
 _FINGERS = {slot: finger for finger, slot in HINGES.items()}
