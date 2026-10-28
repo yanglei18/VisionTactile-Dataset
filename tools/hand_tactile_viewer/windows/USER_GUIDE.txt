@@ -1,0 +1,202 @@
+手势与触觉可视化 0.1.0 / Hand Motion and Touch Viewer 0.1.0
+中文使用说明 / English instructions below
+
+版本范围：本说明对应当前源码及按其重新构建的安装包；此前导出的 0.1.0
+安装包不包含后来新增的串口自动刷新、类型识别和识别误判修复。
+当前触觉采集仅支持既有 26 字节协议，尚未适配实测的 44 字节整行格式。
+端口打开或零散颜色出现不代表解析正确；44 字节设备暂不能用于正常触觉显示。
+
+这是什么
+本工具将右手姿态和触觉显示在同一个三维手模型上。它是独立应用，
+可以与原“触觉三维预览”0.6.2 并存；两者的设置和本机参考独立保存。
+使用完整安装包不需要安装 Python、ROS 或主采集程序，也不用填写模型路径。
+
+安装与连接
+1. 在 Windows 10 1809 及以上或 Windows 11 x64 电脑运行
+   VisionHandMotionTouch-0.1.0-windows-x64-setup.exe。
+   选择中文或 English，安装后打开“手势与触觉可视化”。
+2. 插入姿态手套和触觉设备，列表每秒在后台自动更新；也可点击“刷新”。
+   自动更新保留已选端口和手动输入，下拉选择或编辑期间延后更新。
+3. 在“姿态串口”选择 IMU 手套对应的 COM 口，点击该行“连接”。
+   在“触觉串口”选择触觉板对应的另一个 COM 口，点击该行“连接”。
+   点击“识别类型”可在下拉列表显示“动捕／触觉／未识别”。
+   识别短时读取空闲串口，不发送固件命令，跳过占用端口；新的连接等待识别完成。
+   无稳定设备身份时显示“本次识别”，换设备后重新识别；也可分别拔插确认。
+4. 两路可独立连接，也可同时使用。程序不会在启动或刷新时自动打开串口。
+   主程序、原触觉工具或其他串口软件不能同时占用这些端口。
+5. “界面语言”可随时切换中文和英文，连接保持不变，下次启动保留选择。
+
+开始手势显示
+1. 戴好并固定右手手套，展开“手势标定”。本版本采用配套的新款右手布局。
+2. 依次点击姿势按钮并“采集当前姿势”，采集期间保持该姿势：
+   1. 平掌：掌心朝下、五指伸直，保持静止。
+   2. 指尖上倾：保持五指伸直，转动整掌使指尖向上倾约 50°。
+   3. 指尖下倾：保持五指伸直，沿同一转轴使指尖向下倾约 50°。
+   每次先停稳，再开始采集；按界面的倒计时操作。
+3. 三个姿势完成后自动计算，等待“基础标定已生效”。
+   “请求已提交”只表示操作已排队；“部分节点未通过”表示部分结果，
+   可在“运行详情”查看具体原因并重新采集。
+4. 可选“全手弯曲校准”：按界面提示先伸直，再缓慢弯曲五指。
+   等待实际完成结果；部分手指更新不等于全手成功。
+5. “取消采集”结束正在进行的采集；“重新标定”清除当前手势标定。
+   更换佩戴位置后重新完成三步标定。手势标定不修改触觉参考。
+
+查看触觉
+配套安装包携带通用参考。兼容的同协议、同右手 20×20 布局设备连接后，
+优先使用本机已保存的该设备参考，否则使用通用参考；换电脑不强制归零。
+原触觉工具中单独保存的参考不会自动复制到本应用。
+
+无载区域应接近浅绿色，响应增强时平滑过渡到深红色。颜色表示扣除参考、
+经过噪声门槛处理的相对 ADC 响应，不是牛顿或帕斯卡等压力单位。
+无有效数据或参考的触点显示灰色，未映射表面保持模型底色。
+
+若需要更新无载参考，保持触觉区域不受压，点击“触觉归零（可选）”，
+保持约 3 秒。设备有稳定 USB 身份时，新参考会自动保存在本机；
+没有唯一身份时，新采集参考只用于当前连接。此操作不改变手势标定。
+“显示设置”可调整显示范围、响应方向和触觉波特率（默认 115200）。
+范围以 ΔADC 表示，从 0 开始，数值不会按当前按压力度自动缩放。
+
+理解画面状态
+- 只连接触觉：显示“固定参考手形 · 非实时手势”，手指不会随动作变化。
+- 姿态已连接但未标定：显示“等待手势标定”，先完成三步采集。
+- 手势有效且触觉时间匹配：在动态手表面显示触觉。
+- 等待触觉或等待时间对应的触觉：手势可继续显示，暂不叠加旧触觉。
+- 手势数据已过期或模型不可用：等待有效数据，不把历史手形当作实时。
+两路按电脑接收时间关联显示，并非硬件同步。局部无效关节的保形显示
+不代表该关节已被准确测量。本工具不提供 Tracker 世界定位，也不会根据
+真实指尖接触自动调整虚拟手指；手势沿用现有 FSGlove 适配算法。
+
+视图与退出
+拖动旋转模型，滚轮缩放；“掌面”“手背”“复位”切换视角。
+日常使用只需主视图，更多诊断可展开“运行详情”。
+退出时点击窗口关闭，程序先释放两路串口和计算进程；正在释放时请等待。
+默认不连续录制原始数据或完整姿态流，仅保存标定所需证据、结果及必要日志。
+本机设置和参考位于用户配置目录，卸载不会删除这些用户数据。
+
+遇到问题
+- 没有 COM 口：检查数据线与设备管理器，必要时安装设备厂商的串口驱动。
+  安装包不安装 USB 驱动；重新插入后刷新并选择当前端口。
+- 连接后没数据：核对姿态/触觉端口是否选反，关闭其他占用串口的程序；
+  触觉波特率须与设备一致。断线后重新连接。
+- 手势不动：先核对主状态是“固定参考手形”还是“等待手势标定”。
+- 按压无明显颜色：确认触觉已连接、参考就绪，以及范围和方向适合设备。
+- 三维画面打不开：检查显卡驱动及桌面 OpenGL 支持。
+- 标定或保存失败：展开运行详情，保留错误文本供维护人员定位。
+
+版本说明
+本版本为 0.1.0。离线初始化、自检或 Wine 测试不代替 Windows 真机验收；
+真实双串口、标定效果、显卡与连续运行仍需在交付电脑上验证。
+
+--------------------------------------------------------------------------
+
+ENGLISH USER GUIDE
+
+Version scope: this guide describes current source and installers rebuilt from
+it. The earlier 0.1.0 installer does not contain automatic port refresh, type
+identification, or its subsequent false-positive fix. Tactile acquisition still
+supports the existing 26-byte protocol only. The observed 44-byte row format
+is not yet supported; an open port or scattered colors do not prove valid data.
+
+About this application
+The viewer displays right-hand motion and tactile response on one 3D hand.
+It is a separate application and can coexist with Tactile 3D Viewer 0.6.2.
+Settings and locally saved references are independent. A complete installer
+includes the runtime and model resources: no Python, ROS, main workstation,
+or model-path setup is needed by the user.
+
+Install and connect
+1. On Windows 10 version 1809 or later, or Windows 11 x64, run
+   VisionHandMotionTouch-0.1.0-windows-x64-setup.exe.
+   Choose your language, install, and open Hand Motion and Touch Viewer.
+2. Plug in the motion glove and tactile device. Port lists update in the
+   background every second; Refresh requests an immediate scan. Selections
+   and manual input are retained; open dropdowns and active edits are preserved.
+3. Select the IMU glove's COM port under Motion port and click Connect.
+   Select the tactile board's different COM port under Touch port and connect.
+   Click Identify types to label ports Motion / Touch / Unidentified.
+   Identification briefly reads idle ports without sending firmware commands;
+   occupied ports are skipped and new connections wait until it finishes.
+   Ports without a stable identity show "this scan"; identify them again after
+   changing devices. Unplugging devices separately also helps locate ports.
+4. Either source can be used alone. Starting or refreshing never opens a port.
+   Close other programs using either port, including the original tactile viewer.
+5. Interface language changes immediately without disconnecting the devices.
+   Your selection is retained for the next launch.
+
+Calibrate motion
+1. Put on and secure the right-hand glove. Expand Motion calibration.
+   This release uses the supplied new right-hand IMU configuration.
+2. Select each step and click Capture this pose. Hold the indicated pose:
+   1. Flat hand: palm down, fingers straight, held still.
+   2. Tilt fingers up: keep fingers straight; tilt the whole hand about 50 degrees up.
+   3. Tilt fingers down: keep fingers straight; tilt about 50 degrees down
+      along the same axis.
+   Settle before starting each capture, then follow the countdown.
+3. Calibration is computed after all three captures. Wait for Motion calibration
+   is active. A submitted request is not a completion result. If some nodes
+   were not calibrated, open Details and recapture the affected pose.
+4. Optionally run Whole-hand flexion calibration. Follow the status: hold fingers
+   straight, then flex all fingers slowly. Wait for the actual result;
+   a partial update is not a successful calibration of every finger.
+5. Cancel capture ends the current acquisition. Reset calibration clears the
+   current motion calibration. Repeat the three steps after changing sensor fit.
+   Motion calibration does not change the touch reference.
+
+View touch
+The supplied package includes a general reference for compatible right-hand
+20 x 20 devices using the same protocol and layout. A saved reference for this
+device takes priority; otherwise the general reference is used. Zeroing on a
+new computer is optional. References saved by the original tactile viewer
+are not copied into this application's settings automatically.
+
+Unloaded regions should be near light green; greater response transitions
+smoothly to dark red. Colors show relative ADC response after reference
+subtraction and noise thresholds, not calibrated pressure or force units.
+Points without valid data or a reference are gray; unmapped areas keep the
+model's base color.
+
+To update the reference, leave tactile regions unloaded, click Zero touch
+reference (optional), and hold for about three seconds. With a stable USB
+identity, the device reference is saved on this computer. Without a unique
+identity, a newly measured reference lasts for the current connection only.
+This does not alter motion calibration. Display settings contains the display
+range, response direction and touch baud rate (115200 by default). The range
+starts at zero in delta ADC units and does not auto-scale with applied force.
+
+Understand the display
+- Touch only: Fixed reference hand - not measured motion; fingers stay fixed.
+- Motion connected but uncalibrated: complete the three motion captures first.
+- Valid motion and matching touch: colors appear on the moving hand.
+- Waiting for touch or matching touch: motion can continue without old colors.
+- Stale motion or an unavailable model: the viewer waits for valid data instead
+  of presenting an old hand pose as a new measurement.
+The streams are associated by host receive time, not hardware synchronization.
+A retained visual shape for an unavailable joint is not an accurate measurement.
+The tool uses the existing FSGlove adapter. It does not provide Tracker world
+position or automatically force virtual fingertips to meet when real fingers touch.
+
+View controls and exit
+Drag to rotate, scroll to zoom. Palm, Back and Reset view provide preset views.
+Details contains additional diagnostics. Close the window to release both ports
+and the processing worker; wait if it is still releasing resources.
+Continuous raw/pose recording is disabled by default. Only calibration evidence,
+results and necessary logs are saved. User configuration and local references
+are kept in the user's configuration directory and are retained when uninstalling.
+
+Troubleshooting
+- No COM port: check the data cable and Device Manager; install the device
+  manufacturer's driver if needed. USB drivers are not part of the installer.
+  Refresh and select the current port after reconnecting a device.
+- Connected without data: check that motion and touch ports are not swapped,
+  close other serial applications, and check the touch baud rate. Reconnect
+  after a lost connection.
+- Hand does not move: check whether the display indicates a fixed reference
+  hand or requires motion calibration.
+- Little color response: check the touch connection, reference, range and direction.
+- No 3D display: check the graphics driver and desktop OpenGL support.
+- Calibration or saving failed: open Details and retain the error for the maintainer.
+
+Release status
+Version 0.1.0. Offline initialization, self-checks and Wine tests do not replace
+native Windows acceptance. Real dual-port operation, calibration, graphics
+and sustained operation must still be verified on the delivery computer.

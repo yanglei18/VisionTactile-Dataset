@@ -98,6 +98,24 @@ class RevisionRuntime(Runtime):
         return 0  # Idle state never changes; command acknowledgement is separate.
 
 
+class RejectedRuntime(RevisionRuntime):
+    def submit(self, name, **args):
+        return False
+
+
+def test_child_queue_rejection_is_public_and_does_not_claim_execution(controller):
+    value = controller(runtime_factory=RejectedRuntime).start()
+    wait_for(lambda: value.latest_snapshot()["runtime"].get("backend_loaded"))
+    assert value.submit("cancel_capture")
+    snapshot = wait_for(lambda: (s if (s := value.latest_snapshot())["runtime"].get(
+        "command_rejected_count") == 1 else None))
+    runtime = snapshot["runtime"]
+    assert runtime["last_rejected_command_name"] == "cancel_capture"
+    assert "cancel_capture" in runtime["last_rejected_command_error"]
+    assert runtime["command_completed_generation"] == 0
+    assert runtime["last_command_name"] is None
+
+
 class InputRevisionRuntime(RevisionRuntime):
     """Input keeps updating independently of frozen/slow pose publication."""
     def latest_input_snapshot(self):
@@ -627,3 +645,16 @@ def test_display_survives_missing_root_algorithm_omission_and_late_render_is_not
     controller._clear_calibration()
     cleared = controller.latest_snapshot()
     assert cleared["display_pose"] is None and cleared["display_geometry"] is None
+
+
+def test_explicit_calibration_only_policy_reaches_spawn_child(controller, tmp_path):
+    value = controller(record_streams=False).start()
+    snapshot = wait_for(lambda: (s if (s := value.latest_snapshot())["runtime"].get("backend_loaded") else None))
+    assert snapshot["runtime"]["factory_kwargs"] == ["record_streams"]
+    assert not snapshot["runtime"]["connected"] and not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false"])
+def test_process_recording_policy_requires_boolean(controller, value):
+    with pytest.raises(ValueError, match="record_streams"):
+        controller(record_streams=value)

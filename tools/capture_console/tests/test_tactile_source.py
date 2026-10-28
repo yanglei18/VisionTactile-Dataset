@@ -41,6 +41,55 @@ def test_zero_adc_is_valid_and_returns_independent_python_lists():
     assert model.poll(now_ns=NOW).frame["values"][0] == 0
 
 
+def test_public_timing_keeps_source_provenance_across_repaints_and_is_immutable():
+    from dataclasses import FrozenInstanceError
+
+    sample = state(snapshot_monotonic_ns=NOW + 1_000_000)
+    model = module.TactileDisplayModel()
+    model.observe(sample, now_ns=NOW + 1_000_000)
+    first = model.poll(now_ns=NOW + 2_000_000)
+    later = model.poll(now_ns=NOW + 20_000_000)
+    assert first.timing == later.timing
+    assert first.timing.session_id == "synthetic"
+    assert first.timing.source_monotonic_ns == NOW
+    assert first.timing.snapshot_monotonic_ns == NOW + 1_000_000
+    assert first.timing.source_sequence == 1
+    assert first.timing.block_monotonic_ns == (NOW,) * 160
+    sample.block_monotonic_ns[:] = 0
+    assert first.timing.block_monotonic_ns == (NOW,) * 160
+    with pytest.raises(FrozenInstanceError):
+        first.timing.source_sequence = 2
+    assert model.poll(now_ns=NOW + 100_000_001).timing is None
+
+
+def test_public_timing_exposes_hidden_health_and_reference_boundaries():
+    model = module.TactileDisplayModel(response_enabled=True)
+    model.observe(state(), now_ns=NOW)
+    first = model.poll(now_ns=NOW).timing
+    model.invalidate("等待数据", "暂时中断", reset_reference=True)
+    model.observe(state(2, NOW + 1), now_ns=NOW + 1)
+    recovered = model.poll(now_ns=NOW + 1).timing
+    assert recovered.display_generation > first.display_generation
+    assert recovered.session_id == first.session_id
+    model.start_reference(now_ns=NOW + 2)
+    collecting = model.poll(now_ns=NOW + 2).timing
+    assert collecting.display_generation > recovered.display_generation
+    model.configure_response(display_range_adc=500)
+    changed = model.poll(now_ns=NOW + 3).timing
+    assert changed.display_generation > collecting.display_generation
+    model.configure_response(display_range_adc=500)
+    assert model.poll(now_ns=NOW + 4).timing == changed
+
+
+def test_timing_normalizes_block_storage_and_rejects_invalid_clock_contract():
+    blocks = [NOW] * 160
+    timing = module.TactileTiming("one", 1, 1, NOW, NOW, blocks, 100_000_000)
+    blocks[0] = 0
+    assert timing.block_monotonic_ns[0] == NOW
+    with pytest.raises(ValueError):
+        module.TactileTiming("one", 1, 1, NOW, NOW - 1, blocks, 100_000_000)
+
+
 def test_cell_freshness_uses_stride8_and_rechecks_without_new_packets():
     sample = state()
     sample.block_monotonic_ns[3 * 8 + 2] = NOW - 100_000_001
@@ -63,6 +112,7 @@ def test_cell_freshness_uses_stride8_and_rechecks_without_new_packets():
     {"snapshot_monotonic_ns": NOW - 1}, {"max_age_ns": -1},
     {"adc": [1] * 399}, {"adc": [65536] * 400}, {"valid_mask": [2] * 400},
     {"block_monotonic_ns": [NOW] * 159},
+    {"transport_reset_generation": -1}, {"transport_health_generation": "invalid"},
 ])
 def test_bad_input_clears_previously_good_frame(changes):
     model = module.TactileDisplayModel()

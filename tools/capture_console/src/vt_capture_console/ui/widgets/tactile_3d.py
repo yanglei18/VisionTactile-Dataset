@@ -162,11 +162,12 @@ class Tactile3DWidget(QtWidgets.QWidget):
         key = (self._frame, self._levels)
         if key == self._last_colors_key:
             return
-        from .preview import _HEAT_STOPS
-        from .tactile_surface_colors import raw_surface_colors
+        from .tactile_surface_colors import surface_colors
+        from .tactile_palette import heat_stops
 
-        colors = raw_surface_colors(self.binding, self._frame, self.view.colors,
-                                    self._levels, _HEAT_STOPS)
+        kind = self._frame.get("value_kind", "raw_adc") if self._frame is not None else "raw_adc"
+        colors = surface_colors(self.binding, self._frame, self.view.colors,
+                                self._levels, heat_stops(kind))
         self.view.set_surface_colors(colors)
         self._last_colors_key = key
 

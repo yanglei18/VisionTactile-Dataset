@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vt-fsglove12"
-version = "0.1.0"
+version = "0.1.1"
 description = "Experimental twelve-IMU adapter for the FSGlove/MANO hand-model workflow"
 readme = "README.md"
 license = {text = "Apache-2.0"}

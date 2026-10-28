@@ -92,5 +92,7 @@
   "静态手模型加载失败：静态手模型 JSON 包含非有限数值": "Static hand model could not be loaded: Static hand model JSON contains non-finite values",
   "静态手模型加载失败：静态手模型 JSON 包含重复字段": "Static hand model could not be loaded: Static hand model JSON contains duplicate fields",
   "静态手模型加载失败：静态手模型文件超出允许大小": "Static hand model could not be loaded: Static hand model exceeds the allowed file size",
-  "静态手模型加载失败：静态手模型已发生变化，请重新加载模型": "Static hand model could not be loaded: Static hand model changed; reload the model"
+  "静态手模型加载失败：静态手模型已发生变化，请重新加载模型": "Static hand model could not be loaded: Static hand model changed; reload the model",
+  "当前参考和显示设置未能保存；下次启动仍使用原配置。": "The current reference and display settings could not be saved. The previous configuration will be used next time.",
+  "未取得设备唯一标识，本次参考仅在当前连接使用。": "No unique device identity is available. This reference is used only for the current connection."
 }

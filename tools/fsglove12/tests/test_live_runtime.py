@@ -248,7 +248,7 @@ def test_tick_timestamps_locked_state_without_hiding_future_or_stale_samples(
 
 
 @pytest.fixture
-def harness(tmp_path):
+def harness(tmp_path, request):
     clock, sources, fit_calls = Clock(), [], []
     config = load_config()
     config["input_health"] = {"enabled": False}  # FakeFusion tests do not model acquisition health.
@@ -284,7 +284,7 @@ def harness(tmp_path):
 
     controller = LiveController(config, rest, {}, output_root=tmp_path, source_factory=source_factory,
                                 clock=clock, fusion_factory=Fusion, solver_factory=lambda *_: solver,
-                                calibration_fn=fit)
+                                calibration_fn=fit, record_streams=getattr(request, "param", True))
     state = SimpleNamespace(controller=controller, clock=clock, sources=sources, solver=solver,
                             fits=fit_calls, controls=controls, output=tmp_path)
 
@@ -333,6 +333,39 @@ def test_default_idle_no_source_or_output_and_snapshot_deepcopy(harness):
     snapshot["calibration"]["warnings"].append("mutated")
     assert not controller.latest_snapshot()["calibration"]["warnings"]
     assert not harness.sources and not list(harness.output.iterdir())
+
+
+def test_command_ack_reports_execution_and_errors_not_queue_receipt(harness, monkeypatch):
+    controller = harness.controller
+    entered, release = threading.Event(), threading.Event()
+    original = controller._command
+
+    def delayed(name, args):
+        entered.set()
+        assert release.wait(2.)
+        return original(name, args)
+
+    monkeypatch.setattr(controller, "_command", delayed)
+    # Accepted while stopped processing still has no completion ACK.
+    assert controller.submit("cancel_capture")
+    assert controller.latest_snapshot()["runtime"]["command_completed_generation"] == 0
+    controller.start()
+    try:
+        assert entered.wait(1.)
+        assert controller.latest_snapshot()["runtime"]["command_completed_generation"] == 0
+    finally:
+        release.set()
+    wait_for(lambda: controller.latest_snapshot()["runtime"]["command_completed_generation"] == 1)
+    runtime = controller.latest_snapshot()["runtime"]
+    assert runtime["last_command_name"] == "cancel_capture"
+    assert "连接" in runtime["last_command_error"]
+    assert controller.submit("clear_calibration")
+    wait_for(lambda: controller.latest_snapshot()["runtime"]["command_completed_generation"] == 2)
+    runtime = controller.latest_snapshot()["runtime"]
+    assert runtime["last_command_name"] == "clear_calibration"
+    assert runtime["last_command_error"] is None
+    assert not controller.submit("invalid_command")
+    assert controller.latest_snapshot()["runtime"]["command_completed_generation"] == 2
 
 
 def test_input_quality_is_exported_without_stopping_acquisition(harness, monkeypatch):
@@ -1299,3 +1332,54 @@ def test_clear_generation_is_advanced_before_releasing_fusion_reset_lock(tmp_pat
     controller._clear_calibration()
     assert observed_generations == [1]
     assert controller._input_snapshot["runtime"]["clear_generation"] == 1
+
+
+@pytest.mark.parametrize("harness", [False], indirect=True)
+def test_calibration_only_run_keeps_solver_and_calibration_without_continuous_files(harness):
+    h = harness
+
+    def no_recorder(*_args, **_kwargs):
+        raise AssertionError("Display-only mode must not create continuous recorders")
+
+    h.controller._recorder_factory = no_recorder
+    h.controller._result_recorder_factory = no_recorder
+    h.connect()
+    session = h.controller._session
+    assert session.recorder is None and session.result_recorder is None
+    assert not h.controller._writers
+    for step in STEP_KEYS:
+        h.capture(step)
+    h.pump(count=5)
+    state = h.controller.latest_snapshot()
+    assert state["runtime"]["connected"] and state["pose"]["pose_available"]
+    status = state["runtime"]["local_recording"]
+    assert status["requested"] is False and status["enabled"] is False
+    assert status["mode"] == "calibration_only" and status["warning"] == ""
+    assert status["recorded_samples"] == 0 and status["received_samples"] > 0
+    assert status["profile_saved"]
+    directory = session.directory
+    assert (directory / "profile.v001.json").is_file()
+    assert len(list((directory / "calibration").glob("capture.*.json"))) == 3
+    assert h.controller.submit("disconnect")
+    wait_for(lambda: (directory / "summary.json").is_file())
+    summary = json.loads((directory / "summary.json").read_text())
+    assert summary["session_complete"] and summary["reader_stopped"] and not summary["errors"]
+    assert summary["recording_requested"] is False
+    assert summary["recording_complete"] is False and summary["raw_recording_complete"] is False
+    assert summary["recorded_samples"] == 0 and summary["result_recording"] is None
+    assert summary["received_samples"] > 0 and summary["available_poses"] > 0
+    assert not any((directory / name).exists() for name in ("raw.csv", "poses.jsonl", "orientations.jsonl"))
+    events = [json.loads(line)["event"] for line in (directory / "events.jsonl").read_text().splitlines()]
+    assert "connecting" in events and "capture_complete" in events and "disconnected" in events
+    metadata = json.loads((directory / "session_metadata.json").read_text())
+    assert metadata["result_recording_mode"] == "calibration_only"
+    assert h.sources[-1].closed
+
+
+@pytest.mark.parametrize("record_streams", [None, 0, 1, "false"])
+def test_record_streams_requires_explicit_boolean(tmp_path, record_streams):
+    config = load_config()
+    rest = dict(parents=list(PARENTS), rest_global_xyzw=[[0., 0., 0., 1.]] * 16)
+    with pytest.raises(ValueError, match="record_streams"):
+        LiveController(config, rest, {}, output_root=tmp_path, record_streams=record_streams)
+    assert not list(tmp_path.iterdir())

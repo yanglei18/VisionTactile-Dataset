@@ -21,6 +21,7 @@ import time
 
 import numpy as np
 
+from . import host_clock
 from .replay import _configuration, _node_key, _record_gap, _WARNINGS
 from .sensor_quality import GyroNearRailMonitor, quality_warnings
 from .input_contract import effective_input_scales, raw_to_si, validate_input_contract
@@ -121,7 +122,7 @@ class ImuParser:
     def feed(self, data, host_monotonic_s=None, host_wall_s=None, *,
              host_monotonic_ns=None, host_realtime_ns=None):
         stamp, monotonic_ns = _timestamp_pair(host_monotonic_s, host_monotonic_ns,
-                                             "host_monotonic_s", "host_monotonic_ns", time.monotonic_ns)
+                                             "host_monotonic_s", "host_monotonic_ns", host_clock.monotonic_ns)
         wall, realtime_ns = _timestamp_pair(host_wall_s, host_realtime_ns,
                                            "host_wall_s", "host_realtime_ns", time.time_ns)
         if not isinstance(data, (bytes, bytearray, memoryview)):
@@ -274,7 +275,7 @@ class SerialSource:
             data = self._serial.read(min(MAX_READ_BYTES, max(1, waiting)))
             # Capture the two host clocks after read completion, before waiting
             # for the diagnostics lock. These are not simultaneous IMU times.
-            monotonic_ns, realtime_ns = time.monotonic_ns(), time.time_ns()
+            monotonic_ns, realtime_ns = host_clock.monotonic_ns(), time.time_ns()
         except (OSError, _serial_module().SerialException) as exc:
             raise StreamError(f"Serial read failed for {self.port!r}: {exc}") from exc
         # The sole reader performs all I/O outside the snapshot/parse lock.
@@ -299,7 +300,7 @@ class SerialSource:
         Counts and ages remain available after close until the next real open.
         """
         with self._diagnostics_lock:
-            stamp = _timestamp(time.monotonic() if now is None else now, "host_monotonic_s")
+            stamp = _timestamp(host_clock.monotonic() if now is None else now, "host_monotonic_s")
             return dict(source_kind="raw_serial", opened=self._opened,
                         bytes_received=self._bytes_received,
                         frames_decoded=self.parser.frames_ok,
@@ -525,7 +526,7 @@ class OnlineFusion:
         return self.snapshot(now, consume=False)
 
     def snapshot(self, now=None, *, consume=True):
-        stamp = _timestamp(time.monotonic() if now is None else now, "host_monotonic_s")
+        stamp = _timestamp(host_clock.monotonic() if now is None else now, "host_monotonic_s")
         nodes = {}
         quality = self.sensor_quality.snapshot(stamp)
         health = self.input_health.snapshot(stamp) if self.input_health.settings["enabled"] else None

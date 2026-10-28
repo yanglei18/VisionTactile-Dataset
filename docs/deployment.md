@@ -16,7 +16,8 @@ and [firmware build and upgrade guide](../data_imu_stm32/README.md).
 
 | Your use case | Installation path | Completion criterion |
 | --- | --- | --- |
-| Standalone Windows Tactile 3D Viewer only | Go directly to [section 1](#windows) | Select a COM port, connect, and see tactile values change with contact |
+| Standalone Windows Tactile 3D Viewer only | Go directly to [section 1](#windows) | Connect to the COM port, load a general or saved device reference, and verify touch/hold/release responses |
+| Standalone Windows Hand Motion and Touch Viewer | See the [new viewer guide](../tools/hand_tactile_viewer/README.en.md) | Two serial ports, three-pose calibration and touch on one moving right hand; coexists with the tactile-only viewer |
 | Ubuntu interface demonstration only | Sections 2 and 3, then the demonstration in section 7 | Synthetic views labeled DEMO display correctly |
 | Real capture, playback and quality checks on Ubuntu | Sections 2–8 | Live streams update, and a short recording passes inspection and archive playback |
 | Add Tracker, gesture solving or calibration | Complete the base deployment, then [section 9](#modules) | Each module passes its input and operation checks |
@@ -34,17 +35,18 @@ Use an x64 desktop running Windows 10 version 1809 or later, or Windows 11, with
 2. In PowerShell, verify that the file's hash matches the supplied `.sha256`:
 
    ```powershell
-   Get-FileHash -Algorithm SHA256 .\VisionTactile3D-0.5.1-windows-x64-setup.exe
+   Get-FileHash -Algorithm SHA256 .\VisionTactile3D-0.6.2-windows-x64-setup.exe
    ```
 
 3. Close any older instance, run the installer, choose Simplified Chinese or English, and complete installation for the current user.
 4. Plug in the tactile board, start **Tactile 3D Viewer**, refresh and select its actual COM port, confirm the baud rate (`115200` by default), and click **Connect**.
-5. Press different tactile points and confirm that the display follows the data. Drag to rotate and use the mouse wheel to zoom. Switching language should preserve the connection.
-6. Click **Disconnect**, then exit. To upgrade, run the new installer. Uninstall through Windows **Settings → Apps**; user preferences are retained.
+5. **General reference**, **Default reference** or **Saved reference** means responses are ready to view. Right-hand 400-point devices with the same protocol and layout do not require zeroing after changing computer or board. If unloaded offsets remain, optionally leave the regions unpressed, click **Zero unloaded reference**, and wait about three seconds. With a unique USB identity, the new device reference is saved automatically.
+6. Touch, hold and release different regions. Confirm that unloaded regions remain neutral, sustained contact stays visible, and release restores the neutral color when the signal returns to the unloaded range. Drag to rotate and use the mouse wheel to zoom. Switching language should preserve the connection.
+7. Click **Disconnect**, then exit. To upgrade, run the new installer. Uninstall through Windows **Settings → Apps**; user preferences are retained.
 
 If no COM port appears, check the data cable and Device Manager. If necessary, install the driver supplied by **that device's manufacturer**; the installer does not include USB drivers. Check the graphics driver if the 3D display fails. Do not let two applications open the same serial port.
 
-The installed `使用说明.txt` is the complete bilingual user guide, corresponding to [USER_GUIDE.txt](../tools/tactile_viewer_windows/USER_GUIDE.txt) in the repository. Colors represent raw ADC values, not pressure units; a historical frame is not a live measurement. Serial-port operation, graphics and sustained operation must still be tested on the target Windows computer.
+The installed `使用说明.txt` is the complete bilingual guide, corresponding to [USER_GUIDE.txt](../tools/tactile_viewer_windows/USER_GUIDE.txt) in the repository. Version `0.6.2` adds a general reference that is not tied to a USB serial number; existing local device-specific references still take priority and are not reused for other devices. The general reference is a display starting point, not a fresh unloaded measurement of the new board. Source builds without a bundled reference still need manual zeroing. The application does not identify hardware models automatically. After changing boards, refresh the list, select the new COM port and connect. A new computer needs no Python/model-path configuration. Colors represent noise-thresholded relative ADC response, not pressure units. **Configure device** provides a fixed display range (default `0–1000 ΔADC`) and response direction; general-mode settings are stored separately, while device-specific settings retain priority. A historical frame is not a live measurement. The version in the hash command does not establish a public download. Older installers must be rebuilt and upgraded. Serial-port operation, graphics, unloaded/touch response and sustained operation must still be tested on the target Windows computer.
 
 <a id="ubuntu"></a>
 ## 2. Ubuntu: prepare the base environment

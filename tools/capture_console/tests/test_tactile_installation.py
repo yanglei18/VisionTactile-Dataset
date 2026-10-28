@@ -77,6 +77,70 @@ def _report(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+@pytest.fixture
+def default_reference_path(tmp_path):
+    path = tmp_path / "通用参考.json"
+    path.write_text(json.dumps({
+        "schema_version": 2, "scope": "layout", "layout": "right_adc20x20_v1",
+        "protocol": "vt_tactile_adc400_v1", "hand": "right",
+        "reference": {"schema_version": 1, "baseline_adc": [18000.] * 400,
+                      "activation_threshold_adc": [30.] * 400, "valid_mask": [True] * 400},
+        "settings": {"display_range_adc": 1000., "direction": "both"},
+        "captured_at_utc": "2026-10-27T00:00:00+00:00",
+    }), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("scope,expected_mode", [
+    ("layout", "layout_default"), ("device", "device_matched_preset"),
+])
+def test_reference_self_check_reports_scope_without_requiring_device_access(
+        tmp_path, model_path, isolated_settings, default_reference_path, monkeypatch, scope, expected_mode):
+    import serial
+    from serial.tools import list_ports
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("Reference installation checks must not access serial hardware")
+
+    monkeypatch.setattr(serial, "Serial", forbidden)
+    monkeypatch.setattr(list_ports, "comports", forbidden)
+    if scope == "device":
+        value = _report(default_reference_path)
+        del value["scope"], value["layout"]
+        value.update(schema_version=1, device={"vendor_id": 1234, "product_id": 5678,
+                                               "serial_number": "private-test-identity"})
+        default_reference_path.write_text(json.dumps(value), encoding="utf-8")
+    path = tmp_path / "reference-check.json"
+    before = isolated_settings.read_bytes()
+    assert module.check_installation(path, model_bundle=model_path,
+                                     response_profile=default_reference_path) == 0
+    details = _report(path)["details"]["response_profile"]
+    assert details == {"included": True, "mode": expected_mode, "reference_cells": 400,
+                       "display_range_adc": 1000., "direction": "both"}
+    assert "private-test-identity" not in path.read_text(encoding="utf-8")
+    assert isolated_settings.read_bytes() == before
+
+
+@pytest.mark.parametrize("fault", ["scope", "layout", "protocol", "baseline", "missing"])
+def test_invalid_explicit_reference_fails_installation_check(
+        tmp_path, model_path, isolated_settings, default_reference_path, fault):
+    value = _report(default_reference_path)
+    if fault == "missing":
+        default_reference_path.unlink()
+    else:
+        if fault == "baseline":
+            value["reference"]["baseline_adc"][0] = -1
+        else:
+            value[fault] = "unsupported"
+        default_reference_path.write_text(json.dumps(value), encoding="utf-8")
+    path = tmp_path / "invalid-reference.json"
+    assert module.check_installation(path, model_bundle=model_path,
+                                     response_profile=default_reference_path) == 1
+    report = _report(path)
+    assert report["status"] == "error"
+    assert [issue["check"] for issue in report["issues"]] == ["response_profile"]
+
+
 def test_real_imports_binding_resources_and_unicode_paths_preserve_settings(
         tmp_path, model_path, isolated_settings):
     report_path = tmp_path / "诊断 结果" / "安装自检.json"

@@ -48,13 +48,22 @@ without ROS, sensors, private Tracker inputs, or MANO models.
 > kept outside Git. A clean clone does not include a configured hardware rig.
 
 This repository publishes a **source development preview**; matching Ubuntu graphical installers are delivered separately through complete sign-in-free links. The workbench
-package version `0.6.0` identifies that component; it does not mean that these
+package version `0.6.3` identifies that component; it does not mean that these
 changes have been published under a matching project tag. See
 [Unreleased changes](CHANGELOG.md#unreleased) for the candidate scope.
-The independent tactile viewer has its own version, `0.5.1`, and bilingual
-Chinese/English UI. Its [Windows installer build tooling](tools/tactile_viewer_windows/README.en.md)
+The independent tactile viewer has its own source build version, `0.6.2`, and bilingual
+Chinese/English UI with general references across compatible boards, priority for saved device references, optional unloaded
+zeroing and noise-thresholded ADC response display.
+Its [Windows installer build tooling](tools/tactile_viewer_windows/README.en.md)
 is included as source; this public source preparation does not include a
 redistribution-authorized model or a public Windows installer download.
+
+The separate [Hand Motion and Touch Viewer 0.1.0](tools/hand_tactile_viewer/README.en.md)
+combines two serial sources on one moving right-hand model, with three-pose calibration,
+a bilingual UI and its own Windows installation. The original tactile `0.6.2` remains
+available. See the tool's guide for resource preparation, operation and hardware validation scope.
+This source preview supports the existing 26-byte tactile protocol; the observed
+44-byte row format is not yet supported.
 
 | Workflow | Prerequisites beyond this source |
 | --- | --- |
@@ -104,7 +113,7 @@ project makes those boundaries explicit:
 | Official FSGlove core / 12-IMU adapter | Original public calibration/inference and shape optimizer connected; physical accuracy unverified | `tools/fsglove12/` |
 | Glove ROS bridge and workbench hand preview | Published MANO poses or skeleton fallback; requires external model/runtime for 3D; calibration remains in the original glove window | [Glove bridge](ros2_ws/src/vt_glove_bridge/README.md) |
 | Independent left/right pose and tactile modes | Per-hand models, calibration, ROS topics and optional GUIs; left hardware mapping/accuracy still requires validation | [Single/dual-hand guide](ros2_ws/src/vt_glove_bridge/README.md#22-单手双手和仅触觉统一入口) |
-| Independent tactile viewer | v0.5.1 Chinese/English UI, serial selection and fixed-hand 3D tactile display; Windows x64 source build; native Windows hardware acceptance pending | [Viewer and Windows build](tools/tactile_viewer_windows/README.en.md) |
+| Independent tactile viewer | v0.6.2 source build: Chinese/English UI, serial selection, general references across compatible boards and priority for saved device references, optional zeroing and fixed-hand 3D ADC response; native Windows hardware acceptance required | [Viewer and Windows build](tools/tactile_viewer_windows/README.en.md) |
 | Tactile ROS 2 acquisition and heatmap | 20×20 rolling states, 2D/3D display and offline export; original wire samples retained for bag compatibility | [Tactile guide](ros2_ws/src/vt_tactile_capture/README.md) |
 | Glove, tactile, and auxiliary bag extensions | Typed glove/tactile validation and configurable generic selection; exact recording allowlist required | `recording.additional_streams` |
 | Cross-camera hardware exposure sync | Not claimed | — |
@@ -605,6 +614,7 @@ files and must not be committed.
 - [Glove ROS bridge and independent left/right operation](ros2_ws/src/vt_glove_bridge/README.md)
 - [Tactile acquisition, layouts, replay, and reconstruction](ros2_ws/src/vt_tactile_capture/README.md)
 - [Independent bilingual tactile viewer and Windows source build](tools/tactile_viewer_windows/README.en.md)
+- [Standalone hand motion and touch: two ports, one dynamic right hand and Windows build](tools/hand_tactile_viewer/README.en.md)
 
 The older `glove_hand_pose` prototype is separate from ROS recording and
 alignment; `fsglove12` has a ROS bridge. Sparse-input hand reconstruction remains

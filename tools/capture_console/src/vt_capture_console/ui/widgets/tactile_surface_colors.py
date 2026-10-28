@@ -1,4 +1,4 @@
-"""Raw ADC coloring over the calibration tool's fixed tactile surface binding.
+"""Tactile scalar coloring over the calibration tool's fixed surface binding.
 
 This is display interpolation, not pressure estimation or pose reconstruction.
 The original 400 samples and masks are never changed. Neutral skin is retained
@@ -10,14 +10,14 @@ from __future__ import annotations
 import numpy as np
 
 
-def raw_surface_colors(binding, frame, base_colors, levels, heat_stops):
+def surface_colors(binding, frame, base_colors, levels, heat_stops):
     colors = np.array(base_colors, dtype=np.float32, copy=True)
     if frame is None or levels is None:
         return colors
     values = np.asarray(frame["values"], dtype=float)
     mask = np.asarray(frame["valid_mask"], dtype=bool)
     if values.shape != (400,) or mask.shape != (400,):
-        raise ValueError("3D tactile display requires 400 raw ADC values and masks")
+        raise ValueError("3D tactile display requires 400 values and masks")
     lo, hi = levels
     if not np.isfinite([lo, hi]).all() or hi <= lo:
         raise ValueError("ADC color levels must be finite and increasing")

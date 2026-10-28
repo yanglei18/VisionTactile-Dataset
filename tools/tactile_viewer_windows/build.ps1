@@ -4,13 +4,15 @@ param(
     [Parameter(Mandatory = $true)][string]$ModelLicense,
     [string]$Output,
     [string]$Iscc,
-    [string]$Wheelhouse
+    [string]$Wheelhouse,
+    [string]$ResponseProfile
 )
 
 $ErrorActionPreference = 'Stop'
 $arguments = @('-3.12', (Join-Path $PSScriptRoot 'build.py'),
     '--model-bundle', $ModelBundle, '--model-license', $ModelLicense)
 if ($Output) { $arguments += @('--output', $Output) }
+if ($ResponseProfile) { $arguments += @('--response-profile', $ResponseProfile) }
 if ($Iscc) { $arguments += @('--iscc', $Iscc) }
 if ($Wheelhouse) { $arguments += @('--wheelhouse', $Wheelhouse) }
 

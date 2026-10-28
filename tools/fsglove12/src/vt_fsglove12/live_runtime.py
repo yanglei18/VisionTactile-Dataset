@@ -21,6 +21,7 @@ import time
 from typing import Any
 from uuid import uuid4
 
+from . import host_clock
 from .calibration import apply_calibration, validate_rest
 from .calibration_artifacts import artifact_size, resume_artifact, write_artifact
 from .config import digest, validate_config
@@ -287,13 +288,19 @@ class LiveController(ShapeCalibrationMixin):
     Optional factories are dependency-injection seams, not alternate synthetic
     models. ``join`` returns True only when processing and reader threads ended.
     A timed-out reader is never killed, and blocks any subsequent connection.
+    ``record_streams=False`` keeps configuration, bounded calibration evidence
+    and events, without creating raw/pose/orientation continuous recorders.
     """
 
     def __init__(self, config, rest, model_axes, *, output_root,
-                 source_factory=None, clock=time.monotonic, fusion_factory=None,
+                 source_factory=None, clock=host_clock.monotonic, fusion_factory=None,
                  solver_factory=None, recorder_factory=None, calibration_fn=None,
                  geometry_backend=None, pose_backend=None, pose_exporter=None,
-                 result_recorder_factory=None, input_scale_job_factory=None, shape_job_factory=None):
+                 result_recorder_factory=None, input_scale_job_factory=None, shape_job_factory=None,
+                 record_streams=True):
+        if type(record_streams) is not bool:
+            raise ValueError("record_streams must be a boolean")
+        self.record_streams = record_streams
         self.config = validate_config(deepcopy(config))
         ResultRecordingPolicy(self.config)  # Validate logging settings before opening hardware.
         validate_rest(rest)
@@ -346,6 +353,8 @@ class LiveController(ShapeCalibrationMixin):
                          input_diagnostics=None,
                          active_input_contract=describe_input_contract(self.config),
                          input_scale_generation=0,
+                         command_completed_generation=0, last_command_name=None,
+                         last_command_error=None,
                          shape_command_generation=0, shape_command_error=None,
                          calibration_storage=self._calibration_storage_status(None),
                          last_sample_age_s=None, published_monotonic_s=self._clock(),
@@ -453,7 +462,8 @@ class LiveController(ShapeCalibrationMixin):
             reason = "disconnected" if disconnected else "missing_or_stale_root"
             metadata = {key: value for key, value in (result.get("pose") or {}).items()
                         if key in {"schema_version", "session_id", "frame_index", "config_sha256",
-                                   "model_rest_sha256", "profile_version", "input_kind", "hardware_accessed"}}
+                                   "model_rest_sha256", "profile_version", "input_kind", "hardware_accessed",
+                                   "source_monotonic_ns", "source_reference_node"}}
             result["pose"] = {**metadata, **_unavailable(reason, now)}
             result["geometry"] = None
             if reason == "disconnected":
@@ -573,16 +583,16 @@ class LiveController(ShapeCalibrationMixin):
         self._invalidate("控制器停止中。")
 
     def join(self, timeout=None) -> bool:
-        deadline = None if timeout is None else time.monotonic() + max(0., timeout)
+        deadline = None if timeout is None else host_clock.monotonic() + max(0., timeout)
         # The processor may still be registering a job when stop() arrives.
         # Join it first, then inventory workers; a pre-join snapshot can omit
         # exactly the child we need to drain before reporting shutdown success.
         if self._thread is not None and self._thread is not threading.current_thread():
-            self._thread.join(None if deadline is None else max(0., deadline - time.monotonic()))
+            self._thread.join(None if deadline is None else max(0., deadline - host_clock.monotonic()))
         workers = [self._thread, *self._readers, *self._writers, self._scale_job, self._shape_job]
         for thread in workers:
             if thread is not None and thread is not threading.current_thread():
-                remaining = None if deadline is None else max(0., deadline - time.monotonic())
+                remaining = None if deadline is None else max(0., deadline - host_clock.monotonic())
                 thread.join(remaining)
         return not any(thread and thread.is_alive() for thread in workers)
 
@@ -649,9 +659,11 @@ class LiveController(ShapeCalibrationMixin):
     def _local_recording_status(self, session):
         with session.recording_lock:
             errors = list(session.recording_errors)
-            enabled = not session.recording_disabled.is_set()
-        return dict(enabled=enabled, errors=errors,
-            warning=("" if enabled else "本地记录已暂停；实时采集、解算和 ROS 发布继续，"
+            failed = session.recording_disabled.is_set()
+            enabled = self.record_streams and not failed
+        return dict(enabled=enabled, requested=self.record_streams,
+            mode="streams" if self.record_streams else "calibration_only", errors=errors,
+            warning=("" if not failed else "本地记录已暂停；实时采集、解算和 ROS 发布继续，"
                      "暂停后的数据未写入本地文件。原因：" + "；".join(errors)),
             received_samples=session.received, recorded_samples=session.recorded,
             profile_saved=session.profile_saved,
@@ -857,7 +869,8 @@ class LiveController(ShapeCalibrationMixin):
             config_sha256=self._config_sha, model_rest_sha256=self._rest_sha,
             startup_gc_policy=deepcopy(self._snapshot["runtime"].get("startup_gc_policy")),
             result_recording_mode=(session.result_recorder.snapshot()["mode"]
-                                   if session.result_recorder is not None else "synchronous")))
+                                   if session.result_recorder is not None else
+                                   "synchronous" if self.record_streams else "calibration_only")))
         session.metadata_written = True
 
     @staticmethod
@@ -1086,25 +1099,28 @@ class LiveController(ShapeCalibrationMixin):
         directory = self.output_root / session_id
         directory.mkdir(parents=True, exist_ok=False)
         session = _Session(session_id, directory, port, self._source_factory(port),
-                           self._fusion_factory(self.config), self._recorder_factory(directory / "raw.csv"), self._clock())
+                           self._fusion_factory(self.config),
+                           self._recorder_factory(directory / "raw.csv") if self.record_streams else None,
+                           self._clock())
         session.recording_policy = ResultRecordingPolicy(self.config)
         session.storage_budget = SessionStorageBudget(directory, self.config.get("local_recording"))
         self._session = session
         self._reset_calibration()
         try:
-            names = (("events",) if self._result_recorder_factory is not None
+            names = (("events",) if not self.record_streams or self._result_recorder_factory is not None
                      else ("orientations", "poses", "events"))
             for name in names:
                 session.streams[name] = (directory / f"{name}.jsonl").open("x", encoding="utf-8")
-            if self._result_recorder_factory is None:
-                session.result_recorder = AsyncResultRecorder(session.streams)
-            else:
-                session.result_recorder = self._result_recorder_factory(
-                    {name: directory / f"{name}.jsonl" for name in ("orientations", "poses")})
-            self._writers.append(session.result_recorder.worker)
-            # Track a possibly timed-out process before testing readiness:
-            # setup failures cannot orphan it or open a serial source first.
-            session.result_recorder.check()
+            if self.record_streams:
+                if self._result_recorder_factory is None:
+                    session.result_recorder = AsyncResultRecorder(session.streams)
+                else:
+                    session.result_recorder = self._result_recorder_factory(
+                        {name: directory / f"{name}.jsonl" for name in ("orientations", "poses")})
+                self._writers.append(session.result_recorder.worker)
+                # Track a possibly timed-out process before testing readiness:
+                # setup failures cannot orphan it or open a serial source first.
+                session.result_recorder.check()
             _write_json(directory / "config.json", self.config)
             _write_json(directory / "input_contract.json", describe_input_contract(self.config))
             _write_json(directory / "rest.json", self.rest)
@@ -1134,7 +1150,7 @@ class LiveController(ShapeCalibrationMixin):
                 return
             session.source.open()
             session.source_opened = True
-            if not session.recording_disabled.is_set():
+            if session.recorder is not None and not session.recording_disabled.is_set():
                 try:
                     session.recorder.open()
                     raw_open = True
@@ -1183,7 +1199,8 @@ class LiveController(ShapeCalibrationMixin):
         finally:
             session.opened = False
             try:
-                session.recorder.close()
+                if session.recorder is not None:
+                    session.recorder.close()
             except OSError as exc:
                 self._disable_recording(session, "raw_recording_close_failed", str(exc))
             for resource in (session.source,):
@@ -1236,7 +1253,9 @@ class LiveController(ShapeCalibrationMixin):
                        **self._source_tags(session),
                        source_provenance=deepcopy(getattr(session.source, "provenance", {})),
                        started_monotonic_s=session.started, ended_monotonic_s=self._clock(),
-                       stop_reason=reason, recording_complete=reader_done and not errors,
+                       stop_reason=reason, recording_requested=self.record_streams,
+                       session_complete=reader_done and not errors,
+                       recording_complete=self.record_streams and reader_done and not errors,
                        reader_stopped=reader_done, errors=errors, received_samples=session.received,
                        recorded_samples=session.recorded, samples_per_node=dict(session.node_counts),
                        output_frames=session.frames, available_poses=session.available_poses,
@@ -1246,7 +1265,7 @@ class LiveController(ShapeCalibrationMixin):
                        result_recording=result_recording,
                        local_recording=self._local_recording_status(session),
                        calibration_storage=self._calibration_storage_status(session),
-                       raw_recording_complete=reader_done and session.received == session.recorded
+                       raw_recording_complete=self.record_streams and reader_done and session.received == session.recorded
                            and not session.recording_disabled.is_set(),
                        processing=self._processing_status(session),
                        input_contract=describe_input_contract(self.config),
@@ -1902,16 +1921,23 @@ class LiveController(ShapeCalibrationMixin):
                 pose["reason"] = "calibration_epoch_changed"
             pose["functional_axis_retargeting"] = functional
             timing["solve"] = (time.perf_counter() - solve_start) * 1000.
-        solve_completed_ns = time.monotonic_ns()
+        solve_completed_ns = host_clock.monotonic_ns()
         geometry, geometry_error = None, ""
         display_pose, display_geometry = None, None
         root = frame["nodes"].get(self._root_node)
+        source_stamp = root.get("host_monotonic_ns") if root is not None else None
+        if (type(source_stamp) is not int or source_stamp <= 0
+                or root.get("orientation_valid") is False):
+            source_stamp = None
 
         # Give display metadata the SAME source identity before a slow result
         # is invalidated for measurement/export below. No source time changes.
+        # timestamp_s remains the solver tick; the explicit root source time
+        # anchors display-level association and is never synthesized from it.
         pose.update(session_id=session.session_id, frame_index=session.frames,
                     config_sha256=self._config_sha, model_rest_sha256=self._rest_sha,
-                    profile_version=(self._profile or {}).get("profile_version"))
+                    profile_version=(self._profile or {}).get("profile_version"),
+                    source_monotonic_ns=source_stamp, source_reference_node=self._root_node)
         # Per-frame unavailable results may omit/change their algorithm tag.
         # Only the owning implementation/reference may invalidate this cache.
         owner = self._pose_backend if self._pose_backend is not None else self._solver
@@ -1973,6 +1999,7 @@ class LiveController(ShapeCalibrationMixin):
             geometry = None
         pose.update(schema_version=1, session_id=session.session_id, frame_index=session.frames,
                     config_sha256=self._config_sha, model_rest_sha256=self._rest_sha,
+                    source_monotonic_ns=source_stamp, source_reference_node=self._root_node,
                     **self._source_tags(session),
                     source_fresh=source_fresh, source_changed_nodes=changed_nodes,
                     profile_version=(self._profile or {}).get("profile_version"), calibration_rejections=rejected)
@@ -1991,7 +2018,7 @@ class LiveController(ShapeCalibrationMixin):
         flush = finished - session.last_flush >= 1.
         if session.recording_policy is None:
             session.recording_policy = ResultRecordingPolicy(self.config)
-        if (not session.recording_disabled.is_set() and session.recording_policy.should_record(
+        if (self.record_streams and not session.recording_disabled.is_set() and session.recording_policy.should_record(
                 frame, pose, now=finished, context=dict(clear_generation=self._clear_generation,
                     profile_status=self._profile_status, active=self._active),
                 force=self._active is not None or self._shape_capture is not None)):
@@ -2078,12 +2105,25 @@ class LiveController(ShapeCalibrationMixin):
                         name, args = self._commands.get_nowait()
                     except queue.Empty:
                         break
+                    command_error = None
                     try:
                         self._command(name, args)
                     except ValueError as exc:
+                        command_error = str(exc)
                         self._message("操作未完成。", str(exc))
                     except Exception as exc:
+                        command_error = str(exc)
                         self._disconnect("command_failed", f"命令或记录失败：{exc}")
+                    finally:
+                        # Processing the request is distinct from receiving it
+                        # in a queue, and from finishing any asynchronous job
+                        # it starts. Rejections also release the UI request latch.
+                        with self._state_lock:
+                            runtime = self._snapshot["runtime"]
+                            runtime.update(command_completed_generation=
+                                runtime["command_completed_generation"] + 1,
+                                last_command_name=name, last_command_error=command_error)
+                            self._revision += 1
                 session = self._session
                 try:
                     self._poll_scale_check()

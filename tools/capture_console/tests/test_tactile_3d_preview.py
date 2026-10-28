@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtWidgets
 
 from vt_capture_console.ui.main_window import DeviceCard
 from vt_capture_console.ui.widgets.preview import PreviewWidget, _HEAT_STOPS, _color
-from vt_capture_console.ui.widgets.tactile_surface_colors import raw_surface_colors
+from vt_capture_console.ui.widgets.tactile_surface_colors import surface_colors
 
 
 def device(side="right", **changes):
@@ -119,19 +119,19 @@ def test_raw_adc_uses_same_palette_and_fixed_region_weights_without_mutation():
                               vertex_weights=np.array([[1., 0.], [0., 1.], [.75, .25], [0., 0.]]))
     base = np.tile([.25, .62, .57, 1.], (4, 1))
     frame = {"values": [0., 1000.] + [0.] * 398, "valid_mask": [True] * 400}
-    colors = raw_surface_colors(binding, frame, base, (0., 1000.), _HEAT_STOPS)
+    colors = surface_colors(binding, frame, base, (0., 1000.), _HEAT_STOPS)
     for vertex, value in enumerate([0., 1000., 250.]):
         rgb = _color(value, 0., 1000.).getRgbF()[:3]
         np.testing.assert_allclose(colors[vertex, :3], rgb, atol=1/255.)
     np.testing.assert_allclose(colors[3], base[3])
     assert frame["values"][1] == 1000. and base[0, 0] == .25
     frame["valid_mask"][1] = False
-    colors = raw_surface_colors(binding, frame, base, (0., 1000.), _HEAT_STOPS)
+    colors = surface_colors(binding, frame, base, (0., 1000.), _HEAT_STOPS)
     np.testing.assert_allclose(colors[1, :3], np.array([229, 232, 237]) / 255.)
     np.testing.assert_allclose(colors[2], colors[0])
     frame["values"][1] = float("nan")
-    assert np.isfinite(raw_surface_colors(binding, frame, base, (0., 1000.), _HEAT_STOPS)).all()
-    np.testing.assert_allclose(raw_surface_colors(binding, None, base, None, _HEAT_STOPS), base)
+    assert np.isfinite(surface_colors(binding, frame, base, (0., 1000.), _HEAT_STOPS)).all()
+    np.testing.assert_allclose(surface_colors(binding, None, base, None, _HEAT_STOPS), base)
 
 
 def test_same_hand_loader_failure_after_success_can_recover(qapp, monkeypatch):
@@ -157,9 +157,9 @@ def test_same_hand_loader_failure_after_success_can_recover(qapp, monkeypatch):
 def test_raw_adc_rejects_inconsistent_shape_and_levels():
     binding = SimpleNamespace()
     with pytest.raises(ValueError, match="400"):
-        raw_surface_colors(binding, {"values": [1.], "valid_mask": [True]}, [[0, 0, 0, 1]], (0, 1), _HEAT_STOPS)
+        surface_colors(binding, {"values": [1.], "valid_mask": [True]}, [[0, 0, 0, 1]], (0, 1), _HEAT_STOPS)
     with pytest.raises(ValueError, match="increasing"):
-        raw_surface_colors(binding, {"values": [1.] * 400, "valid_mask": [True] * 400},
+        surface_colors(binding, {"values": [1.] * 400, "valid_mask": [True] * 400},
                            [[0, 0, 0, 1]], (1, 1), _HEAT_STOPS)
 
 

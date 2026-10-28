@@ -42,6 +42,86 @@ def inputs(tmp_path):
     return model, license_path
 
 
+@pytest.fixture(params=["device", "layout"])
+def response_profile(tmp_path, request):
+    path = tmp_path / "参考 配置.json"
+    value = {
+        "schema_version": 1, "protocol": "vt_tactile_adc400_v1", "hand": "right",
+        "device": {"vendor_id": 1234, "product_id": 5678, "serial_number": "fixture-only"},
+        "reference": {"schema_version": 1, "baseline_adc": [18000.] * 400,
+                      "activation_threshold_adc": [30.] * 400, "valid_mask": [True] * 400},
+        "settings": {"display_range_adc": 1000., "direction": "both"},
+        "captured_at_utc": "2026-10-27T00:00:00+00:00",
+    }
+    if request.param == "layout":
+        del value["device"]
+        value.update(schema_version=2, scope="layout", layout="right_adc20x20_v1")
+    path.write_text(json.dumps(value), encoding="utf-8")
+    return path
+
+
+def test_response_profile_records_exact_input_bytes(response_profile):
+    record = build.check_response_profile_input(response_profile)
+    assert record == {"sha256": build.sha256(response_profile), "bytes": response_profile.stat().st_size}
+
+
+@pytest.mark.parametrize("fault", ["empty", "oversized", "array", "bool-version", "unknown-version",
+                                    "left", "protocol", "scope", "layout", "reference-shape",
+                                    "reference-fields", "device", "settings"])
+def test_response_profile_envelope_rejected_before_building(response_profile, inputs, monkeypatch, fault):
+    value = json.loads(response_profile.read_text())
+    if fault == "empty":
+        response_profile.write_text("")
+    elif fault == "oversized":
+        response_profile.write_bytes(b" " * (build.MAX_RESPONSE_PROFILE_BYTES + 1))
+    else:
+        if fault == "array":
+            value = []
+        elif fault == "bool-version":
+            value["schema_version"] = True
+        elif fault == "unknown-version":
+            value["schema_version"] = 77
+        elif fault == "left":
+            value["hand"] = "left"
+        elif fault == "protocol":
+            value["protocol"] = "unknown"
+        elif fault == "scope":
+            value["scope"] = "any-device"
+        elif fault == "layout":
+            value["layout"] = "unknown"
+        elif fault == "reference-shape":
+            value["reference"]["baseline_adc"] = [1.] * 399
+        elif fault == "reference-fields":
+            value["reference"]["legacy_offset"] = 1
+        elif fault == "device":
+            value["device"] = []
+        elif fault == "settings":
+            value["settings"] = []
+        response_profile.write_text(json.dumps(value))
+    model, license_path = inputs
+    args = build.parser().parse_args(["--model-bundle", str(model), "--model-license", str(license_path),
+                                     "--response-profile", str(response_profile)])
+    monkeypatch.setattr(build, "check_platform", lambda: pytest.fail("Platform/build work began before preflight"))
+    with pytest.raises(ValueError):
+        build.build(args)
+
+
+def test_check_inputs_validates_reference_values_using_application_contract(response_profile, inputs, monkeypatch):
+    from vt_capture_console.ui.widgets import tactile_model_loader
+
+    monkeypatch.setattr(tactile_model_loader, "load_bundle_file", lambda *_: None)
+    model, license_path = inputs
+    args = build.parser().parse_args(["--model-bundle", str(model), "--model-license", str(license_path),
+                                     "--response-profile", str(response_profile), "--check-inputs"])
+    assert build.build(args) == model
+    value = json.loads(response_profile.read_text())
+    value["reference"]["baseline_adc"][0] = -1
+    response_profile.write_text(json.dumps(value))
+    build.check_response_profile_input(response_profile)  # Envelope remains structurally valid.
+    with pytest.raises(ValueError, match="baseline_adc"):
+        build.build(args)
+
+
 def test_inputs_record_exact_bytes_without_claiming_permission(inputs):
     model, license_path = inputs
     result = build.check_model_input(model, license_path)
@@ -153,6 +233,17 @@ def test_windows_paths_are_passed_as_single_arguments(tmp_path):
     assert command[2] == f"/DSourceDir={workspace}"
 
 
+def test_optional_response_profile_is_the_only_extra_frozen_data(tmp_path):
+    python, workspace, model = tmp_path / "python.exe", tmp_path / "build", tmp_path / "right_hand.json"
+    profile = workspace / "default_response.json"
+    plain = build.pyinstaller_arguments(python, workspace, model)
+    configured = build.pyinstaller_arguments(python, workspace, model, profile)
+    assert len(configured) == len(plain) + 2
+    position = configured.index(f"{profile}:vt_capture_console/assets/tactile")
+    assert configured[position - 1] == "--add-data"
+    assert configured[:position - 1] + configured[position + 1:] == plain
+
+
 def test_offline_install_has_no_package_index(tmp_path):
     arguments = build.pip_arguments(tmp_path / "python.exe", tmp_path / "wheel house")
     assert "--isolated" in arguments
@@ -206,6 +297,21 @@ def test_audit_requires_resources_model_integrity_and_executable(distribution):
     (root / "_internal" / build.REQUIRED_RESOURCES[-1]).unlink()
     with pytest.raises(ValueError, match="缺少运行资源"):
         build.audit_distribution(root, toc, digest)
+
+
+def test_audit_requires_exact_reference_and_rejects_unrequested_reference(distribution, response_profile):
+    root, toc, digest = distribution
+    expected = build.sha256(response_profile)
+    target = root / "_internal" / build.RESPONSE_PROFILE_RESOURCE
+    with pytest.raises(ValueError, match="默认触觉参考缺失"):
+        build.audit_distribution(root, toc, digest, expected)
+    target.write_bytes(response_profile.read_bytes())
+    build.audit_distribution(root, toc, digest, expected)
+    with pytest.raises(ValueError, match="未指定的默认触觉参考"):
+        build.audit_distribution(root, toc, digest)
+    target.write_text("altered profile")
+    with pytest.raises(ValueError, match="与输入不一致"):
+        build.audit_distribution(root, toc, digest, expected)
 
 
 @pytest.mark.parametrize("forbidden", [
@@ -280,10 +386,15 @@ def test_runner_failure_retains_log_and_stops(tmp_path, monkeypatch):
     assert "shell" not in calls[0][1]
 
 
-def test_orchestration_produces_traceable_release_after_frozen_check(tmp_path, inputs, monkeypatch):
+@pytest.mark.parametrize("with_profile", [False, True])
+def test_orchestration_produces_traceable_release_after_frozen_check(
+        tmp_path, inputs, response_profile, monkeypatch, with_profile):
     model, license_path = inputs
-    args = build.parser().parse_args(["--model-bundle", str(model), "--model-license", str(license_path),
-                                     "--output", str(tmp_path / "output")])
+    options = ["--model-bundle", str(model), "--model-license", str(license_path),
+               "--output", str(tmp_path / "output")]
+    if with_profile:
+        options += ["--response-profile", str(response_profile)]
+    args = build.parser().parse_args(options)
     monkeypatch.setattr(build, "check_platform", lambda: None)
     monkeypatch.setattr(build, "find_inno", lambda _: tmp_path / "ISCC.exe")
     monkeypatch.setattr(build.venv, "EnvBuilder", lambda **_: SimpleNamespace(create=lambda _: None))
@@ -294,6 +405,12 @@ def test_orchestration_produces_traceable_release_after_frozen_check(tmp_path, i
         work = runner.directory
         if "--self-check" in command:
             frozen = command[0].endswith("VisionTactile3D.exe")
+            if not frozen and with_profile:
+                staged = Path(command[command.index("--response-profile") + 1])
+                assert staged == work / "stage/default_response.json"
+                assert staged.read_bytes() == response_profile.read_bytes()
+            else:
+                assert "--response-profile" not in command
             Path(command[-1]).write_text(json.dumps({"schema_version": 1, "status": "ok", "issues": [],
                                                     "details": {"frozen": frozen}}))
         elif "PyInstaller" in command:
@@ -304,6 +421,10 @@ def test_orchestration_produces_traceable_release_after_frozen_check(tmp_path, i
                 path = root / "_internal" / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(model.read_bytes() if name.endswith("right_hand.json") else b"fixture")
+            if with_profile:
+                staged = work / "stage/default_response.json"
+                assert f"{staged}:vt_capture_console/assets/tactile" in command
+                (root / "_internal" / build.RESPONSE_PROFILE_RESOURCE).write_bytes(staged.read_bytes())
             toc = work / "pyinstaller" / build.NAME / "Analysis-00.toc"
             toc.parent.mkdir(parents=True)
             toc.write_text(repr(([('numpy', 'numpy.py', 'PYMODULE')],)))
@@ -320,6 +441,10 @@ def test_orchestration_produces_traceable_release_after_frozen_check(tmp_path, i
     report = json.loads(installer.with_suffix(".manifest.json").read_text(encoding="utf-8"))
     assert report["installer"]["sha256"] == build.sha256(installer)
     assert report["model"]["model_sha256"] == build.sha256(model)
+    assert report["response_profile"] == (build.check_response_profile_input(response_profile)
+                                           if with_profile else None)
+    assert any(item["path"] == "_internal/" + build.RESPONSE_PROFILE_RESOURCE
+               for item in report["files"]) is with_profile
     assert report["frozen_self_check"]["details"]["frozen"] is True
     assert any(item["path"] == "licenses/MODEL_LICENSE.txt" for item in report["files"])
     assert calls.index("验证冻结程序的模型、界面依赖和资源…") < calls.index("生成双语离线安装包…")

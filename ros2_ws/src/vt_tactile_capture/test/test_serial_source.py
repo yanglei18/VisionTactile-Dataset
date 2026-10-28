@@ -14,7 +14,7 @@ import pytest
 
 from vt_tactile_capture.protocol import Block
 from vt_tactile_capture import serial_source as module
-from vt_tactile_capture import host_clock
+from vt_tactile_capture import host_clock, serial_access
 from vt_tactile_capture.serial_source import MAX_READ_BYTES, SerialWorker
 
 
@@ -408,9 +408,9 @@ def test_windows_native_open_close_never_imports_posix_or_inspects_proc(monkeypa
     def no_proc(*args, **kwargs):
         raise AssertionError("Windows must not inspect Linux device paths or /proc")
 
-    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(serial_access, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(serial_module, "Serial", open_device)
-    monkeypatch.setattr(module, "_assert_port_free", no_proc)
+    monkeypatch.setattr(serial_access, "_assert_port_free", no_proc)
     monkeypatch.setattr(builtins, "__import__", import_without_posix)
     worker = SerialWorker("COM12", baudrate=230400, read_timeout=.002)
     assert worker._open_serial() is device
@@ -428,7 +428,7 @@ def test_windows_native_access_denied_is_terminal_without_implicit_reconnect(mon
         attempts.append(kwargs)
         raise PermissionError(13, "Access is denied")
 
-    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(serial_access, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(serial_module, "Serial", denied)
     worker = SerialWorker("COM3", auto_reconnect=False)
     worker.start()
@@ -452,9 +452,9 @@ def test_linux_post_open_owner_race_releases_exclusive_mode_and_closes(monkeypat
         if exclude_fd is not None:
             raise module.PortInUseError("owner appeared during open")
 
-    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(serial_access, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(serial_module, "Serial", lambda **kwargs: device)
-    monkeypatch.setattr(module, "_assert_port_free", ownership)
+    monkeypatch.setattr(serial_access, "_assert_port_free", ownership)
     monkeypatch.setattr(fcntl, "flock", lambda fd, operation: locked.append((fd, operation)))
     monkeypatch.setattr(fcntl, "ioctl", lambda fd, operation: ioctls.append((fd, operation)))
     worker = SerialWorker("/dev/fake-only")

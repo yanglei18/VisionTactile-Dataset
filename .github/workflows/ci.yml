@@ -70,6 +70,7 @@ jobs:
           ros2_ws/src/vt_tactile_capture/test/test_grid.py
           ros2_ws/src/vt_tactile_capture/test/test_assembler.py
           ros2_ws/src/vt_tactile_capture/test/test_serial_source.py
+          ros2_ws/src/vt_tactile_capture/test/test_serial_access.py
           ros2_ws/src/vt_tactile_capture/test/test_host_clock.py
           ros2_ws/src/vt_tactile_capture/test/test_legacy_parity.py
           ros2_ws/src/vt_tactile_capture/test/test_display_transport.py

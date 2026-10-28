@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>vt_tactile_capture</name>
-  <version>0.1.0</version>
+  <version>0.2.3</version>
   <description>Loss-aware tactile ADC capture and independent ROS heatmap viewer.</description>
   <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
   <license>Apache-2.0</license>

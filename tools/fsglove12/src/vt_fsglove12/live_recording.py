@@ -11,6 +11,8 @@ import queue
 import threading
 import time
 
+from . import host_clock
+
 
 class AsyncResultRecorder:
     def __init__(self, streams, *, capacity=512, flush_interval_s=1.):
@@ -112,15 +114,15 @@ class AsyncResultRecorder:
             stream.flush()
 
     def _run(self):
-        last_flush = time.monotonic()
+        last_flush = host_clock.monotonic()
         try:
             while not self._stop.is_set() or not self._queue.empty():
                 try:
                     frame, pose, force_flush = self._queue.get(timeout=.05)
                 except queue.Empty:
-                    if time.monotonic() - last_flush >= self.flush_interval_s:
+                    if host_clock.monotonic() - last_flush >= self.flush_interval_s:
                         self._flush()
-                        last_flush = time.monotonic()
+                        last_flush = host_clock.monotonic()
                     continue
                 try:
                     # Serialize both before writing either: malformed JSON cannot
@@ -138,9 +140,9 @@ class AsyncResultRecorder:
                     raise
                 finally:
                     self._queue.task_done()
-                if force_flush or time.monotonic() - last_flush >= self.flush_interval_s:
+                if force_flush or host_clock.monotonic() - last_flush >= self.flush_interval_s:
                     self._flush()
-                    last_flush = time.monotonic()
+                    last_flush = host_clock.monotonic()
         except Exception as exc:
             self._fail(exc)
             # Every accepted-but-unwritten pair is accounted for, even after

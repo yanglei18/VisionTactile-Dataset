@@ -6,6 +6,8 @@ import multiprocessing as mp
 import threading
 import time
 
+from . import host_clock
+
 
 def _optimize(contacts, options, directory, cancel, result):
     try:
@@ -59,9 +61,9 @@ class ShapeJob:
             sender.close()
             while process.is_alive() or receiver.poll():
                 if self._cancel.is_set():
-                    cancel_started = time.monotonic() if cancel_started is None else cancel_started
+                    cancel_started = host_clock.monotonic() if cancel_started is None else cancel_started
                     self.progress = dict(stage="cancelling")
-                    if time.monotonic() - cancel_started >= self.CANCEL_GRACE_SECONDS:
+                    if host_clock.monotonic() - cancel_started >= self.CANCEL_GRACE_SECONDS:
                         if process.is_alive():
                             process.terminate()
                         break
@@ -87,8 +89,8 @@ class ShapeJob:
                 # child may send its result before it has finished exiting.
                 while process.is_alive():
                     if self._cancel.is_set():
-                        cancel_started = time.monotonic() if cancel_started is None else cancel_started
-                        if time.monotonic() - cancel_started >= self.CANCEL_GRACE_SECONDS:
+                        cancel_started = host_clock.monotonic() if cancel_started is None else cancel_started
+                        if host_clock.monotonic() - cancel_started >= self.CANCEL_GRACE_SECONDS:
                             process.terminate()
                     process.join(.05)
                 process.join()

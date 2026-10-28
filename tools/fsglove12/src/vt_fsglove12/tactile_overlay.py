@@ -20,6 +20,8 @@ from vt_tactile_capture.display_transport import LocalTactileReceiver
 from vt_tactile_capture.grid import BLOCK_COUNT, CELL_COUNT, SCHEMA_VERSION, SHAPE, normalize_state
 from vt_tactile_capture.hand_layout import load_layout
 
+from . import host_clock
+
 
 MAX_AGE_NS = 250_000_000
 MAX_SKEW_NS = 150_000_000
@@ -54,7 +56,7 @@ def _uint(value, name):
 
 
 def _now(value):
-    return time.monotonic_ns() if value is None else _uint(value, "now_ns")
+    return host_clock.monotonic_ns() if value is None else _uint(value, "now_ns")
 
 
 def _copy_state(message, expected_hand="right"):

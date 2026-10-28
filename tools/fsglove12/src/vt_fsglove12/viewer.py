@@ -17,6 +17,7 @@ from typing import Iterable
 
 import numpy as np
 
+from . import host_clock
 from .config import digest
 from .mano import DependencyError, ManoBackend
 
@@ -96,14 +97,14 @@ def run_viewer(pose_path, assets_root, *, speed: float = 1.0, hand="right") -> N
     def callback():
         if ui.Button("Pause" if state["playing"] else "Play"):
             state["playing"] = not state["playing"]
-            state["anchor_wall"] = time.monotonic()
+            state["anchor_wall"] = host_clock.monotonic()
             state["anchor_pose"] = timestamps[state["index"]]
         changed, selected = ui.SliderInt("Frame", state["index"], 0, len(frames) - 1)
         if changed:
             state["index"], state["playing"] = selected, False
         gap = False
         if state["playing"]:
-            playhead = state["anchor_pose"] + (time.monotonic() - state["anchor_wall"]) * speed
+            playhead = state["anchor_pose"] + (host_clock.monotonic() - state["anchor_wall"]) * speed
             state["index"] = max(0, bisect.bisect_right(timestamps, playhead) - 1)
             if playhead >= timestamps[-1]:
                 state["playing"] = False

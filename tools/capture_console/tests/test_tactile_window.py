@@ -17,6 +17,11 @@ def sample(frame=None, **changes):
     })
 
 
+def response_status(phase="unreferenced", **changes):
+    return SimpleNamespace(**{"phase": phase, "progress": 0., "reference_cells": 0,
+                              "active_cells": 0, "reason": "", "reference_source": "", **changes})
+
+
 def frame(value):
     return {"values": [value] * 400, "valid_mask": [True] * 400,
             "rows": 20, "cols": 20}
@@ -31,6 +36,12 @@ class FakeSource:
         self.connection_state = "disconnected"
         self.close_result = True
         self.connect_error = None
+        self.reference_calls = 0
+        self.reference_error = None
+        self.reference_persistence_error = ""
+        self.response_calls = []
+        self.response_settings = SimpleNamespace(display_range_adc=1000., direction="both")
+        self.response_status = response_status()
 
     @property
     def can_connect(self):
@@ -46,19 +57,41 @@ class FakeSource:
             self.connection_state = "error"
             raise self.connect_error
         self.connection_state = "connecting"
+        self.response_status = response_status()
         self.state = sample(status="正在连接")
 
     def disconnect(self):
         self.disconnects += 1
         self.connection_state = "disconnected"
+        self.response_status = response_status()
         self.state = sample(status="未连接")
         return True
+
+    def start_reference(self, now_ns=None):
+        if self.reference_error:
+            raise self.reference_error
+        if self.connection_state != "connected" or self.state.frame is None:
+            raise ValueError("需要新鲜触觉数据才能采集无载参考。")
+        self.reference_calls += 1
+        self.response_status = response_status("collecting")
+        self.state.frame = {**frame(0), "levels": [0., self.response_settings.display_range_adc],
+                            "value_kind": "tactile_response", "reference_ready": False}
+
+    def configure_response(self, *, display_range_adc=None, direction=None):
+        self.response_calls.append((display_range_adc, direction))
+        self.response_settings = SimpleNamespace(
+            display_range_adc=self.response_settings.display_range_adc if display_range_adc is None else display_range_adc,
+            direction=self.response_settings.direction if direction is None else direction)
+        if self.state.frame is not None and self.state.frame.get("value_kind") == "tactile_response":
+            self.state.frame = {**self.state.frame, "levels": [0., self.response_settings.display_range_adc]}
 
     def start(self):
         self.starts += 1
 
     def poll(self):
         self.polls += 1
+        if self.state.frame is not None and self.state.frame.get("value_kind") == "tactile_response":
+            self.state.frame = {**self.state.frame, "reference_ready": self.response_status.phase == "ready"}
         return self.state
 
     def close(self):
@@ -97,7 +130,7 @@ def viewer(qapp):
     window.deleteLater()
 
 
-def test_raw_values_display_immediately_with_the_workbench_range_and_history(viewer):
+def test_source_frames_reuse_workbench_rendering_and_history(viewer):
     window, source = viewer
     assert type(window.preview) is PreviewWidget
     assert window.preview.tactile_view == "3d"
@@ -105,6 +138,7 @@ def test_raw_values_display_immediately_with_the_workbench_range_and_history(vie
     window.start()
     assert source.starts == source.polls == 1 and window.timer.isActive()
     assert not window.preview.has_frame
+    source.response_status = response_status("ready", reference_cells=400, progress=1.)
     source.state = sample(frame(22000), status="实时", detail="", age_ms=12.2,
                           receive_hz=29.7, valid_cells=400)
     window.refresh()
@@ -114,7 +148,7 @@ def test_raw_values_display_immediately_with_the_workbench_range_and_history(vie
     assert window.status.text() == "实时"
     assert "29.7 Hz" in window.metrics.text() and "12 ms" in window.metrics.text()
     assert window.notice.isHidden()
-    assert not hasattr(window, "reference_button") and not hasattr(window, "high")
+    assert window.reference_button.text() == "无载归零"
     source.state = sample(frame(23500), status="实时", valid_cells=400)
     window.refresh()
     assert window.preview._levels == (21950., 22050.)

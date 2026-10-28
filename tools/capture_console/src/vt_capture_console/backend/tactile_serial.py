@@ -6,6 +6,7 @@ loss boundaries; the viewer never sends firmware commands or reconnects itself.
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import replace
 from numbers import Integral
 from pathlib import Path
 import sys
@@ -15,6 +16,7 @@ from vt_tactile_capture.assembler import Assembler
 from vt_tactile_capture.serial_source import SerialWorker
 
 from .tactile_source import TactileDisplayModel, TactileDisplayState, _clock
+from .tactile_reference_store import device_identity_for_port, TactileDefaultProfile, TactileDeviceProfile
 
 
 DRAIN_LIMIT = 128
@@ -37,14 +39,15 @@ _CLOCK_REASONS = {
 }
 
 
-def list_serial_ports(dev_root=None):
+def list_serial_ports(dev_root=None, *, native_ports=None):
     """List ports without opening them; an explicit root isolates Linux discovery.
 
     Linux prefers stable device symlinks. Windows uses pyserial's native port
     enumeration, which includes COM numbers and USB device descriptions.
+    ``native_ports`` can reuse a caller's metadata snapshot on Windows.
     """
     if dev_root is None and not sys.platform.startswith("linux"):
-        return _native_serial_ports()
+        return _native_serial_ports(native_ports)
     root = Path("/dev") if dev_root is None else Path(dev_root)
     choices, targets = [], set()
     candidates = []
@@ -71,10 +74,12 @@ def list_serial_ports(dev_root=None):
     return choices
 
 
-def _native_serial_ports():
+def _native_serial_ports(ports=None):
     try:
-        from serial.tools import list_ports
-        ports = sorted(list_ports.comports())
+        if ports is None:
+            from serial.tools import list_ports
+            ports = list_ports.comports()
+        ports = sorted(ports)
     except (ImportError, OSError):
         # Manual entry remains available if discovery or its dependency fails.
         return []
@@ -118,11 +123,17 @@ class TactileSerialSource:
     ownership checks. A failed connection requires another explicit connect().
     """
 
-    def __init__(self, *, worker_factory=None):
+    def __init__(self, *, worker_factory=None, reference_store=None,
+                 identity_provider=device_identity_for_port):
         self._worker_factory = worker_factory or SerialWorker
+        self._reference_store = reference_store
+        self._identity_provider = identity_provider
+        self._device_identity = self._reference_profile = None
+        self._pending_reference_save = False
+        self._reference_persistence_error = ""
         self._worker = None
         self._assembler = Assembler(hand="right")
-        self._model = TactileDisplayModel()
+        self._model = TactileDisplayModel(response_enabled=True)
         self._connection_state = "disconnected"
         self._error = ""
         self._last_observed_source = None
@@ -151,6 +162,73 @@ class TactileSerialSource:
     def diagnostic_log(self):
         return "\n".join(self._diagnostics)[-8192:]
 
+    @property
+    def response_settings(self):
+        return self._model.response_settings
+
+    @property
+    def response_status(self):
+        return self._model.response_status
+
+    @property
+    def reference_persistence_error(self):
+        return self._reference_persistence_error
+
+    def start_reference(self, now_ns=None):
+        if not self.is_connected:
+            raise ValueError("需要新鲜触觉数据才能采集无载参考。")
+        self._model.start_reference(now_ns=now_ns)
+        self._pending_reference_save = True
+        self._reference_persistence_error = ""
+
+    def configure_response(self, *, display_range_adc=None, direction=None):
+        self._model.configure_response(display_range_adc=display_range_adc, direction=direction)
+        if isinstance(self._reference_profile, TactileDeviceProfile):
+            self._save_profile(replace(self._reference_profile, settings=self.response_settings))
+        elif isinstance(self._reference_profile, TactileDefaultProfile):
+            # Saving display preferences must not relabel a generic default as
+            # a measured device calibration, even when USB identity is known.
+            self._reference_profile = replace(self._reference_profile, settings=self.response_settings)
+            try:
+                self._reference_store.save_default_settings(self.response_settings)
+            except (OSError, ValueError) as exc:
+                self._diagnostics.append(f"display_settings_save: {exc}"[:1024])
+                self._reference_persistence_error = "当前参考和显示设置未能保存；下次启动仍使用原配置。"
+            else:
+                self._reference_persistence_error = ""
+
+    def _save_profile(self, profile):
+        # This is the active in-memory reference even if storage is unavailable.
+        # A later settings edit must never resurrect an older calibration.
+        self._reference_profile = profile
+        try:
+            self._reference_store.save(profile)
+        except (OSError, ValueError) as exc:
+            self._diagnostics.append(f"reference_save: {exc}"[:1024])
+            self._reference_persistence_error = "当前参考和显示设置未能保存；下次启动仍使用原配置。"
+            self._model.retain_reference(profile.reference, source=self.response_status.reference_source or "measured")
+        else:
+            self._reference_persistence_error = ""
+            self._model.retain_reference(profile.reference, source="saved")
+
+    def _save_completed_reference(self):
+        status = self.response_status
+        if not (self._pending_reference_save and status.phase == "ready"
+                and status.reference_source == "measured"):
+            return
+        self._pending_reference_save = False
+        if self._reference_store is None:
+            return
+        if self._device_identity is None:
+            # The current manual reference is newer than the deployment
+            # default, but has no stable identity under which it can be saved.
+            self._reference_profile = None
+            self._reference_persistence_error = "未取得设备唯一标识，本次参考仅在当前连接使用。"
+            return
+        profile = self._reference_store.capture(self._device_identity, self._model.export_reference(),
+                                                self.response_settings)
+        self._save_profile(profile)
+
     def start(self):
         """Prepare the view only. Enumeration/initialization never opens a port."""
 
@@ -163,7 +241,28 @@ class TactileSerialSource:
             raise ValueError("波特率必须为 1 至 4000000 的整数。")
         self.port = port
         self._assembler = Assembler(hand="right")
-        self._model = TactileDisplayModel()
+        options = dict(response_enabled=True, response_settings=self.response_settings)
+        self._device_identity = self._reference_profile = None
+        self._pending_reference_save = False
+        self._reference_persistence_error = ""
+        if self._reference_store is not None:
+            try:
+                self._device_identity = self._identity_provider(port)
+            except (OSError, ValueError) as exc:
+                self._diagnostics.append(f"device_identity: {exc}"[:1024])
+            try:
+                # Enumeration failure only prevents device-specific lookup.
+                # An explicit layout default remains usable on this stream.
+                selected = self._reference_store.load(self._device_identity)
+                if selected is not None:
+                    self._reference_profile, reference_source = selected
+                    options.update(response_settings=self._reference_profile.settings,
+                                   response_reference=self._reference_profile.reference,
+                                   reference_source=reference_source)
+                self._diagnostics.extend(self._reference_store.diagnostics)
+            except (OSError, ValueError) as exc:
+                self._diagnostics.append(f"reference_load: {exc}"[:1024])
+        self._model = TactileDisplayModel(**options)
         self._error = ""
         self._last_observed_source = None
         self._stream_issue = None
@@ -193,6 +292,7 @@ class TactileSerialSource:
                 self._closed = True
         else:
             self._connection_state = "error"
+            self._model.invalidate("连接失败", "串口读取已停止，请检查设备后手动连接。", reset_reference=True)
             if not self._error:
                 self._error = "串口读取已停止，请检查设备后手动连接。"
 
@@ -212,7 +312,7 @@ class TactileSerialSource:
                 checkpoint = self._assembler.snapshot(now, MAX_CELL_AGE_NS)
                 if (not checkpoint.connected or not checkpoint.time_valid
                         or checkpoint.reason not in ("ok", "stale")):
-                    self._model.invalidate("等待数据", "触觉数据流已中断，等待新的有效数据。")
+                    self._model.invalidate("等待数据", "触觉数据流已中断，等待新的有效数据。", reset_reference=True)
                 issue_reason = (batch.reason if not batch.time_valid and batch.reason in _CLOCK_REASONS
                                 else checkpoint.reason)
                 if issue_reason in _WAITING_REASONS:
@@ -256,11 +356,13 @@ class TactileSerialSource:
             return TactileDisplayState(None, "正在连接", "正在打开所选串口。")
         if self._stream_issue is not None:
             return TactileDisplayState(None, *self._stream_issue)
-        return self._model.poll(now_ns=now)
+        state = self._model.poll(now_ns=now)
+        self._save_completed_reference()
+        return state
 
     def _disconnect(self, timeout):
         self._disconnect_requested = True
-        self._model.invalidate("未连接", "串口显示已清除。")
+        self._model.invalidate("未连接", "串口显示已清除。", reset_reference=True)
         if self._worker is None:
             self._connection_state = "disconnected"
             return True

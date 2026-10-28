@@ -104,7 +104,8 @@ the ROS exporter or written over a source pose in ``poses.jsonl``.
         self._slots, self._stamp = next_slots, stamp
         result = {key: deepcopy(pose[key]) for key in
                   ("session_id", "frame_index", "profile_version", "config_sha256",
-                   "model_rest_sha256", "shape_params", "root_quat_xyzw") if key in pose}
+                   "model_rest_sha256", "shape_params", "root_quat_xyzw",
+                   "source_monotonic_ns", "source_reference_node") if key in pose}
         result.update(display_only=True, measurement_valid=False,
                       timestamp_s=stamp, source_timestamp_s=stamp,
                       held_slots=held, unknown_slots=unknown, provisional_slots=provisional,

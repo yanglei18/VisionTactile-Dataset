@@ -23,6 +23,7 @@ jobs:
           cache-dependency-path: |
             tools/capture_console/requirements-tested.txt
             tools/capture_console/pyproject.toml
+            tools/hand_tactile_viewer/pyproject.toml
             tools/fsglove12/pyproject.toml
             tools/tracker_deploy/pyproject.toml
             tools/multisensor_alignment/pyproject.toml
@@ -34,7 +35,8 @@ jobs:
       - name: Install isolated packages
         run: >-
           python -m pip install -r tools/capture_console/requirements-tested.txt
-          -e ros2_ws/src/vt_capture_core -e ros2_ws/src/vt_tactile_capture -e tools/fsglove12 -e tools/capture_console
+          -e ros2_ws/src/vt_capture_core -e ros2_ws/src/vt_tactile_capture -e 'tools/fsglove12[functional]' -e tools/capture_console
+          -e tools/hand_tactile_viewer
           -e ros2_ws/src/vt_capture_manager -e tools/multisensor_alignment
           -e tools/tracker_deploy
           'opencv-python-headless>=4.9,<4.12'
@@ -44,6 +46,7 @@ jobs:
           vt-capture-console --help
           vt-multisensor-align --help
           vt-tracker-deploy --help
+          vt-hand-tactile --help
       - name: Test shared core, managed capture workflow and GUI
         env:
           # Exercise the real pure-Python controller/manager boundary as well
@@ -62,6 +65,11 @@ jobs:
           tools/fsglove12/tests/test_pose_export.py
           tools/fsglove12/tests/test_hand_view.py
           tools/fsglove12/tests/test_tactile_preview_export.py
+      - name: Test standalone hand and tactile viewer without devices or model assets
+        # Fake readers and synthetic geometry cover lifecycle, protocol
+        # identification, display composition, settings and packaging. QMT's
+        # public numeric self-check runs without Torch or licensed MANO assets.
+        run: python -m pytest -q tools/hand_tactile_viewer/tests
       - name: Smoke test demo at laptop resolution
         run: python -m vt_capture_console --demo --size 1366x768 --smoke-seconds 2 --screenshot /tmp/capture-console.png
       - uses: actions/upload-artifact@v4

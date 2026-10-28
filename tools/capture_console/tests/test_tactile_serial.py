@@ -184,6 +184,18 @@ def test_worker_finishing_during_drain_is_kept_until_terminal_events_are_read():
     source.close()
 
 
+def test_worker_exit_without_terminal_event_cancels_reference():
+    source, worker = source_with_worker()
+    worker.queue.append(batch())
+    source.poll(NOW)
+    source.start_reference(NOW)
+    assert source.response_status.phase == "collecting"
+    worker.running = False
+    assert source.poll(NOW + 1).status == "连接失败"
+    assert source.response_status.phase == "unreferenced"
+    source.close()
+
+
 @pytest.mark.parametrize("injected_now", [None, NOW])
 def test_poll_uses_live_clock_after_drain(injected_now, monkeypatch):
     source, worker = source_with_worker()
@@ -388,7 +400,10 @@ def test_shared_serial_parser_assembler_path_exact_400_values_and_release():
                 break
             threading.Event().wait(.001)
         assert view.valid_cells == 400
-        assert view.frame["values"] == [row * 100 + col for row in range(20) for col in range(20)]
+        raw = source._assembler.snapshot(module.host_clock.monotonic_ns(), module.MAX_CELL_AGE_NS)
+        assert list(raw.adc) == [row * 100 + col for row in range(20) for col in range(20)]
+        assert view.frame["values"] == [0.] * 400
+        assert view.response.phase == "unreferenced"
         assert len(opened) == 1 and opened[0]["exclusive"] is True
     finally:
         assert source.close()

@@ -25,6 +25,7 @@ from ...i18n.widgets import QPainter as LocalizedPainter
 from ...viewmodels.glove_sources import source_summary
 
 from .tactile_hand import right_hand_geometry
+from .tactile_palette import RAW_HEAT_STOPS, heat_stops
 
 
 MAX_BASE64_BYTES = 8_000_000
@@ -38,8 +39,7 @@ _MUTED = QtGui.QColor("#A0A0A0")
 _INK = QtGui.QColor("#F4F4F4")
 _ACCENT = QtGui.QColor("#FFFFFF")
 _INVALID = QtGui.QColor("#313131")
-_HEAT_STOPS = ((0., (237, 244, 252)), (.32, (136, 198, 251)),
-               (.58, (14, 124, 237)), (.78, (249, 191, 101)), (1., (238, 105, 77)))
+_HEAT_STOPS = RAW_HEAT_STOPS
 _BONES = tuple((0 if offset == 0 else base + offset - 1, base + offset)
                for base in (1, 5, 9, 13, 17) for offset in range(4))
 _HEADERS = {"camera": tr('相机画面'), "tracker": tr('空间位姿'),
@@ -60,13 +60,13 @@ def _vector(value, length):
     return tuple(float(v) for v in value)
 
 
-def _color(value, lo, hi):
+def _color(value, lo, hi, stops=_HEAT_STOPS):
     fraction = min(1., max(0., (value - lo) / (hi - lo)))
-    for (start, low), (end, high) in zip(_HEAT_STOPS, _HEAT_STOPS[1:]):
+    for (start, low), (end, high) in zip(stops, stops[1:]):
         if fraction <= end:
             t = (fraction - start) / (end - start)
             return QtGui.QColor(*(round(a + (b - a) * t) for a, b in zip(low, high)))
-    return QtGui.QColor(*_HEAT_STOPS[-1][1])
+    return QtGui.QColor(*stops[-1][1])
 
 
 def _demo_joints(phase, side):
@@ -269,6 +269,12 @@ class PreviewWidget(QtWidgets.QWidget):
     @property
     def tactile_layout_note(self):
         return self._tactile_layout_note
+
+    def _tactile_response(self):
+        return self._frame is not None and self._frame.get("value_kind") == "tactile_response"
+
+    def _tactile_palette(self):
+        return heat_stops("tactile_response" if self._tactile_response() else "raw_adc")
 
     @property
     def glove_view(self):
@@ -686,9 +692,18 @@ class PreviewWidget(QtWidgets.QWidget):
         if not any(mask):
             return None
         levels = preview.get("levels")
+        value_kind = preview.get("value_kind", "raw_adc")
+        palette = heat_stops(value_kind)
+        response = value_kind == "tactile_response"
+        reference_ready = preview.get("reference_ready")
+        if response and (levels is None or type(reference_ready) is not bool
+                         or any(v < 0 for v, valid in zip(values, mask) if valid)):
+            raise ValueError(tr('触觉响应需要有效参考状态和从零开始的固定色阶'))
+        if self._frame is not None and self._frame.get("value_kind", "raw_adc") != value_kind:
+            self._levels = None
         if levels is not None:
             lo, hi = _vector(levels, 2)
-            if lo >= hi or not math.isfinite(hi - lo):
+            if lo >= hi or not math.isfinite(hi - lo) or (response and lo != 0.):
                 raise ValueError(tr('触觉色标范围无效'))
             self._levels = (lo, hi)
         if self._levels is None:
@@ -698,8 +713,12 @@ class PreviewWidget(QtWidgets.QWidget):
                 center = lo / 2 + hi / 2
                 lo, hi = center - 50, center + 50
             self._levels = (lo, hi)
-        self._cell_colors = tuple(_color(v, *self._levels) if valid else _INVALID for v, valid in zip(values, mask))
-        return {"values": values, "valid_mask": mask, "rows": 20, "cols": 20}
+        self._cell_colors = tuple(_color(v, *self._levels, palette) if valid else _INVALID
+                                  for v, valid in zip(values, mask))
+        result = {"values": values, "valid_mask": mask, "rows": 20, "cols": 20}
+        if response:
+            result.update(value_kind=value_kind, reference_ready=reference_ready)
+        return result
 
     def _prepare_image(self, preview):
         if str(preview.get("format", "")).lower() not in ("jpeg", "jpg"):
@@ -766,7 +785,8 @@ class PreviewWidget(QtWidgets.QWidget):
             painter.setPen(QtGui.QPen(QtGui.QColor("#313131"), .7))
             painter.setBrush(surface)
             painter.drawRoundedRect(outer, 3., 3.)
-        heading = (tr('静态 MANO · ADC') if self.kind == "tactile" and self.tactile_view == "3d"
+        heading = ((tr('静态手形 · 触觉响应') if self._tactile_response() else tr('静态 MANO · ADC'))
+                   if self.kind == "tactile" and self.tactile_view == "3d"
                    else tr('MANO 手势 · 解算结果') if self.kind == "glove" and self.glove_view == "3d"
                    else tr('候选手形触觉') if self.kind == "tactile" and self.tactile_view == "hand"
                    else _HEADERS[self.kind])
@@ -1142,7 +1162,7 @@ class PreviewWidget(QtWidgets.QWidget):
                        str(index), size=7., alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         legend = QtCore.QRectF(matrix.right() + 10, matrix.top(), 5, matrix.height())
         gradient = QtGui.QLinearGradient(legend.bottomLeft(), legend.topLeft())
-        for position, rgb in _HEAT_STOPS:
+        for position, rgb in self._tactile_palette():
             gradient.setColorAt(position, QtGui.QColor(*rgb))
         painter.setBrush(gradient)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
@@ -1172,7 +1192,7 @@ class PreviewWidget(QtWidgets.QWidget):
                 painter.drawPath(mapped)
         legend = QtCore.QRectF(rect.right() - 9, hand_rect.top() + 5, 5, max(1., hand_rect.height() - 10))
         gradient = QtGui.QLinearGradient(legend.bottomLeft(), legend.topLeft())
-        for position, rgb in _HEAT_STOPS:
+        for position, rgb in self._tactile_palette():
             gradient.setColorAt(position, QtGui.QColor(*rgb))
         painter.setBrush(gradient)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
@@ -1196,7 +1216,13 @@ class PreviewWidget(QtWidgets.QWidget):
                      tr('测量关节点 · 拖动旋转 · 双击复位'))
         else:
             count = sum(self._frame["valid_mask"])
-            label = (tr('历史 {v0}/400 · ADC', v0=count) if self._held else tr('有效 {v0}/400 · ADC', v0=count))
+            if self._tactile_response():
+                label = (tr('历史 {v0}/400 · ΔADC', v0=count) if self._held else
+                         tr('有效 {v0}/400 · ΔADC', v0=count))
+                if not self._frame["reference_ready"]:
+                    label = tr('等待无载归零 · 中性示意')
+            else:
+                label = (tr('历史 {v0}/400 · ADC', v0=count) if self._held else tr('有效 {v0}/400 · ADC', v0=count))
             label += tr('   {v0:g}—{v1:g}', v0=self._levels[0], v1=self._levels[1])
         if self._presentation == "thumbnail" and self._frame is not None and not self._preview_error:
             if self.kind == "tracker":
@@ -1205,7 +1231,10 @@ class PreviewWidget(QtWidgets.QWidget):
                 label = (tr('示意骨架') if self._mode == "demo" else
                          tr('MANO 手势 · 腕部相对') if self.glove_view == "3d" else tr('测量骨架 · 腕部相对'))
             elif self.kind == "tactile":
-                label = (tr('静态手 · ') if self.tactile_view == "3d" else "") + tr('{v0}/400 · ADC', v0=sum(self._frame['valid_mask']))
+                value_label = (tr('{v0}/400 · ΔADC', v0=sum(self._frame['valid_mask']))
+                               if self._tactile_response() else
+                               tr('{v0}/400 · ADC', v0=sum(self._frame['valid_mask'])))
+                label = (tr('静态手 · ') if self.tactile_view == "3d" else "") + value_label
         if self._held and not self._preview_error and tr('历史') not in label:
             label = tr('历史保持 · ') + label
         if self._presentation != "standard" and not self._preview_error:
@@ -1253,7 +1282,8 @@ class PreviewWidget(QtWidgets.QWidget):
             if row >= 0:
                 index = row * 20 + col
                 valid = self._frame["valid_mask"][index]
-                value = tr('{v0:g} ADC', v0=self._frame['values'][index]) if valid else tr('无效 / 未观测')
+                value = (tr('{v0:g} ΔADC', v0=self._frame['values'][index]) if self._tactile_response() else
+                         tr('{v0:g} ADC', v0=self._frame['values'][index])) if valid else tr('无效 / 未观测')
                 description = tr('第 {v0} 行，第 {v1} 列 · {v2}', v0=row, v1=col, v2=value) + (tr(' · 历史画面') if self._held else "")
                 if point is not None:
                     region = {"palm": tr('手掌（掌心 / 掌根）'), "thumb": tr('拇指'), "index": tr('食指'), "middle": tr('中指'),

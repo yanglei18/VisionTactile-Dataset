@@ -7,13 +7,14 @@ import sys
 
 
 def parser():
-    result = argparse.ArgumentParser(description="独立右手触觉串口工具：复用主采集程序的原始 ADC 三维预览。")
+    result = argparse.ArgumentParser(description="独立右手触觉串口工具：无载归零、固定色阶的触觉响应三维预览。")
     result.add_argument("--port", default="", help="仅预填触觉串口，不自动连接")
     result.add_argument("--baudrate", type=int, default=115200, help="串口波特率，默认 115200")
     result.add_argument("--language", choices=("zh_CN", "en"), help="界面语言 / UI language (one launch only)")
     result.add_argument("--glove-python", help="加载 MANO 的 Python；默认读取本工具独立设置")
     result.add_argument("--mano-assets", help="可信 MANO 资源目录；默认读取本工具独立设置")
     result.add_argument("--model-bundle", type=Path, help="静态手模型 JSON；安装版自动使用内置资源")
+    result.add_argument("--response-profile", type=Path, help="通用或设备专属默认参考；安装版自动使用内置资源")
     result.add_argument("--self-check", type=Path, help="检查安装资源并写入 JSON 报告，不打开串口")
     result.add_argument("--smoke-seconds", type=float, default=0, help=argparse.SUPPRESS)
     result.add_argument("--screenshot", type=Path, help=argparse.SUPPRESS)
@@ -47,7 +48,8 @@ def main(argv=None):
         if args.smoke_seconds or args.screenshot or args.glove_python or args.mano_assets:
             arguments.error("安装自检不能与窗口预览或外部模型运行环境同时使用")
         from .backend.tactile_installation import check_installation
-        return check_installation(args.self_check, model_bundle=args.model_bundle)
+        return check_installation(args.self_check, model_bundle=args.model_bundle,
+                                  response_profile=args.response_profile)
     from PySide6 import QtCore, QtGui, QtWidgets
     from .backend.tactile_serial import TactileSerialSource
     from .backend.tactile_settings import TactileSettings
@@ -71,10 +73,10 @@ def main(argv=None):
     result = 0
     try:
         settings = TactileSettings(glove_python=args.glove_python, mano_assets=args.mano_assets,
-                                   model_bundle=args.model_bundle)
+                                   model_bundle=args.model_bundle, response_profile=args.response_profile)
         initialize_language(settings.store, args.language)
         loader = model_loader(lambda: settings.configuration)
-        source = TactileSerialSource()
+        source = TactileSerialSource(reference_store=settings.reference_store())
         window = TactileWindow(source, port=args.port, baudrate=args.baudrate, model_settings=settings)
         app.aboutToQuit.connect(window.shutdown)
         window.show()

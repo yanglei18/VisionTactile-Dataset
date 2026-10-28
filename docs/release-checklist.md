@@ -21,7 +21,7 @@ pushing branches that still contain old captures or authentication screenshots.
 - List user-visible changes and known limitations in `CHANGELOG.md`.
 - Record the component package versions associated with the intended Git tag;
   independently versioned tools need not share one version number.
-  The workbench is `0.6.0`; the standalone bilingual tactile viewer is `0.5.1`,
+  The workbench is `0.6.3`; the standalone bilingual tactile viewer source build is `0.6.2`,
   declared in `tools/tactile_viewer_windows/product.toml`.
 - Verify built Python wheel dependencies and ROS manifest version bounds. The
   manager, console and alignment replay extra require capture core >=0.6.0;

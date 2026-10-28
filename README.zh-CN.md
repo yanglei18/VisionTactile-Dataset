@@ -30,12 +30,15 @@ VisionTactile-Dataset 提供 ROS 2 采集、桌面工作台和离线对齐，面
 无硬件演示不需要 ROS、设备、私有 Tracker 输入或 MANO 模型；真实采集需要按模块
 准备依赖。录包、抓包、凭据、bootstrap、role map、设备外参和许可模型不随仓库分发。
 
-公开仓库提供**源码开发预览版**；配套 Ubuntu 完整安装包通过专属免登录链接单独交付。工作台包版本 `0.6.0` 是该组件的版本，
+公开仓库提供**源码开发预览版**；配套 Ubuntu 完整安装包通过专属免登录链接单独交付。工作台包版本 `0.6.3` 是该组件的版本，
 不代表这些变更已发布为同名项目 tag；本次候选范围见
 [Unreleased 变更记录](CHANGELOG.md#unreleased)。
-独立触觉可视化工具采用单独的 `0.5.1` 版本，支持中文／English。
+独立触觉可视化工具采用单独的 `0.6.2` 源码构建版本，支持中文／English、
+跨兼容板卡的通用参考、优先使用设备已保存参考、可选无载归零和经过噪声门槛处理的相对 ADC 响应显示。
 本仓库提供其 [Windows 安装包源码构建流程](tools/tactile_viewer_windows/README.md)，
 本次公开源码准备不包含已获再分发授权的模型，也不提供公开 Windows 安装包下载。
+
+另有独立的[手势与触觉可视化 0.1.0](tools/hand_tactile_viewer/README.md)：从两个串口读取右手姿态与触觉，在同一动态手模型显示，支持三步手势标定、中英双语和独立 Windows 安装。原触觉 `0.6.2` 保留；新工具的资源准备、操作和实机验证边界见专用说明。当前源码预览的触觉解析支持既有 26 字节协议，实测的 44 字节整行格式尚未适配。
 
 | 工作流 | 本仓库源码之外的前提 |
 | --- | --- |
@@ -76,9 +79,10 @@ VisionTactile-Dataset 提供 ROS 2 采集、桌面工作台和离线对齐，面
   标定仍在原手套窗口完成；旧 `glove_hand_pose` 研究原型保持独立，不属于这条 ROS 桥接链路。
 - 触觉工作台支持二维手形、20×20 原始矩阵和静态 MANO 三维手形。色标为原始 ADC，
   不是压力或基线差值；静态触觉与动态手势是独立视图，尚未在工作台同步叠加。
-- [独立触觉可视化工具](tools/tactile_viewer_windows/README.md)为 `0.5.1` 中英文双语版，
-  支持串口选择、连接／断开和固定手形三维显示。切换语言保留连接与当前数据，独立保存语言偏好。
-  Windows x64 安装包构建流程随源码提供，模型须单独授权；Windows 真机串口与显卡验收仍待完成。
+- [独立触觉可视化工具](tools/tactile_viewer_windows/README.md)源码构建版本为 `0.6.2`，
+  支持串口选择、跨兼容板卡通用参考及优先恢复设备专属参考、可选无载归零、固定响应色阶和固定手形三维显示；颜色表示相对 ADC 响应，
+  不代表物理压力。切换语言保留连接与当前数据，独立保存语言偏好。
+  Windows x64 配套包可携带通用参考，同协议同布局设备换电脑或换板后可直接使用，归零为可选操作。模型须单独授权，参考数据不随公开源码分发；Windows 真机串口与显卡须单独验收。
 - 运行时录制使用 ROS 2 Jazzy 的 `ros2bag` CLI。
 - 参考配置不代表硬件曝光同步，也不代表已录数据的质量。
 - 已提供相机采集和三 Tracker 只读 ROS 2 发布节点；选定的数据流写入同一个统一
@@ -275,6 +279,7 @@ python3 tools/release/prepare_release.py check
 - [手套 ROS 桥接及左右手独立运行](ros2_ws/src/vt_glove_bridge/README.md)
 - [触觉 ROS 2 采集、热力图、录包回放与离线重建](ros2_ws/src/vt_tactile_capture/README.md)：有效矩阵、二维/三维显示和离线导出统一为 20×20；原始包协议保持兼容。
 - [独立双语触觉可视化工具与 Windows 源码构建](tools/tactile_viewer_windows/README.md)
+- [独立手势与触觉可视化：双串口、同一动态右手与 Windows 构建](tools/hand_tactile_viewer/README.md)
 - [维护者发布检查表](docs/release-checklist.md)
 - [源码检查与导出](tools/release/README.md)
 - [开发与测试](CONTRIBUTING.zh-CN.md) · [变更记录](CHANGELOG.md) · [安全报告](SECURITY.md)

@@ -16,6 +16,7 @@ import time
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from . import host_clock
 from .guided_calibration import STEPS, model_motion_axes
 from .hand_view import HandView
 from .input_contract import describe_input_contract
@@ -1187,7 +1188,7 @@ class LiveWindow(QtWidgets.QMainWindow):
             self.input_contract_summary_label = summary
             self.input_contract_table = table
             self.input_contract_status = status
-        self._refresh_input_contract(snapshot, time.monotonic(), force=True)
+        self._refresh_input_contract(snapshot, host_clock.monotonic(), force=True)
         self.input_contract_dialog.show()
         self.input_contract_dialog.raise_()
 
@@ -1744,7 +1745,7 @@ class LiveWindow(QtWidgets.QMainWindow):
         snapshot, clearing = self._calibration_display_snapshot(snapshot)
         snapshot = self._presentation_snapshot(snapshot)
         self._save_actions.observe(snapshot)
-        now = time.monotonic()
+        now = host_clock.monotonic()
         presentation = calibration_status(snapshot, now=now)
         storage = storage_status(snapshot)
         runtime, calibration = snapshot.get("runtime", {}), snapshot.get("calibration", {})
@@ -1907,7 +1908,7 @@ class LiveWindow(QtWidgets.QMainWindow):
                 if context_matches and token != self._last_pose:
                     try:
                         if (isinstance(stamp, bool) or not isinstance(stamp, (int, float))
-                                or not np.isfinite(stamp) or stamp < 0 or stamp > time.monotonic()):
+                                or not np.isfinite(stamp) or stamp < 0 or stamp > host_clock.monotonic()):
                             raise ValueError("显示源时间不可用，保留上一幅展示")
                         if new_contract or getattr(self.controller, "renders_geometry", False):
                             geometry = snapshot.get("display_geometry" if new_contract else "geometry")
@@ -1927,13 +1928,13 @@ class LiveWindow(QtWidgets.QMainWindow):
                         # a retained/current mesh after a failed preview.
                         self._display_metadata["shape_preview_revision"] = candidate.get("shape_preview_revision")
                         self._display_metadata["shape_preview_mode"] = candidate.get("shape_preview_mode", "current")
-                        self._display_updated_at = time.monotonic()
+                        self._display_updated_at = host_clock.monotonic()
                         self._render_times.append(self._display_updated_at)
                         self._pose_age_ms = (self._display_updated_at - stamp) * 1000.
                     except (KeyError, TypeError, ValueError, RuntimeError, OSError) as exc:
                         self._render_error = str(exc)
 
-            display_now = time.monotonic()
+            display_now = host_clock.monotonic()
             current_measurement = measured_pose_visible(snapshot, display_now) and not health_blocked
             if not current_measurement:
                 self._set_changed(self.joint_status, "setText", "当前测量角度不可用 / 已过期 · 保留图像不代表新的测量，不显示历史角度。")
@@ -2094,7 +2095,7 @@ class LiveWindow(QtWidgets.QMainWindow):
         self._tactile_pose_current = bool(
             not clearing and not active and not self.replay_raw and not health_blocked
             and self._demo_key is None and self._has_display_cache
-            and not self._render_error and measured_pose_visible(snapshot, time.monotonic()))
+            and not self._render_error and measured_pose_visible(snapshot, host_clock.monotonic()))
         if not self._tactile_pose_current and self.tactile_controller is not None:
             self.view.set_tactile()  # Never paint live contact onto a calibration demonstration.
 

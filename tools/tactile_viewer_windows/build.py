@@ -33,6 +33,8 @@ VENDORED_RESOURCES = {
     "INNO_SETUP_LICENSE.txt": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c",
 }
 MAX_MODEL_BYTES = 512 * 1024
+MAX_RESPONSE_PROFILE_BYTES = 256 * 1024
+RESPONSE_PROFILE_RESOURCE = "vt_capture_console/assets/tactile/default_response.json"
 LOCAL_PACKAGES = (
     "ros2_ws/src/vt_capture_core", "ros2_ws/src/vt_tactile_capture",
     "tools/fsglove12", "tools/capture_console",
@@ -117,6 +119,45 @@ def check_model_input(model: Path, license_path: Path) -> dict:
             "notice": "记录许可文本不代表取得再分发授权；发布者须按实际许可分发。"}
 
 
+def check_response_profile_input(path: Path) -> dict:
+    """Check the envelope before dependency installation, without importing Qt.
+
+    The application's source/frozen self-check validates all reference values.
+    Do not duplicate the reference algorithm's numerical contract here.
+    """
+    with path.open("rb") as stream:
+        content = stream.read(MAX_RESPONSE_PROFILE_BYTES + 1)
+    if not 0 < len(content) <= MAX_RESPONSE_PROFILE_BYTES:
+        raise ValueError("默认触觉参考文件须为 256 KiB 以内的 JSON")
+    value = json.loads(content.decode("utf-8"))
+    fields = {"schema_version", "protocol", "hand", "reference", "settings", "captured_at_utc"}
+    if (not isinstance(value, dict) or type(value.get("schema_version")) is not int
+            or value.get("protocol") != "vt_tactile_adc400_v1" or value.get("hand") != "right"):
+        raise ValueError("默认触觉参考的协议、手别或版本无效")
+    if value["schema_version"] == 1:
+        if (set(value) != fields | {"device"} or not isinstance(value["device"], dict)
+                or set(value["device"]) != {"vendor_id", "product_id", "serial_number"}):
+            raise ValueError("设备专属触觉参考的身份格式无效")
+    elif value["schema_version"] == 2:
+        if (set(value) != fields | {"scope", "layout"} or value["scope"] != "layout"
+                or value["layout"] != "right_adc20x20_v1"):
+            raise ValueError("通用触觉参考的适用范围或布局无效")
+    else:
+        raise ValueError("默认触觉参考的协议、手别或版本无效")
+    reference = value["reference"]
+    if (not isinstance(reference, dict)
+            or set(reference) != {"schema_version", "baseline_adc", "activation_threshold_adc", "valid_mask"}
+            or type(reference["schema_version"]) is not int or reference["schema_version"] != 1
+            or any(not isinstance(reference[key], list) or len(reference[key]) != 400
+                   for key in ("baseline_adc", "activation_threshold_adc", "valid_mask"))):
+        raise ValueError("默认触觉参考须包含 400 点基线、门槛和有效掩码")
+    if (not isinstance(value["settings"], dict)
+            or set(value["settings"]) != {"display_range_adc", "direction"}
+            or not isinstance(value["captured_at_utc"], str)):
+        raise ValueError("默认触觉参考的显示配置或采集时间无效")
+    return {"sha256": hashlib.sha256(content).hexdigest(), "bytes": len(content)}
+
+
 def check_platform() -> None:
     if (sys.platform != "win32" or platform.machine().lower() not in ("amd64", "x86_64")
             or struct.calcsize("P") != 8):
@@ -186,7 +227,8 @@ def pip_arguments(python: Path, wheelhouse: Path | None) -> list[str]:
     return arguments
 
 
-def pyinstaller_arguments(python: Path, workspace: Path, model: Path) -> list[str]:
+def pyinstaller_arguments(python: Path, workspace: Path, model: Path,
+                          response_profile: Path | None = None) -> list[str]:
     arguments = [str(python), "-I", "-m", "PyInstaller", "--onedir", "--windowed",
                  "--name", NAME, "--noupx", "--noconfirm", "--clean",
                  "--contents-directory", "_internal", "--distpath", str(workspace / "dist"),
@@ -195,6 +237,8 @@ def pyinstaller_arguments(python: Path, workspace: Path, model: Path) -> list[st
                  "--version-file", str(workspace / "version.txt"),
                  "--runtime-hook", str(HERE / "runtime_hook.py"),
                  "--add-data", f"{model}:vt_capture_console/assets/tactile"]
+    if response_profile is not None:
+        arguments += ["--add-data", f"{response_profile}:vt_capture_console/assets/tactile"]
     for source, destination in APPLICATION_DATA:
         arguments += ["--add-data", f"{REPOSITORY / source}:{destination}"]
     for module in ("serial.tools.list_ports_windows", "OpenGL.platform.win32", "pyqtgraph.opengl"):
@@ -225,12 +269,19 @@ def write_version_resource(path: Path, version: str) -> None:
         "VarFileInfo([VarStruct('Translation', [2052, 1200])])])\n", encoding="utf-8")
 
 
-def audit_distribution(directory: Path, analysis_toc: Path, expected_model_hash: str) -> None:
+def audit_distribution(directory: Path, analysis_toc: Path, expected_model_hash: str,
+                       expected_profile_hash: str | None = None) -> None:
     for relative in REQUIRED_RESOURCES:
         if not (directory / "_internal" / relative).is_file():
             raise ValueError(f"安装包缺少运行资源：{relative}")
     if sha256(directory / "_internal" / REQUIRED_RESOURCES[0]) != expected_model_hash:
         raise ValueError("安装包内的模型与输入不一致")
+    profile = directory / "_internal" / RESPONSE_PROFILE_RESOURCE
+    if expected_profile_hash is None:
+        if profile.exists():
+            raise ValueError("安装包意外包含未指定的默认触觉参考")
+    elif not profile.is_file() or sha256(profile) != expected_profile_hash:
+        raise ValueError("安装包内的默认触觉参考缺失或与输入不一致")
     if not (directory / f"{NAME}.exe").is_file():
         raise ValueError("PyInstaller 没有生成程序")
     for pattern in FORBIDDEN_RESOURCE_PATTERNS:
@@ -296,10 +347,16 @@ def build(args) -> Path:
     version = read_version()
     model, license_path = args.model_bundle.resolve(), args.model_license.resolve()
     model_record = check_model_input(model, license_path)
+    response_profile = args.response_profile.resolve() if args.response_profile is not None else None
+    profile_record = check_response_profile_input(response_profile) if response_profile is not None else None
     if args.check_inputs:
         from vt_capture_console.ui.widgets.tactile_model_loader import load_bundle_file
         load_bundle_file(model, "right")
-        print(json.dumps({"version": version, **model_record}, ensure_ascii=False, indent=2))
+        if response_profile is not None:
+            from vt_capture_console.backend.tactile_reference_store import read_reference_profile
+            read_reference_profile(response_profile)
+        print(json.dumps({"version": version, **model_record, "response_profile": profile_record},
+                         ensure_ascii=False, indent=2))
         return model
     check_platform()
     check_vendor_resources()
@@ -315,6 +372,10 @@ def build(args) -> Path:
     stage.mkdir()
     staged_model = stage / "right_hand.json"
     shutil.copyfile(model, staged_model)
+    staged_profile = None
+    if response_profile is not None:
+        staged_profile = stage / "default_response.json"
+        shutil.copyfile(response_profile, staged_profile)
     write_version_resource(workspace / "version.txt", version)
     venv.EnvBuilder(with_pip=True).create(workspace / "venv")
     python = workspace / "venv/Scripts/python.exe"
@@ -323,14 +384,17 @@ def build(args) -> Path:
     runner.run("安装仓库内应用包…", pip + ["--no-deps", "--no-build-isolation"]
                + [str(REPOSITORY / package) for package in LOCAL_PACKAGES])
     runner.run("验证依赖一致性…", [str(python), "-I", "-m", "pip", "check"])
-    runner.run("验证模型几何和触觉映射…", [str(python), "-I", "-m", "vt_capture_console.tactile_app",
-               "--model-bundle", str(staged_model), "--self-check", str(workspace / "source-self-check.json")],
-               timeout=60)
+    source_check = [str(python), "-I", "-m", "vt_capture_console.tactile_app",
+                    "--model-bundle", str(staged_model)]
+    if staged_profile is not None:
+        source_check += ["--response-profile", str(staged_profile)]
+    source_check += ["--self-check", str(workspace / "source-self-check.json")]
+    runner.run("验证模型几何和触觉映射…", source_check, timeout=60)
     read_check_report(workspace / "source-self-check.json", frozen=False)
-    runner.run("生成独立 Windows 程序…", pyinstaller_arguments(python, workspace, staged_model))
+    runner.run("生成独立 Windows 程序…", pyinstaller_arguments(python, workspace, staged_model, staged_profile))
     distribution = workspace / "dist" / NAME
     audit_distribution(distribution, workspace / "pyinstaller" / NAME / "Analysis-00.toc",
-                       model_record["model_sha256"])
+                       model_record["model_sha256"], profile_record["sha256"] if profile_record else None)
     runner.run("验证冻结程序的模型、界面依赖和资源…", [str(distribution / f"{NAME}.exe"),
                "--self-check", str(workspace / "frozen-self-check.json")], timeout=60)
     frozen_report = read_check_report(workspace / "frozen-self-check.json", frozen=True)
@@ -347,7 +411,8 @@ def build(args) -> Path:
                 "inno_setup": ".".join(map(str, INNO_VERSION)),
                 "installer_resources": VENDORED_RESOURCES,
                 "requirements_sha256": sha256(HERE / "requirements-build.lock"),
-                "model": model_record, "files": file_inventory(distribution)}
+                "model": model_record, "response_profile": profile_record,
+                "files": file_inventory(distribution)}
     (distribution / "build-manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     release = output / "release"
@@ -370,10 +435,12 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="构建触觉三维预览 Windows x64 离线安装包")
     result.add_argument("--model-bundle", type=Path, required=True, help="已取得相应使用/分发许可的右手静态模型 JSON")
     result.add_argument("--model-license", type=Path, required=True, help="随安装包保存的模型许可说明 UTF-8 文本")
+    result.add_argument("--response-profile", type=Path,
+                        help="可选：通用或设备专属默认触觉参考 JSON；不指定则保留手动归零")
     result.add_argument("--output", type=Path, default=REPOSITORY / "dist/tactile-viewer-windows")
     result.add_argument("--iscc", type=Path, help="Inno Setup 6.7.3 的 ISCC.exe；默认自动寻找")
     result.add_argument("--wheelhouse", type=Path, help="仅从此目录安装固定依赖，构建时不访问包索引")
-    result.add_argument("--check-inputs", action="store_true", help="仅验证模型输入；可在已安装应用依赖的 Linux 环境执行")
+    result.add_argument("--check-inputs", action="store_true", help="仅验证模型和可选参考输入；可在已安装应用依赖的 Linux 环境执行")
     return result
 
 

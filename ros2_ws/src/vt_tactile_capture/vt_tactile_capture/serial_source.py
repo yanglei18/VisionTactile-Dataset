@@ -15,19 +15,16 @@ POSIX descriptor checks and ioctls are neither needed nor available.
 """
 
 from dataclasses import dataclass, replace
-import errno
 import math
-import os
 import queue
-import stat
-import sys
 import threading
 import uuid
 from typing import Callable, Optional
 from numbers import Integral
 
 from .protocol import Block, Parser
-from . import host_clock
+from . import host_clock, serial_access
+from .serial_access import PortInUseError  # Compatibility for existing callers.
 
 
 CLOCK_DOMAIN = "CLOCK_MONOTONIC"
@@ -56,44 +53,6 @@ class Batch:
     discarded_bytes_total: int = 0
     malformed_packets_total: int = 0
     blocks: tuple[Block, ...] = ()
-
-
-class PortInUseError(OSError):
-    """The explicit port already has another visible owner."""
-
-
-def _port_owners(port: str, exclude_fd: Optional[int] = None) -> list[str]:
-    """Find existing descriptors, including non-cooperating legacy readers."""
-    target = os.stat(port)
-    if not stat.S_ISCHR(target.st_mode):
-        raise ValueError("serial port must be a character device")
-    owners = []
-    own_pid = os.getpid()
-    with os.scandir("/proc") as processes:
-        for process in processes:
-            if not process.name.isdecimal():
-                continue
-            try:
-                with os.scandir(os.path.join(process.path, "fd")) as descriptors:
-                    for descriptor in descriptors:
-                        if (int(process.name) == own_pid
-                                and descriptor.name == str(exclude_fd)):
-                            continue
-                        try:
-                            info = os.stat(descriptor.path)
-                        except (FileNotFoundError, PermissionError, ProcessLookupError):
-                            continue
-                        if stat.S_ISCHR(info.st_mode) and info.st_rdev == target.st_rdev:
-                            owners.append(f"pid={process.name},fd={descriptor.name}")
-            except (FileNotFoundError, PermissionError, ProcessLookupError):
-                continue
-    return owners
-
-
-def _assert_port_free(port: str, exclude_fd: Optional[int] = None) -> None:
-    owners = _port_owners(port, exclude_fd)
-    if owners:
-        raise PortInUseError(errno.EBUSY, "serial port already in use: " + ", ".join(owners), port)
 
 
 class SerialWorker:
@@ -260,45 +219,16 @@ class SerialWorker:
                 batch, producer_dropped_total=self._producer_dropped_total))
 
     def _open_serial(self):
-        options = dict(port=self.port, baudrate=self.baudrate,
-                       timeout=self.read_timeout, write_timeout=self.read_timeout,
-                       exclusive=True)
         if self._factory is not None:
-            return self._factory(**options)
-        import serial
-
-        if sys.platform == "win32":
-            # pyserial's Win32 backend passes share mode 0 to CreateFile. The
-            # exclusive keyword controls POSIX flock and is unnecessary here.
-            options.pop("exclusive")
-            return serial.Serial(**options)
-        if not sys.platform.startswith("linux"):
-            # Other POSIX systems retain pyserial's exclusive lock, without
-            # assuming Linux /proc ownership inspection is available.
-            return serial.Serial(**options)
-
-        import fcntl
-        import termios
-
-        _assert_port_free(self.port)
-        device = serial.Serial(**options)
-        try:
-            fcntl.flock(device.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fcntl.ioctl(device.fileno(), termios.TIOCEXCL)
-            _assert_port_free(self.port, exclude_fd=device.fileno())
-        except BaseException:
-            self._close_serial(device)
-            raise
-        return device
+            return self._factory(port=self.port, baudrate=self.baudrate,
+                                 timeout=self.read_timeout, write_timeout=self.read_timeout,
+                                 exclusive=True)
+        return serial_access.open_serial(self.port, self.baudrate, self.read_timeout)
 
     def _close_serial(self, device) -> None:
-        if self._factory is None and sys.platform.startswith("linux"):
-            import fcntl
-            import termios
-            try:
-                fcntl.ioctl(device.fileno(), termios.TIOCNXCL)
-            except (OSError, ValueError):
-                pass
+        if self._factory is None:
+            serial_access.close_serial(device)
+            return
         try:
             device.close()
         except (OSError, ValueError):

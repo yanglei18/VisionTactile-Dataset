@@ -7,7 +7,7 @@ PACKAGE_NAME = "vt_tactile_capture"
 
 setup(
     name=PACKAGE_NAME,
-    version="0.1.0",
+    version="0.2.3",
     packages=find_packages(exclude=["test"]),
     package_data={PACKAGE_NAME: ["layouts/*.json"]},
     data_files=[

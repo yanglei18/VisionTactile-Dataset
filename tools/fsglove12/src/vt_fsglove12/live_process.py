@@ -17,6 +17,7 @@ import queue
 import threading
 import time
 
+from . import host_clock
 from .calibration import validate_rest
 from .config import validate_config
 from .live_runtime import (COMMAND_CAPACITY, STEP_KEYS, FUNCTIONAL_FINGERS,
@@ -43,9 +44,12 @@ def _input_scale_completed(runtime):
 
 
 def _idle(message="独立计算进程准备中；连接仍需手动操作。", error=None):
-    now = time.monotonic()
+    now = host_clock.monotonic()
     return dict(runtime=dict(connected=False, port=None, message=message, error=error,
                              session_id=None, output_dir=None, received_samples=0,
+                             command_completed_generation=0, last_command_name=None,
+                             last_command_error=None, command_rejected_count=0,
+                             last_rejected_command_name=None, last_rejected_command_error=None,
                              last_sample_age_s=None, published_monotonic_s=now,
                              timing_ms=dict(solve=0., calibration=0., mesh=0., total=0.)),
                 orientation=None, pose=_unavailable("disconnected", now),
@@ -57,7 +61,7 @@ def _idle(message="独立计算进程准备中；连接仍需手动操作。", e
 def _hide(snapshot, reason, message=None, *, disconnect=False, error=None):
     """Invalidate an owned snapshot, preserving its provenance and session IDs."""
     pose = snapshot.get("pose") or {}
-    pose.update(_unavailable(reason, time.monotonic()))
+    pose.update(_unavailable(reason, host_clock.monotonic()))
     snapshot["pose"], snapshot["geometry"] = pose, None
     if disconnect:
         snapshot["runtime"]["connected"] = False
@@ -87,7 +91,7 @@ def _hide(snapshot, reason, message=None, *, disconnect=False, error=None):
 
 def _publish(mailbox, snapshot, command_seen, *, input_only=False):
     buffer, length, sequence, lock = mailbox
-    envelope = (time.monotonic(), command_seen, snapshot)
+    envelope = (host_clock.monotonic(), command_seen, snapshot)
     try:
         payload = pickle.dumps(envelope, protocol=pickle.HIGHEST_PROTOCOL)
         if len(payload) > len(buffer):
@@ -97,12 +101,12 @@ def _publish(mailbox, snapshot, command_seen, *, input_only=False):
         if input_only:
             runtime = snapshot.get("runtime", {})
             snapshot = dict(runtime=dict(connected=bool(runtime.get("connected")),
-                session_id=runtime.get("session_id"), published_monotonic_s=time.monotonic(),
+                session_id=runtime.get("session_id"), published_monotonic_s=host_clock.monotonic(),
                 input_monitor_error=error), orientation=None)
         else:
             snapshot = _idle("计算快照无法传输；隐藏模型，采集控制仍可停止。", error)
             snapshot["geometry_error"] = snapshot["runtime"]["error"]
-        payload = pickle.dumps((time.monotonic(), command_seen, snapshot), protocol=pickle.HIGHEST_PROTOCOL)
+        payload = pickle.dumps((host_clock.monotonic(), command_seen, snapshot), protocol=pickle.HIGHEST_PROTOCOL)
     if not lock.acquire(False):
         return False  # Never queue an older snapshot behind the current one.
     try:
@@ -124,6 +128,7 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
     runtime, command_seen, fatal_error = None, 0, None
     input_scale_rejected_count, input_scale_error = 0, None
     shape_rejected_count, shape_error = 0, None
+    command_rejected_count, rejected_name, rejected_error = 0, None, None
     input_thread, input_stop = None, threading.Event()
     pose_exporter = None
     high_rate = (runtime_factory is None and options.get("upstream_checkout") is not None
@@ -152,7 +157,9 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
             from .live_runtime import LiveController
             runtime_factory = LiveController
         kwargs = dict(output_root=options["output_root"], geometry_backend=backend)
-        if high_rate:
+        if not options["record_streams"]:
+            kwargs["record_streams"] = False
+        if high_rate and options["record_streams"]:
             from .live_recording_process import ProcessResultRecorder
             kwargs["result_recorder_factory"] = ProcessResultRecorder
         if options.get("ros_socket"):
@@ -168,7 +175,7 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
         if gc_policy is not None:
             gc_policy.start()  # Models ready; no runtime, session or frames yet.
         runtime = runtime_factory(config, rest, model_axes, **kwargs)
-        if high_rate:
+        if high_rate and options["record_streams"]:
             runtime._snapshot["runtime"]["result_recording_mode"] = "bounded_process"
         if gc_policy is not None:
             runtime._snapshot["runtime"]["startup_gc_policy"] = gc_policy.snapshot()
@@ -193,7 +200,7 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
                         _publish(input_mailbox, light, command_seen, input_only=True)
                     except Exception as exc:
                         light = dict(runtime=dict(last_runtime,
-                            published_monotonic_s=time.monotonic(), input_monitor_error=str(exc)), orientation=None)
+                            published_monotonic_s=host_clock.monotonic(), input_monitor_error=str(exc)), orientation=None)
                         _publish(input_mailbox, light, command_seen, input_only=True)
                     input_stop.wait(INPUT_PUBLISH_PERIOD_S)
             input_thread = threading.Thread(target=publish_input, name="fsglove12-input-publisher", daemon=True)
@@ -218,6 +225,8 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
                 command_seen = command_id
                 if not runtime.submit(name, **args):
                     rejected = f"操作队列繁忙或命令不可用：{name}；未自动重试。"
+                    command_rejected_count += 1
+                    rejected_name, rejected_error = name, rejected
                     if name == "use_input_scale_candidate":
                         # No runtime command will execute its finally block.
                         # Report rejection separately; do not falsify an actual
@@ -239,6 +248,9 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
             if revision != last_revision or command_seen != published_command or rejected:
                 snapshot = dict(pose_reader())
                 snapshot["runtime"] = {**snapshot["runtime"],
+                    "command_rejected_count": command_rejected_count,
+                    "last_rejected_command_name": rejected_name,
+                    "last_rejected_command_error": rejected_error,
                     "input_scale_rejected_count": input_scale_rejected_count,
                     "input_scale_command_error": input_scale_error,
                     "shape_rejected_count": shape_rejected_count,
@@ -286,6 +298,8 @@ class ProcessLiveController:
     ManoBackend's constructor/export_rest/render API. A caller must use a guarded
     ``if __name__ == '__main__'`` entry point and stop/join on normal shutdown.
     No terminate/kill fallback exists, and reconnect is always an explicit command.
+    ``record_streams`` selects continuous logging in the child; the default
+    preserves the calibration tool, while standalone displays can opt out.
     """
 
     renders_geometry = True
@@ -293,7 +307,9 @@ class ProcessLiveController:
     def __init__(self, config, rest, model_axes, *, output_root, mano_assets,
                  hand=None, replay_raw=None, replay_speed=1., runtime_factory=None,
                  backend_factory=None, mailbox_capacity=MAILBOX_CAPACITY, upstream_checkout=None,
-                 ros_socket=None):
+                 ros_socket=None, record_streams=True):
+        if type(record_streams) is not bool:
+            raise ValueError("record_streams must be a boolean")
         self.config = validate_config(deepcopy(config))
         hand = self.config["hand"] if hand is None else hand
         if hand != self.config["hand"]:
@@ -326,7 +342,7 @@ class ProcessLiveController:
                       dict(output_root=str(output_root), mano_assets=str(mano_assets), hand=hand,
                            replay_raw=None if replay_raw is None else str(replay_raw), replay_speed=replay_speed,
                            upstream_checkout=None if upstream_checkout is None else str(upstream_checkout),
-                           ros_socket=ros_socket),
+                           ros_socket=ros_socket, record_streams=record_streams),
                       self._commands, self._stop, self._mailbox, self._input_mailbox, runtime_factory, backend_factory)
         self._cached, self._sequence, self._published, self._command_seen = _idle(), 0, None, 0
         self._input_cached, self._input_sequence, self._input_published, self._input_command_seen = None, 0, None, 0
@@ -351,7 +367,7 @@ class ProcessLiveController:
             self._process = self._context.Process(target=_child_main, args=self._args,
                                                  name="fsglove12-compute", daemon=False)
             self._process.start()
-            self._started_at = time.monotonic()
+            self._started_at = host_clock.monotonic()
             atexit.register(self._at_exit)
         return self
 
@@ -436,7 +452,7 @@ class ProcessLiveController:
         if payload is not None:
             self._published, self._command_seen, self._cached = pickle.loads(payload)
             self._sequence = new_sequence
-        result, now = deepcopy(self._cached), time.monotonic()
+        result, now = deepcopy(self._cached), host_clock.monotonic()
         result["input_snapshot"] = self.latest_input_snapshot()
         alive = self.is_alive()
         runtime = result["runtime"]
@@ -528,7 +544,7 @@ class ProcessLiveController:
         if payload is not None:
             self._input_published, self._input_command_seen, self._input_cached = pickle.loads(payload)
             self._input_sequence = new_sequence
-        now = time.monotonic()
+        now = host_clock.monotonic()
         if self._input_cached is None:
             # Old injected runtimes need not implement the new monitoring API.
             result = dict(runtime=deepcopy(self._cached["runtime"]),

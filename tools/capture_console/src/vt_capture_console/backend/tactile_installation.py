@@ -121,7 +121,20 @@ def _write_report(path, report):
             temporary.unlink(missing_ok=True)
 
 
-def check_installation(report_path, *, model_bundle=None) -> int:
+def _reference_details(response_profile):
+    from .tactile_reference_store import TactileDefaultProfile, read_reference_profile
+
+    path = (Path(response_profile) if response_profile is not None else
+            Path(__file__).resolve().parents[1] / "assets/tactile/default_response.json")
+    if response_profile is None and not path.exists():
+        return {"included": False, "mode": "manual_reference"}
+    profile = read_reference_profile(path)
+    mode = "layout_default" if isinstance(profile, TactileDefaultProfile) else "device_matched_preset"
+    return {"included": True, "mode": mode, "reference_cells": sum(profile.reference.valid_mask),
+            "display_range_adc": profile.settings.display_range_adc, "direction": profile.settings.direction}
+
+
+def check_installation(report_path, *, model_bundle=None, response_profile=None) -> int:
     """Write a bounded diagnostic report; return 0 only when all checks pass.
 
     This verifies the packaged static model, never the optional Python/MANO
@@ -132,7 +145,8 @@ def check_installation(report_path, *, model_bundle=None) -> int:
         "python": platform.python_version(), "platform": platform.system(),
         "machine": platform.machine(), "frozen": bool(getattr(sys, "frozen", False))}}
     for name, check in (("runtime", _runtime_details), ("resources", _resource_details),
-                        ("model", lambda: _model_details(model_bundle))):
+                        ("model", lambda: _model_details(model_bundle)),
+                        ("response_profile", lambda: _reference_details(response_profile))):
         try:
             report["details"][name] = check()
         except Exception as exc:

@@ -15,19 +15,51 @@ README.md；新电脑部署指南见仓库 docs/deployment.zh-CN.md。
 
 1. 安装后从桌面或开始菜单启动“触觉三维预览”。
 2. 插入触觉设备，点击刷新，选择对应 COM 串口。默认波特率为 115200。
-3. 点击连接，在固定右手模型上查看触觉信息。左键拖动旋转，滚轮缩放。
-4. 点击断开后，可以退出或改选串口。不要同时让其他程序打开同一串口。
+3. 点击连接。显示“通用参考”“默认参考”或“已保存参考”时，可直接查看触觉响应。
+   同协议、同布局的右手 400 点触觉板可使用通用参考，换板不强制归零。
+   若无载时存在明显偏差，可选择在正常佩戴、没有额外按压时点击“无载归零”，
+   保持约 3 秒；有设备唯一身份时，新参考自动保存到本机。
+4. 轻触、持续按住、松开，观察对应区域的变化。左键拖动旋转，滚轮缩放。
+5. 点击断开后，可以退出或改选串口。不要同时让其他程序打开同一串口。
 
-颜色表示原始 ADC，并非已标定的实际压力。显示规则与主采集程序一致：
-- 首次有效数据的最小值和最大值确定本次连接的色标，最小跨度为 100 ADC，
-  此后固定不变；实际范围显示在预览下方。不同连接的颜色不能直接对比。
-- 重新连接会清除旧画面和色标，再用新数据确定范围。没有额外归零或灵敏度设置。
-- 灰色表示无效采样；手模型没有映射触觉的部位保留模型底色。
+以下跨板通用参考行为适用于 0.6.2 及之后携带该参考的安装包；旧版需要升级。
+连接后优先使用本机保存的该设备专属参考，否则使用安装包的通用参考。
+通用参考不绑定 USB 序列号，也可用于未提供 USB 唯一身份的设备；不同设备的
+专属参考仍严格区分。通用参考是显示起点，不是对新板重新进行的无载测量。
+如有设备差异或无载偏差，可自愿归零；没有唯一身份时，新参考仅在当前连接使用。
+协议不提供型号自报，程序不会自动确认其他型号的量程或接线是否兼容。
+更换板卡后，请刷新串口列表并选择新 COM 口，再点击连接。
+未内置参考的源码构建仍可手动归零。源码版本不代表公开发布安装包；
+Windows 真机串口、显卡及触觉响应须在目标电脑上验收。
+颜色表示扣除无载参考并经过噪声门槛处理的相对 ADC 响应，并非实际压力单位：
+- 未归零且没有可用参考，或正在采集新参考时，有效区域显示中性底色，并明确提示参考状态。
+  第一帧数据不会被自动当成无载；底色不表示已经完成无载测量。
+- 每个触点使用自己的参考和噪声门槛，无载附近的小幅波动保持底色；有效响应
+  从浅绿平滑过渡到深红。归零不会改变原始采集值，也不会完成力学压力标定。
+- “配置设备”中的“显示范围（ΔADC）”默认为固定的 0～1000，可按实际响应调整。
+  它控制颜色显示范围，不修改硬件量程，不按第一帧底值自动缩放。
+- “响应方向”默认为“双向变化”，适合尚未确认响应方向时查看信号变化。
+  确认按压使 ADC 增大或减小后，可选择对应方向。双向变化也可能来自漂移等
+  非按压原因，不能只凭颜色认定存在压力。
+- 参考在归零后保持固定，持续按压不会被自动消除。松开后，信号回到无载范围
+  时恢复底色。若佩戴或底值改变，请在不受压时重新点击“无载归零”。
+- 重新连接后优先恢复该设备的已保存参考，否则加载随包提供的通用参考。
+  通用模式的显示范围和响应方向单独保存，在同布局通用模式下共享；修改这些
+  设置不会生成设备实测参考。已有设备专属参考及其显示设置仍优先。
+- 灰色表示无效采样；参考就绪后，未获得可用参考的触点也显示灰色。
+  手模型没有映射触觉的部位保留模型底色。
 - 触觉数据逐块更新，每块数据的显示有效期为 100 ms，不是 400 点同步采样。
   断流、无效样本或断开时保留的画面会标记为“历史保持”，不代表当前测量值。
 - 状态行的 Hz 表示送入显示的不同源快照频率，不是硬件扫描频率。
   数据年龄表示距离主机收到源数据已经经过的时间。
 此工具显示固定右手形状，不进行手指姿态解算。拔插或读取错误后需要手动重新连接。
+主采集工作台的原始 ADC 预览仍保留原来的显示含义；本工具的响应颜色不能直接
+与原始 ADC 色阶比较。主程序和小工具共用模型、渲染器及主题。
+
+归零后静止仍有明显热点：先确认传感区域没有受压，再重新归零。仍有持续变化时，
+需要检查实际信号和佩戴情况，不能只通过扩大显示范围掩盖异常。
+轻触颜色不明显：先确认参考就绪及响应方向，再适当减小显示范围；它只能放大
+已超过噪声门槛的响应，不能把低于噪声门槛的信号认定为接触。
 
 没有串口：请确认 USB 线支持数据传输，在 Windows 设备管理器中检查设备。
 若设备没有识别成 COM 串口，请使用设备厂商为该硬件提供的驱动。
@@ -38,7 +70,8 @@ README.md；新电脑部署指南见仓库 docs/deployment.zh-CN.md。
 
 升级：关闭程序后运行新版本安装包，安装位置和用户设置将保留。
 卸载：在 Windows“设置 → 应用”中找到“触觉三维预览”并卸载。
-卸载仅移除本程序的文件和快捷方式，保留用户设置。
+卸载仅移除本程序的文件和快捷方式，保留用户设置和本机已保存的设备参考。
+新电脑使用安装包携带的默认参考；本机后续更新的参考不会自动同步到另一台电脑。
 
 安装目录的 licenses 文件夹保存应用、依赖和模型的许可说明。
 dependencies.json 与 build-manifest.json 记录版本和文件校验值，供维护人员排查问题。
@@ -65,21 +98,60 @@ saved preference. Installer language does not override this preference.
 1. Start Tactile 3D Viewer from the desktop or Start menu.
 2. Plug in the tactile device, refresh the port list, and select its COM port.
    The default baud rate is 115200.
-3. Connect to view tactile data on the fixed right-hand model. Drag with the
-   left mouse button to rotate; use the mouse wheel to zoom.
-4. Disconnect before choosing another port or exiting. Do not open the same
+3. Connect. "General reference", "Default reference" or "Saved reference" means
+   responses are ready to view. Right-hand 400-point boards using the same
+   protocol and layout can use the general reference without mandatory zeroing.
+   If unloaded offsets remain, optionally wear the glove normally without added
+   pressure, click "Zero unloaded reference", and wait about three seconds.
+   With a unique device identity, the new reference is saved on this computer.
+4. Touch, hold and release a region to check its response. Drag with the left
+   mouse button to rotate; use the mouse wheel to zoom.
+5. Disconnect before choosing another port or exiting. Do not open the same
    serial port in another application at the same time.
 
-Colors represent raw ADC values, not calibrated physical pressure. The display
-uses the same rules as the main capture application:
-- The first valid data sets the color scale from its minimum and maximum, with
-  a minimum span of 100 ADC. That range stays fixed for the connection and is
-  shown below the preview. Colors from separate connections are not directly
-  comparable.
-- Reconnecting clears the old frame and range, then sets the scale from new
-  data. There are no additional zeroing or sensitivity settings.
-- Gray means an invalid sample. Unmapped parts of the hand keep the model's
-  base color.
+The general-reference behavior below applies to version 0.6.2 and later installers
+that include a general reference; older installations need an upgrade.
+The application prefers a reference saved for the connected device, then uses
+the bundled general reference. General references are not bound to one USB serial
+number and also work when a unique USB identity is unavailable. Device-specific
+references remain separate. A general reference is a display starting point,
+not a fresh unloaded measurement of the new board. Zeroing is optional when
+device differences or unloaded offsets require it. Without a unique USB identity,
+a newly measured reference is used only for the current connection.
+The protocol does not report hardware models, so the application cannot confirm
+another model’s range or wiring compatibility automatically. After changing boards,
+refresh the list, select the new COM port and connect. Source builds without a
+bundled reference still support manual zeroing. A source version does not establish
+a publicly released installer; serial, graphics and response behavior must be
+accepted on the target Windows computer.
+Colors represent relative ADC responses after unloaded-reference subtraction
+and noise suppression, not calibrated physical pressure:
+- Before zeroing when no usable reference exists, and while collecting a new
+  reference, valid regions use a neutral color and the interface identifies the reference state. The first
+  frame is not assumed to be unloaded. Neutral color at this stage does not
+  mean that an unloaded measurement has been completed.
+- Each point has its own baseline and noise threshold. Small fluctuations near
+  the unloaded level stay neutral; effective responses progress smoothly from
+  light green to dark red. Zeroing does not alter raw acquisition values or
+  calibrate force/pressure units.
+- Under "Configure device", "Display range (ΔADC)" defaults to a fixed 0–1000
+  range and can be adjusted to the observed response. It controls colors,
+  not hardware range, and does not scale from the first frame's offsets.
+- "Response direction" defaults to "Both directions" to show changes when
+  response polarity is unknown. After confirming whether pressing increases
+  or decreases ADC, select that direction. Two-sided changes can also come
+  from drift or other causes, so color alone does not establish pressure.
+- The reference remains fixed after zeroing; sustained contact is not
+  automatically removed. On release, colors return to neutral when the signal
+  returns to the unloaded range. If wearing conditions or offsets change,
+  collect another reference while the tactile regions are unpressed.
+- Reconnection prefers the reference saved for that device, then loads the
+  bundled general reference. General-mode display range and direction are saved
+  separately and shared within the same layout; changing these settings does not
+  create a measured device reference. Device-specific references and their
+  display settings still take priority.
+- Gray means an invalid sample. Once a reference is ready, points lacking a
+  usable reference are also gray. Unmapped surfaces retain the model's base color.
 - Tactile data updates in blocks. Each block remains valid for display for
   100 ms; the 400 points are not sampled simultaneously. On interrupted data,
   invalid samples or disconnection, a retained frame is marked as historical
@@ -89,6 +161,16 @@ uses the same rules as the main capture application:
   host received the source data.
 This viewer uses a fixed right-hand shape and does not estimate finger poses.
 Reconnect manually after unplugging the device or a serial read error.
+The main workbench's raw-ADC preview retains its previous meaning. Its colors
+cannot be directly compared with this viewer's response scale. The two tools
+share the model, renderer and theme.
+
+Persistent hotspots while unloaded: ensure that tactile regions are unpressed,
+then collect another reference. If changes persist, inspect the actual signal
+and wearing conditions instead of masking the problem with a wider range.
+Weak colors for light touch: first confirm reference readiness and response
+direction, then reduce the display range if needed. This magnifies responses
+above the noise threshold; it cannot classify a below-threshold signal as contact.
 
 No serial port: check that the USB cable supports data, and check Windows
 Device Manager. If the device is not recognized as a COM port, obtain the
@@ -102,7 +184,9 @@ Damaged model resources: run the same version's installer again to repair.
 Upgrade: close the viewer and run the new installer. The installation location
 and user preferences are retained.
 Uninstall: find Tactile 3D Viewer (or its Chinese name) in Windows Settings > Apps.
-Uninstall removes the application files and shortcuts but retains preferences.
+Uninstall removes the application files and shortcuts but retains preferences
+and saved device references. A new computer uses the bundled default reference;
+later reference updates on another computer are not synchronized automatically.
 
 The licenses folder contains application, dependency and model license notices.
 dependencies.json and build-manifest.json record versions and checksums for

@@ -5,10 +5,58 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 These changes describe the current source development preview. Component
-versions such as the workbench's `0.6.0` do not establish a published project
+versions such as the workbench's `0.6.5` do not establish a published project
 release or a completed hardware acceptance run.
 
+The hand/touch viewer still acquires tactile data with the existing 26-byte
+protocol. The observed 44-byte row format remains unsupported; opening its port
+or showing isolated decoded colors does not establish correct tactile display.
+The previously exported hand/touch `0.1.0` Windows installer predates the serial
+refresh and protocol-identification changes below.
+
 ### Added
+
+- Hand/touch viewer port selectors show bilingual protocol types. Explicit
+  identification briefly reads idle ports with the shared exclusive transport;
+  periodic discovery remains metadata-only. Classification requires consecutive
+  matching wire frames; isolated decoded fragments do not establish a type.
+  Device identity changes invalidate old classifications,
+  and ports without an identity show temporary scan results. Selection and
+  solver behavior remain explicit; earlier exported installers are unchanged.
+
+- The standalone hand/touch viewer refreshes serial port lists automatically
+  using one background metadata worker. Hotplug updates retain explicit port
+  choices and manual input, defer changes during selection/editing, and never
+  open devices or block the rendering thread.
+
+- Independent Hand Motion and Touch Viewer `0.1.0`: two serial inputs, a
+  dynamic right-hand surface, three-pose and optional functional calibration,
+  Chinese/English UI, and a separate Windows installer and settings directory.
+  It reuses the existing solver and tactile response pipeline; the original
+  tactile-only `0.6.2` product remains available. Display composition associates
+  bounded source-time snapshots and clears expired touch data. Windows runtime
+  clocks use the same high-resolution counter, operation receipts reflect
+  completed execution, and visualization can retain calibration evidence
+  without continuously recording raw and pose streams. Private model resources
+  are prepared explicitly, and dependency wheels are pinned and reproducible.
+  Physical accuracy and Windows device operation require hardware acceptance.
+
+- Standalone tactile viewer `0.6.2` accepts explicit protocol/layout defaults
+  across board serial numbers, including devices without a USB identity.
+  Saved device measurements take priority; optional zeroing creates a separate
+  device reference. General-mode display preferences are saved independently
+  and never relabeled as measurements. Existing device-bound profiles remain
+  supported. Chinese/English status distinguishes general and measured
+  references; valid live data is still required before any response is shown.
+
+- Standalone tactile viewer `0.6.0` adds explicit three-second unloaded zeroing,
+  per-cell noise thresholds, fixed response scaling and selectable signal
+  direction. Shared 2D/3D rendering distinguishes relative tactile response
+  from raw ADC, with a light-green-to-dark-red response palette. References
+  remain fixed during sustained input, reset across stream changes, and never
+  alter acquisition samples. Chinese/English controls and installation guides
+  are updated; Windows binaries and physical touch accuracy require separate
+  build and hardware verification.
 
 - Explicit offline preparation-uncertainty initialization for native VQF,
   including per-node evidence age, clock-epoch protection and physical slow-yaw
