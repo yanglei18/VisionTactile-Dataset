@@ -18,6 +18,27 @@ def test_default_config_does_not_enable_device_launch():
     assert load_config().process_groups == ()
 
 
+def test_hub_profile_uses_same_topics_without_bootstrap_or_hid_python():
+    p = dict(backend="vivehub", frame_id="vive_hub_map", hub_bindings_path="/private/roles.yaml",
+             hub_reader_path="/runtime/vt-vivehub-reader", hub_socket_path="/tmp/vut.sock",
+             pyvut_source="/old/source", bundle_path="/old/bundle.json")
+    spec, = build_specs(parse_profiles([profile(preset="trackers", parameters=p)]))
+    assert spec.argv[:4] == ("ros2", "launch", "vt_vive_tracker", "triple_tracker.launch.py")
+    assert "backend:=vivehub" in spec.argv
+    assert not any("bundle_path:=" in a or "PYTHONPATH=" in a for a in spec.argv)
+    assert spec.topics == tuple(f"/vive/{r}/sample" for r in ("left_wrist", "right_wrist", "torso"))
+
+
+@pytest.mark.parametrize("change", [{"frame_id": "vive_map"}, {"hub_bindings_path": ""},
+                                    {"hub_reader_path": "relative"}, {"backend": "unknown"}])
+def test_hub_rejects_legacy_frame_or_incomplete_configuration(change):
+    p = dict(backend="vivehub", frame_id="vive_hub_map", hub_bindings_path="/private/roles.yaml",
+             hub_reader_path="/runtime/vt-vivehub-reader", hub_socket_path="/tmp/vut.sock")
+    p.update(change)
+    with pytest.raises(ValueError):
+        parse_profiles([profile(preset="trackers", parameters=p)])
+
+
 def test_profiles_are_explicit_and_only_build_existing_launch_argv(tmp_path):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"process_groups": [profile()]}))

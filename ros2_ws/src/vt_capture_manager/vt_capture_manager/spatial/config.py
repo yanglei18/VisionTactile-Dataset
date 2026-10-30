@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 from vt_capture_core.spatial.transforms import RigidTransform
+from vt_capture_core.spatial.cloud_protocol import MAX_POINTS
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,8 @@ class SceneConfig:
     timing: dict = field(default_factory=dict)
     source_path: str = ''
     alignment_document: dict | None = None
+    # Presentation-only provenance; never changes calibration acceptance.
+    preview_notice: str = ''
 
 
 def _document(path):
@@ -62,13 +65,17 @@ def load_scene_config(path=None):
     path = Path(path).resolve()
     raw = _document(path)
     allowed = {'schema_version', 'enabled', 'world_frame', 'map_identity', 'alignment_config_path',
-               'extrinsics_directory', 'camera_device_info_services', 'scene_hz', 'timing', 'display', 'cloud', 'depth_units'}
+               'extrinsics_directory', 'camera_device_info_services', 'scene_hz', 'timing', 'display', 'cloud', 'depth_units',
+               'preview_notice'}
     if (set(raw) - allowed or type(raw.get('schema_version', 1)) is not int
             or raw.get('schema_version', 1) != 1):
         raise ValueError('unknown scene configuration fields or version')
     enabled = raw.get('enabled', True)
     if type(enabled) is not bool:
         raise ValueError('enabled must be boolean')
+    preview_notice = raw.get('preview_notice', '')
+    if not isinstance(preview_notice, str) or len(preview_notice) > 1024:
+        raise ValueError('preview_notice must be a string of at most 1024 characters')
     world = raw.get('world_frame', 'vive_map')
     if not isinstance(world, str) or not world or len(world) > 128:
         raise ValueError('world_frame must be a bounded frame name')
@@ -81,13 +88,22 @@ def load_scene_config(path=None):
         raise ValueError('unknown display setting')
     transform = RigidTransform.from_dict(display['display_from_world']) if 'display_from_world' in display else RigidTransform.identity()
     cloud = raw.get('cloud', {'enabled': False})
-    if not isinstance(cloud, dict) or set(cloud) - {'enabled', 'hz', 'max_points_per_camera', 'stride', 'min_depth_m', 'max_depth_m', 'color_mode'}:
+    if not isinstance(cloud, dict) or set(cloud) - {'enabled', 'hz', 'max_points_per_camera', 'stride', 'min_depth_m', 'max_depth_m', 'color_mode', 'source', 'topics', 'matching_mode'}:
         raise ValueError('unknown cloud setting')
     cloud = dict(enabled=False, hz=10., max_points_per_camera=50000, stride=4,
-                 min_depth_m=.1, max_depth_m=3., color_mode='source', **{}) | cloud
+                 min_depth_m=.1, max_depth_m=3., color_mode='source', source='rgbd', topics={},
+                 matching_mode='synchronized') | cloud
+    if cloud['matching_mode'] not in ('synchronized', 'independent'):
+        raise ValueError('invalid cloud matching_mode')
+    if cloud['source'] not in ('rgbd','realsense') or not isinstance(cloud['topics'],dict):
+        raise ValueError('invalid cloud source/topics')
+    from ..config import _topic
+    for name, topic in cloud['topics'].items():
+        if not isinstance(name,str): raise ValueError('invalid cloud camera name')
+        _topic(topic)
     if type(cloud['enabled']) is not bool or cloud['color_mode'] not in ('source', 'rgb'):
         raise ValueError('invalid cloud mode')
-    for key, lo, hi in [('hz', 1, 15), ('max_points_per_camera', 1, 50000), ('stride', 1, 64),
+    for key, lo, hi in [('hz', 1, 15), ('max_points_per_camera', 1, MAX_POINTS), ('stride', 1, 64),
                         ('min_depth_m', .001, 100), ('max_depth_m', .001, 100)]:
         _bounded(cloud[key], lo, hi, key)
     if any(type(cloud[key]) is not int for key in ('max_points_per_camera', 'stride')) or cloud['min_depth_m'] >= cloud['max_depth_m']:
@@ -153,6 +169,8 @@ def load_scene_config(path=None):
             camera['depth_camera_info_topic'] = camera.get('depth_camera_info_topic', f'/{name}/depth/camera_info')
             camera['device_info_service'] = services.get(name, '')
             camera['depth_to_color_topic'] = f'/{name}/extrinsics/depth_to_color'
+            if cloud['source'] == 'realsense':
+                camera['cloud_topic'] = cloud['topics'].get(name, f'/{name}/depth/color/points')
             if name in depth_units:
                 camera['depth_units_m'] = depth_units[name]['meters_per_unit']
                 camera['depth_units_source'] = depth_units[name]['source']
@@ -164,6 +182,8 @@ def load_scene_config(path=None):
             cameras.append(camera)
         if len({v['id'] for v in cameras}) != len(cameras):
             raise ValueError('duplicate camera identity')
+        if set(cloud['topics']) - {v['id'] for v in cameras}:
+            raise ValueError('point cloud topic configured for unknown camera')
         reference = alignment.get('reference_camera', cameras[0]['id'])
         if reference not in {c['id'] for c in cameras}:
             raise ValueError('unknown reference camera')
@@ -178,4 +198,5 @@ def load_scene_config(path=None):
                 archived[key] = camera[key]
     digest = hashlib.sha256(json.dumps(dict(scene=raw, cameras=cameras), sort_keys=True).encode()).hexdigest()
     return SceneConfig(enabled, world, _bounded(raw.get('scene_hz', 20.), 1, 60, 'scene_hz'), identity,
-                       digest, transform, tuple(cameras), reference, cloud, dict(timing), str(path), alignment)
+                       digest, transform, tuple(cameras), reference, cloud, dict(timing), str(path), alignment,
+                       preview_notice)

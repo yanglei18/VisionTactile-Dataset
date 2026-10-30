@@ -6,6 +6,7 @@ assumed to already be aligned with color. World pose travels separately.
 import math
 import numpy as np
 from vt_capture_core.spatial.transforms import RigidTransform
+from vt_capture_core.spatial.cloud_protocol import MAX_POINTS
 
 SOURCE_COLORS = {'left_wrist': (34,211,238,255), 'right_wrist': (232,121,249,255), 'torso': (251,146,60,255)}
 
@@ -71,12 +72,51 @@ def _rigid_array(points, transform):
     # Columns are rotated basis vectors; the implementation shares quaternion
     # semantics with Tracker interpolation, avoiding a second convention.
     matrix = np.asarray([np.asarray(pose.apply(axis))-origin for axis in ((1,0,0),(0,1,0),(0,0,1))]).T
+    # OpenCV's small fixed-size affine kernel avoids general BLAS overhead and
+    # two full-sized intermediate arrays for native megapixel point clouds.
+    # Keep float64 computation / the same geometry; only the wire casts to f32.
+    if len(points):
+        try:
+            import cv2
+        except ImportError:
+            pass
+        else:
+            return cv2.transform(np.asarray(points,dtype=np.float64).reshape(-1,1,3),
+                                 np.column_stack((matrix,origin))).reshape(-1,3)
     return points @ matrix.T + origin
+
+
+def sampling_stride(height, width, stride, max_points):
+    """Exact source-grid stride after the explicit point budget is applied."""
+    value = max(stride, math.ceil(math.sqrt(height*width/max_points)))
+    while math.ceil(height/value)*math.ceil(width/value) > max_points:
+        value += 1
+    return value
+
+
+def project_color(points, k, d):
+    """OpenCV Brown-Conrady projection without allocating unused Jacobians.
+
+    The common 4/5/8-coefficient camera models use the identical rational and
+    tangential equations. Extended thin-prism/tilt models stay with OpenCV.
+    """
+    if len(d) not in (0,4,5,8):
+        import cv2
+        return cv2.projectPoints(points,np.zeros(3),np.zeros(3),k,d)[0].reshape(-1,2) if len(points) else np.empty((0,2))
+    c=np.zeros(8); c[:len(d)]=d
+    with np.errstate(divide='ignore',invalid='ignore',over='ignore'):
+        x,y=points[:,0]/points[:,2],points[:,1]/points[:,2]
+        r2=x*x+y*y; r4=r2*r2; r6=r4*r2
+        radial=(1+c[0]*r2+c[1]*r4+c[4]*r6)/(1+c[5]*r2+c[6]*r4+c[7]*r6)
+        xy=x*y
+        u=(x*radial+2*c[2]*xy+c[3]*(r2+2*x*x))*k[0,0]+k[0,2]
+        v=(y*radial+c[2]*(r2+2*y*y)+2*c[3]*xy)*k[1,1]+k[1,2]
+    return np.column_stack((u,v))
 
 
 def build_cloud(depth_message, color_message, geometry, *, stride=4, max_points=50000,
                 min_depth_m=.1, max_depth_m=3., color_mode='source'):
-    if type(stride) is not int or not 1 <= stride <= 64 or type(max_points) is not int or not 1 <= max_points <= 50000:
+    if type(stride) is not int or not 1 <= stride <= 64 or type(max_points) is not int or not 1 <= max_points <= MAX_POINTS:
         raise ValueError('invalid cloud sampling bounds')
     if not 0 < min_depth_m < max_depth_m or not math.isfinite(max_depth_m) or color_mode not in ('source','rgb'):
         raise ValueError('invalid cloud depth/color bounds')
@@ -100,9 +140,7 @@ def build_cloud(depth_message, color_message, geometry, *, stride=4, max_points=
         raise ValueError('depth encoding must be 16UC1 or 32FC1')
     # Bound intermediate grids as well as the final wire payload. A 4K frame
     # with requested stride 1 must not allocate millions of temporary points.
-    sample_stride=max(stride,math.ceil(math.sqrt(depth.shape[0]*depth.shape[1]/max_points)))
-    while math.ceil(depth.shape[0]/sample_stride)*math.ceil(depth.shape[1]/sample_stride)>max_points:
-        sample_stride+=1
+    sample_stride=sampling_stride(*depth.shape, stride, max_points)
     yy,xx=np.mgrid[0:depth.shape[0]:sample_stride,0:depth.shape[1]:sample_stride]
     z=depth[::sample_stride,::sample_stride].astype(np.float64).ravel()*scale
     good=np.isfinite(z)&(z>=min_depth_m)&(z<=max_depth_m)
@@ -131,11 +169,7 @@ def build_cloud(depth_message, color_message, geometry, *, stride=4, max_points=
         kc,dc=_camera(geometry.get('color_intrinsics'),color_message)
         infront=points[:,2]>0
         if np.any(dc):
-            import cv2
-            try:
-                uv=cv2.projectPoints(points,np.zeros(3),np.zeros(3),kc,dc)[0].reshape(-1,2) if len(points) else np.empty((0,2))
-            except cv2.error as exc:
-                raise ValueError('color distortion cannot be projected') from exc
+            uv=project_color(points,kc,dc)
         else:
             uv=np.zeros((len(points),2)); uv[infront,0]=points[infront,0]/points[infront,2]*kc[0,0]+kc[0,2]; uv[infront,1]=points[infront,1]/points[infront,2]*kc[1,1]+kc[1,2]
         valid=infront & np.isfinite(uv).all(axis=1)

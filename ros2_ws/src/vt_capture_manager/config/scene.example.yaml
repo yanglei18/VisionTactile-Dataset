@@ -4,6 +4,9 @@ enabled: true
 world_frame: vive_map
 scene_hz: 20
 map_identity: null
+# Optional persistent preview warning (plain text, at most 1024 characters).
+# Presentation only: this does not accept, activate or validate a calibration.
+preview_notice: ""
 # Set these paths to your validated alignment configuration and extrinsics.
 alignment_config_path: null
 extrinsics_directory: null
@@ -17,6 +20,9 @@ display:
     translation_m: [0, 0, 0]
     quaternion_xyzw: [0, 0, 0, 1]
 cloud:
+  # Real-time preview: each camera matches only its own Tracker/source time.
+  # Use synchronized to retain reference-camera grouping (20 ms by default).
+  matching_mode: independent
   enabled: false
   hz: 10
   max_points_per_camera: 50000
@@ -24,3 +30,10 @@ cloud:
   min_depth_m: 0.1
   max_depth_m: 3.0
   color_mode: source
+  # rgbd: reconstruct RGB-D (legacy default).
+  # realsense: consume the driver's PointCloud2; do not reconstruct/recolor.
+  # Enable pointcloud.enable in the driver separately. Recommended full-frame
+  # budget: max_points_per_camera: 2097152. Driver mode ignores stride and
+  # min/max_depth_m; choose driver clip_distance AT STARTUP if required.
+  source: rgbd
+  # topics: {d436: /d436/depth/color/points}  # default: /<camera>/depth/color/points

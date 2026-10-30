@@ -1,5 +1,14 @@
 # VIVE Ultimate Tracker ROS 2 Publisher
 
+## Official Linux VIVE Hub backend
+
+If your trackers are already Ready in **VIVE Hub for Linux**, use the
+[VIVE Hub SDK bridge](../tools/vivehub_bridge/README.md). It feeds the same ROS
+topics and workbench without a PyVUT bootstrap or USB ownership conflict.
+Select `backend:=vivehub` and use the explicit `vive_hub_map` coordinate frame;
+legacy PyVUT extrinsics are not automatically compatible. The workflow below
+documents the retained **PyVUT** backend, not a prerequisite for Hub users.
+
 This workflow publishes three already mapped VIVE Ultimate Trackers on Linux.
 Windows mapping is mandatory before the first Linux session. The ROS node is
 read-only: it does not pair Trackers, change maps, send configuration commands,

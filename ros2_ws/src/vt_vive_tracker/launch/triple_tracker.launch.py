@@ -8,8 +8,12 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
-            DeclareLaunchArgument('bundle_path'),
-            DeclareLaunchArgument('role_map_path'),
+            DeclareLaunchArgument('bundle_path', default_value=''),
+            DeclareLaunchArgument('role_map_path', default_value=''),
+            DeclareLaunchArgument('backend', default_value='pyvut'),
+            DeclareLaunchArgument('hub_bindings_path', default_value=''),
+            DeclareLaunchArgument('hub_reader_path', default_value=''),
+            DeclareLaunchArgument('hub_socket_path', default_value='/tmp/vut.sock'),
             DeclareLaunchArgument('frame_id', default_value='vive_map'),
             DeclareLaunchArgument('status_rate_hz', default_value='10.0'),
             DeclareLaunchArgument('read_timeout_ms', default_value='100'),
@@ -24,8 +28,9 @@ def generate_launch_description() -> LaunchDescription:
                 output='screen',
                 parameters=[
                     {
-                        'bundle_path': LaunchConfiguration('bundle_path'),
-                        'role_map_path': LaunchConfiguration('role_map_path'),
+                        **{key: ParameterValue(LaunchConfiguration(key), value_type=str)
+                           for key in ('bundle_path', 'role_map_path', 'backend',
+                                       'hub_bindings_path', 'hub_reader_path', 'hub_socket_path')},
                         'frame_id': LaunchConfiguration('frame_id'),
                         'status_rate_hz': ParameterValue(
                             LaunchConfiguration('status_rate_hz'),

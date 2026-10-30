@@ -22,6 +22,12 @@ bag. Embedded guided and standalone offline workflows calibrate each fixed
 Tracker-to-camera pair. Offline alignment produces an auditable, host-time-aligned
 dataset index without modifying the raw bag.
 
+This branch includes the **2026-10-30 workbench snapshot**: official Linux VIVE
+Hub integration, resumable calibration, native RealSense point-cloud preview
+and display/transport improvements. See the [snapshot notes](docs/workbench-preview-20261030.md)
+for setup and remaining hardware acceptance work; this is a source update, not
+a newly packaged installer release.
+
 ## End users: install and use
 
 Use the **complete graphical installer for Ubuntu 24.04 x86_64** supplied with your equipment. No source checkout or manual Python, ROS or camera-driver installation is required.
@@ -60,7 +66,8 @@ redistribution-authorized model or a public Windows installer download.
 | --- | --- |
 | Synthetic desktop demo and tests of public dependency paths | Public Python/Qt dependencies; ROS dependencies for ROS tests |
 | RealSense capture and tactile acquisition | Supported hardware, drivers, device permissions and local configuration |
-| Production Tracker acquisition | Separately obtained extended PyVUT runtime, Windows mapping and private bootstrap/role inputs; the public submodule alone is insufficient |
+| Tracker acquisition via VIVE Hub | Separately installed Linux VIVE Hub and SDK, connected/mapped devices, a locally built reader and private serial-to-role bindings; see the [Hub bridge](tools/vivehub_bridge/README.md) |
+| Legacy Tracker acquisition via PyVUT | Separately obtained extended PyVUT runtime, Windows mapping and private bootstrap/role inputs; the public submodule alone is insufficient |
 | FSGlove/MANO hand reconstruction | Separately obtained FSGlove source, the corresponding licensed MANO models, calibration and optional model environment |
 | Independent fixed-hand tactile viewer and Windows packaging | Serial tactile hardware; an authorized static model bundle, or a licensed MANO model and separate model environment; Windows builds require an explicitly supplied model and its license |
 | Calibrated joint camera/Tracker view | Accepted identity-bound extrinsics for the actual rig and matching map configuration |

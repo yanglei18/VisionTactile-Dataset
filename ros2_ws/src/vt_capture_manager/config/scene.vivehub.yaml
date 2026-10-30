@@ -1,0 +1,26 @@
+# Official bundled VIVE Hub SDK: RH OpenVR, meters, xyzw. Tracker-only preview.
+# Do NOT attach old pyvut extrinsics by merely renaming their world frame.
+schema_version: 1
+enabled: true
+world_frame: vive_hub_map
+scene_hz: 20
+map_identity: null
+alignment_config_path: null
+extrinsics_directory: null
+camera_device_info_services: {}
+depth_units: {}
+display:
+  display_from_world:
+    translation_m: [0, 0, 0]
+    # Display only: native OpenVR +Y up -> viewer +Z up (X rotation +90 deg).
+    # No change to published poses, calibration or world_from_color.
+    quaternion_xyzw: [0.7071067811865476, 0, 0, 0.7071067811865476]
+cloud:
+  matching_mode: independent
+  enabled: false
+  hz: 10
+  max_points_per_camera: 50000
+  stride: 4
+  min_depth_m: 0.1
+  max_depth_m: 3.0
+  color_mode: source

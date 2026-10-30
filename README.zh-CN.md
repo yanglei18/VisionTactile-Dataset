@@ -12,6 +12,10 @@ VisionTactile-Dataset 提供 ROS 2 采集、桌面工作台和离线对齐，面
 公开工作流保留显式设备身份、来源时钟和录制 Topic 清单，为每个 session 管理
 一个不压缩的 rosbag Recorder 进程。
 
+本分支包含 **2026-10-30 工作台源码快照**：官方 Linux VIVE Hub 接入、标定续做、
+RealSense 原生点云预览及显示与传输优化。配置方法和仍待真机验收的事项见
+[本次快照说明](docs/workbench-preview-20261030.md)；这是源码更新，不是新安装包发行。
+
 ## 普通用户：安装与使用
 
 配套设备使用 **Ubuntu 24.04 x86_64 完整图形安装包**，不需要克隆源码或手动安装 Python、ROS 和相机驱动。
@@ -41,7 +45,8 @@ VisionTactile-Dataset 提供 ROS 2 采集、桌面工作台和离线对齐，面
 | --- | --- |
 | 合成桌面演示和公开依赖路径的软件测试 | 公开 Python／Qt 依赖；ROS 测试另需 ROS 依赖 |
 | RealSense 采集与触觉采集 | 支持的硬件、驱动、设备权限和本机配置 |
-| Tracker 生产采集 | 单独获取的扩展 PyVUT、Windows 建图和私有 bootstrap／role 输入；公开 submodule 本身不足以运行 |
+| VIVE Hub Tracker 采集 | 单独安装的 Linux VIVE Hub 与 SDK、已连接并建图的设备、本机编译的读取器及私有序列号角色表；见 [Hub 桥说明](tools/vivehub_bridge/README.md) |
+| 旧 PyVUT Tracker 采集 | 单独获取的扩展 PyVUT、Windows 建图和私有 bootstrap／role 输入；公开 submodule 本身不足以运行 |
 | FSGlove／MANO 手形重建 | 单独获取的 FSGlove 源码、对应许可 MANO 模型、标定和可选模型环境 |
 | 独立固定手形触觉预览与 Windows 打包 | 串口触觉硬件；获准使用的静态模型包，或许可 MANO 模型及独立模型环境；Windows 构建须显式提供模型及许可文本 |
 | 标定后的相机／Tracker 联合视图 | 当前硬件身份绑定且已验收的外参，以及匹配的地图配置 |

@@ -23,8 +23,8 @@ MAGIC = b'VTPC'
 PREFIX = struct.Struct('<4sIII')
 PREFIX_BYTES = PREFIX.size
 MAX_HEADER_BYTES = 16 * 1024
-MAX_FRAME_BYTES = 1024 * 1024
-MAX_POINTS = 50_000
+MAX_POINTS = 2_097_152  # Full 1280x720 / 1920x1080 frames, still bounded.
+MAX_FRAME_BYTES = PREFIX_BYTES + MAX_HEADER_BYTES + MAX_POINTS * 16
 CloudFrame = namedtuple('CloudFrame', ['header', 'xyz_bytes', 'rgba_bytes'])
 
 
@@ -36,7 +36,8 @@ _REQUIRED = {'protocol', 'version', 'camera_id', 'frame_key', 'source_realtime_n
              'time_epoch', 'coordinate_epoch', 'geometry_revision', 'geometry_sha256',
              'point_count', 'world_from_color', 'worker_instance_id', 'cloud_sequence'}
 _OPTIONAL = {'manager_instance_id', 'scene_epoch', 'sync_epoch', 'color_frame_id',
-             'time_residual_ns', 'color_mode', 'dropped_frames'}
+             'time_residual_ns', 'color_mode', 'dropped_frames', 'sampling', 'origin',
+             'matching_mode', 'tracker_pose'}
 
 
 def validate_cloud_header(header):
@@ -65,6 +66,45 @@ def validate_cloud_header(header):
         elif not isinstance(frame_key, dict) or not frame_key:
             raise CloudProtocolError('frame_key must be nonempty')
         _transform(header['world_from_color'], 'world_from_color')
+        if header.get('matching_mode','synchronized') not in ('synchronized','independent'):
+            raise CloudProtocolError('invalid cloud matching_mode')
+        if header.get('matching_mode') == 'independent':
+            pose=header.get('tracker_pose')
+            fields={'role','tracker_id','world_from_tracker','before_ns','after_ns','gap_ns'}
+            _keys(pose, fields, fields, 'tracker_pose')
+            _string(pose['role'],'tracker role'); _string(pose['tracker_id'],'tracker_id')
+            _transform(pose['world_from_tracker'],'world_from_tracker')
+            for key in ('before_ns','after_ns','gap_ns'): _integer(pose[key],key)
+            if not (pose['before_ns']<=header['source_realtime_ns']<=pose['after_ns']
+                    and pose['after_ns']-pose['before_ns']==pose['gap_ns']):
+                raise CloudProtocolError('tracker pose does not bracket cloud source time')
+            if (not isinstance(frame_key,dict) or frame_key.get('scene_time_ns')!=header['source_realtime_ns']
+                    or frame_key.get('reference_camera')!=header['camera_id']):
+                raise CloudProtocolError('independent cloud requires its own source time')
+        elif 'tracker_pose' in header:
+            raise CloudProtocolError('tracker_pose requires independent matching')
+        if 'origin' in header:
+            origin = header['origin']
+            _keys(origin, {'source','topic','native_frame_id','input_points','invalid_points'},
+                  {'source','topic','native_frame_id','input_points','invalid_points'}, 'cloud origin')
+            if origin['source'] != 'realsense' or 'sampling' in header:
+                raise CloudProtocolError('invalid driver cloud origin')
+            _string(origin['topic'], 'cloud source topic')
+            _string(origin['native_frame_id'], 'cloud native frame')
+            for key in ('input_points','invalid_points'):
+                _integer(origin[key], key)
+            if (origin['input_points'] > MAX_POINTS or
+                    origin['input_points'] - origin['invalid_points'] != header['point_count']):
+                raise CloudProtocolError('driver cloud counts disagree')
+        if 'sampling' in header:
+            s = header['sampling']
+            if not isinstance(s, dict) or set(s) != {'width','height','stride','min_depth_m','max_depth_m'}:
+                raise CloudProtocolError('invalid cloud sampling description')
+            for key, limit in (('width',4096),('height',4096),('stride',4096)):
+                if type(s[key]) is not int or not 1 <= s[key] <= limit:
+                    raise CloudProtocolError('invalid cloud sampling dimensions')
+            if not all(type(s[k]) in (int,float) and 0 < s[k] <= 100 for k in ('min_depth_m','max_depth_m')) or s['min_depth_m'] >= s['max_depth_m']:
+                raise CloudProtocolError('invalid cloud sampling range')
         return header
     except SceneProtocolError as exc:
         raise CloudProtocolError(str(exc)) from exc
@@ -128,10 +168,11 @@ def pack_cloud_frame(header, xyz_bytes, rgba_bytes) -> bytes:
         raise CloudProtocolError(str(exc)) from exc
     prefix = PREFIX.pack(MAGIC, VERSION, len(encoded), 16*count)
     inspect_cloud_prefix(prefix)
-    return prefix+encoded+bytes(xyz_bytes)+bytes(rgba_bytes)
+    # Allocate the multi-MiB frame once, not a growing XYZ-sized intermediate.
+    return b''.join((prefix, encoded, xyz_bytes, rgba_bytes))
 
 
-def unpack_cloud_frame(frame) -> CloudFrame:
+def unpack_cloud_frame(frame, *, copy_payload=True) -> CloudFrame:
     _validate_byte_buffer(frame)
     if len(frame) > MAX_FRAME_BYTES:
         raise CloudProtocolError('invalid or oversized cloud frame')
@@ -147,7 +188,16 @@ def unpack_cloud_frame(frame) -> CloudFrame:
     count = header['point_count']
     if count*16 != payload_length:
         raise CloudProtocolError('cloud payload differs from point count')
-    xyz = bytes(frame[start:start+count*12])
-    rgba = bytes(frame[start+count*12:])
+    if copy_payload:
+        xyz = bytes(frame[start:start+count*12])
+        rgba = bytes(frame[start+count*12:])
+    else:
+        # Preview readers own an immutable wire buffer. Keep bounded views of
+        # it instead of copying the full point array again. Mutable caller
+        # buffers are frozen first; a read-only view alone does not freeze its
+        # bytearray owner. Public/default decoding still returns bytes.
+        owner = frame if isinstance(frame, bytes) else bytes(frame)
+        view = memoryview(owner)
+        xyz, rgba = view[start:start+count*12], view[start+count*12:]
     _validate_xyz(xyz)
     return CloudFrame(header, xyz, rgba)

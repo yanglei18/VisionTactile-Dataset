@@ -11,7 +11,7 @@ from ...i18n.widgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, 
                             QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QProgressBar,
                             QPushButton, QScrollArea, QSizePolicy, QSpinBox, QTextEdit,
                             QToolButton, QVBoxLayout, QWidget)
-from ...viewmodels.calibration import calibration_view, preview_device, restorable_revision, tracker_role_label
+from ...viewmodels.calibration import calibration_view, preview_device, restorable_revision, tracker_role_label, can_resume
 from .preview import PreviewWidget
 
 
@@ -50,6 +50,8 @@ class CalibrationWorkspace(QFrame):
         self._snapshot = {}
         self._new_session = False
         self._choices = None
+        self._resume_state = None
+        self._retry_choices = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(12)
@@ -163,6 +165,8 @@ class CalibrationWorkspace(QFrame):
         side.addWidget(self.device_summary)
         self.quality_summary = _label()
         side.addWidget(self.quality_summary)
+        self.saved_rounds = _label()
+        side.addWidget(self.saved_rounds)
         self.progress_label = _label()
         side.addWidget(self.progress_label)
         self.progress = QProgressBar()
@@ -187,6 +191,18 @@ class CalibrationWorkspace(QFrame):
         side.addWidget(self.details_toggle)
         side.addWidget(self.details_panel)
         side.addStretch()
+        self.resume_confirmed = QCheckBox(tr('相机与追踪器的固定关系、标定板尺寸未改变'))
+        self.resume_confirmed.toggled.connect(self._render)
+        side.addWidget(self.resume_confirmed)
+        self.retry_round = QComboBox()
+        self.retry_round.setAccessibleName(tr('选择重拍轮次'))
+        self.retry_round.currentIndexChanged.connect(self._render)
+        side.addWidget(self.retry_round)
+        self.resume_button = QPushButton(tr('保留已完成轮次，继续标定'))
+        self.resume_button.clicked.connect(lambda: self.client.resume(
+            assembly_unchanged=self.resume_confirmed.isChecked(),
+            retry_rounds=[self.retry_round.currentData()] if self.retry_round.currentData() else None))
+        side.addWidget(self.resume_button)
         actions = QHBoxLayout()
         self.primary_button = QPushButton(tr('开始标定'))
         self.primary_button.setObjectName("primary")
@@ -288,6 +304,10 @@ class CalibrationWorkspace(QFrame):
     def _render(self, *_):
         view = calibration_view(self._snapshot)
         session = (self._snapshot.get("calibration") or {}).get("session") or {}
+        resume_state = (session.get('session_id'), session.get('state'))
+        if resume_state != self._resume_state:
+            self._resume_state = resume_state
+            self.resume_confirmed.setChecked(False)
         preparing = view.stage == "prepare" or self._new_session
         guided = self.mode.currentData() == "guided"
         self.setup.setVisible(preparing)
@@ -329,6 +349,33 @@ class CalibrationWorkspace(QFrame):
         self.notice.setText(notice)
         self.notice.setVisible(bool(notice))
         metrics = session.get("metrics") or {}
+        completed = metrics.get('completed_rounds', [])
+        self.saved_rounds.setText(tr('已保存并通过单轮验证：第 {v0} 轮；原始数据和结果始终保留。',
+                                    v0=', '.join(map(str, completed))) if completed else '')
+        self.saved_rounds.setVisible(bool(completed) and not preparing)
+        resume = can_resume(self._snapshot) and not preparing
+        choices = (session.get('session_id'), tuple(sorted(completed)))
+        if choices != self._retry_choices:
+            previous = self.retry_round.currentData() if self._retry_choices and self._retry_choices[0] == choices[0] else 0
+            self._retry_choices = choices
+            self.retry_round.blockSignals(True)
+            self.retry_round.clear()
+            self.retry_round.addItem(tr('不重拍：继续未完成轮次或重新比较'), 0)
+            for number in sorted(completed):
+                self.retry_round.addItem(tr('仅重拍第 {v0} 轮，保留其余轮次', v0=number), number)
+            index = self.retry_round.findData(previous)
+            self.retry_round.setCurrentIndex(max(0, index))
+            self.retry_round.blockSignals(False)
+        selected_round = self.retry_round.currentData()
+        self.retry_round.setVisible(resume and bool(completed))
+        self.retry_round.setEnabled(not self.client.pending)
+        self.resume_button.setText(
+            tr('仅重拍第 {v0} 轮，保留其余轮次', v0=selected_round) if selected_round else
+            tr('重新比较三轮结果（不采集）') if len(completed) == 3 else
+            tr('保留已完成轮次，继续标定'))
+        self.resume_confirmed.setVisible(resume)
+        self.resume_button.setVisible(resume)
+        self.resume_button.setEnabled(resume and self.resume_confirmed.isChecked() and not self.client.pending)
         details = []
         if session.get("detail"):
             details.append(str(diagnostic(session["detail"])))

@@ -11,7 +11,7 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--demo", action="store_true", help="合成演示，不连接硬件、不保存 bag")
     mode.add_argument("--live", action="store_true", help="连接真实后台；录制控制须后台显式启用（默认模式）")
-    mode.add_argument("--desktop", action="store_true", help="桌面工作台：自动连接本机管理后台，图形化配置设备；不自动启动硬件")
+    mode.add_argument("--desktop", action="store_true", help="桌面工作台：连接本机后台，并按已保存设置自动连接 VIVE Hub")
     parser.add_argument("--socket", help="管理后台 Unix socket 路径")
     parser.add_argument("--scene-socket", help="只读联合空间 socket；默认与控制 socket 同目录")
     parser.add_argument("--smoke-seconds", type=float, default=0, help="指定秒数后退出，用于 GUI 冒烟测试")

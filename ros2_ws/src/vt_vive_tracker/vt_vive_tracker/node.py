@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import stat
 import time
@@ -17,7 +18,7 @@ from rclpy.qos import (
     QoSProfile,
     ReliabilityPolicy,
 )
-from std_msgs.msg import Header
+from std_msgs.msg import Header, String
 from vt_tracker_msgs.msg import TrackerSample, TrackerStatus
 
 from .health import BoundedSampleQueue, TrackerHealthBook
@@ -35,6 +36,10 @@ class RuntimeConfig:
     read_timeout_ms: int
     disconnect_timeout_ms: int
     queue_capacity: int
+    backend: str = "pyvut"
+    hub_bindings_path: str = ""
+    hub_reader_path: str = ""
+    hub_socket_path: str = "/tmp/vut.sock"
 
 
 @dataclass
@@ -54,17 +59,31 @@ def make_runtime_config(
     disconnect_timeout_ms: object,
     queue_capacity: object,
     use_sim_time: object,
+    backend: object = "pyvut",
+    hub_bindings_path: object = "",
+    hub_reader_path: object = "",
+    hub_socket_path: object = "/tmp/vut.sock",
 ) -> RuntimeConfig:
     if type(use_sim_time) is not bool:
         raise TypeError("use_sim_time must be bool")
     if use_sim_time:
         raise ValueError("use_sim_time=true is forbidden for hardware input")
-    if type(bundle_path) is not str or not bundle_path:
+    if backend not in ("pyvut", "vivehub"):
+        raise ValueError("backend must be pyvut or vivehub")
+    if type(bundle_path) is not str or (backend == "pyvut" and not bundle_path):
         raise ValueError("bundle_path is required")
-    if type(role_map_path) is not str or not role_map_path:
+    if type(role_map_path) is not str or (backend == "pyvut" and not role_map_path):
         raise ValueError("role_map_path is required")
     if type(frame_id) is not str or not frame_id:
         raise ValueError("frame_id is required")
+    if backend == "vivehub":
+        from .hub_source import FRAME_ID
+        if frame_id != FRAME_ID:
+            raise ValueError(f"VIVE Hub requires frame_id={FRAME_ID}; do not reuse pyvut extrinsics")
+        for key, value in (("hub_bindings_path", hub_bindings_path),
+                           ("hub_reader_path", hub_reader_path), ("hub_socket_path", hub_socket_path)):
+            if type(value) is not str or not Path(value).is_absolute():
+                raise ValueError(f"{key} requires an absolute path")
     if type(status_rate_hz) not in (int, float) or isinstance(
         status_rate_hz, bool
     ):
@@ -88,6 +107,10 @@ def make_runtime_config(
         read_timeout_ms=read_timeout_ms,
         disconnect_timeout_ms=disconnect_timeout_ms,
         queue_capacity=queue_capacity,
+        backend=backend,
+        hub_bindings_path=hub_bindings_path,
+        hub_reader_path=hub_reader_path,
+        hub_socket_path=hub_socket_path,
     )
 
 
@@ -106,7 +129,7 @@ class ViveTrackerNode(Node):
         self,
         *,
         parameter_overrides: Sequence[object] | None = None,
-        source_factory: Callable[..., object] = ReadOnlyPoseSource,
+        source_factory: Callable[..., object] | None = None,
         monotonic_ns: Callable[[], int] = time.monotonic_ns,
         realtime_ns: Callable[[], int] = time.time_ns,
     ) -> None:
@@ -131,6 +154,10 @@ class ViveTrackerNode(Node):
         self.declare_parameter("read_timeout_ms", 100)
         self.declare_parameter("disconnect_timeout_ms", 1000)
         self.declare_parameter("queue_capacity", 4096)
+        self.declare_parameter("backend", "pyvut")
+        self.declare_parameter("hub_bindings_path", "")
+        self.declare_parameter("hub_reader_path", "")
+        self.declare_parameter("hub_socket_path", "/tmp/vut.sock")
         if not self.has_parameter("use_sim_time"):
             self.declare_parameter("use_sim_time", False)
 
@@ -145,11 +172,20 @@ class ViveTrackerNode(Node):
             ).value,
             queue_capacity=self.get_parameter("queue_capacity").value,
             use_sim_time=self.get_parameter("use_sim_time").value,
+            backend=self.get_parameter("backend").value,
+            hub_bindings_path=self.get_parameter("hub_bindings_path").value,
+            hub_reader_path=self.get_parameter("hub_reader_path").value,
+            hub_socket_path=self.get_parameter("hub_socket_path").value,
         )
         self._config = config
-        _validate_private_file(config.bundle_path, "bundle_path")
-        _validate_private_file(config.role_map_path, "role_map_path")
-        role_map = load_role_map(config.role_map_path)
+        if config.backend == "vivehub":
+            from .hub_source import load_bindings
+            _validate_private_file(Path(config.hub_bindings_path), "hub_bindings_path")
+            _, role_map = load_bindings(config.hub_bindings_path)
+        else:
+            _validate_private_file(config.bundle_path, "bundle_path")
+            _validate_private_file(config.role_map_path, "role_map_path")
+            role_map = load_role_map(config.role_map_path)
         self._health = TrackerHealthBook(
             role_map,
             disconnect_timeout_ns=config.disconnect_timeout_ms * 1_000_000,
@@ -192,13 +228,21 @@ class ViveTrackerNode(Node):
                 1.0 / config.status_rate_hz,
                 self.publish_status_once,
             )
-            self._source = source_factory(
-                config.bundle_path,
-                role_map,
-                monotonic_ns=monotonic_ns,
-                realtime_ns=realtime_ns,
-                read_timeout_ms=config.read_timeout_ms,
-            )
+            if config.backend == "vivehub":
+                from .hub_source import HubPoseSource, source_info
+                self._source = (source_factory or HubPoseSource)(
+                    config.hub_bindings_path, config.hub_reader_path, config.hub_socket_path,
+                    monotonic_ns=monotonic_ns)
+                self._source_info = self.create_publisher(String, "/vive/source_info", status_qos)
+                self._source_info.publish(String(data=json.dumps(source_info(), sort_keys=True)))
+            else:
+                self._source = (source_factory or ReadOnlyPoseSource)(
+                    config.bundle_path,
+                    role_map,
+                    monotonic_ns=monotonic_ns,
+                    realtime_ns=realtime_ns,
+                    read_timeout_ms=config.read_timeout_ms,
+                )
             self._source.start(
                 self._on_sample,
                 self._on_invalid,

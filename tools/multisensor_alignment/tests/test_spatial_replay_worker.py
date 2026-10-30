@@ -32,6 +32,25 @@ def test_legacy_bag_has_real_tracker_frames_but_no_fabricated_cameras_or_clouds(
     assert result['trackers'][0]['position_m'] == [.12, 0., 0.]
     assert result['cameras'] == [] and replay.last_clouds == []
     assert 'geometry' in replay.note.lower()
+    assert result['preview_notice'] == ''
+
+
+def test_recorded_preview_notice_survives_without_camera_geometry(tmp_path, monkeypatch):
+    notice = '左腕·试用候选（最初第3轮；三轮一致性未通过）'
+    monkeypatch.setattr(worker, 'GeometryMaterials', lambda path: NS(manifest={'preview_notice': notice}, note='recorded geometry'))
+    replay, _ = source(tmp_path, monkeypatch)
+    scene = replay.frame(0)
+    assert scene['preview_notice'] == notice
+    assert scene['cameras'] == [] and replay.last_clouds == []
+    assert scene['trackers'][0]['position_m'] == [.1, 0., 0.]
+
+
+@pytest.mark.parametrize('notice', [None, False, 'x' * 1025])
+def test_invalid_recorded_preview_notice_is_rejected(tmp_path, monkeypatch, notice):
+    monkeypatch.setattr(worker, 'GeometryMaterials', lambda path: NS(manifest={'preview_notice': notice}, note='recorded geometry'))
+    replay, _ = source(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match='preview_notice'):
+        replay.frame(0)
 
 
 def test_invalid_tracker_event_blocks_interpolation_in_recorded_pose_stream(tmp_path, monkeypatch):

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from types import SimpleNamespace
 import uuid
 
 import pytest
@@ -148,6 +149,102 @@ def test_start_only_fixed_manager_recipe_and_no_sensor_commands(tmp_path):
     assert not any("device.start" in arg or ";" in arg for arg in argv)
     assert all(not profile["enabled"] for profile in runtime.configuration["process_groups"])
     runtime.close()
+
+
+@pytest.fixture
+def probe_connection(runtime_factory, monkeypatch):
+    """Deterministic socket/clock: never attach to the real manager."""
+    runtime = runtime_factory(start=False)
+    clock = [100.]
+    calls = []
+
+    class Connection:
+        def __init__(self, delays, *, uid=None, wrong_request=False):
+            self.delays = iter(delays)
+            self.uid = os.getuid() if uid is None else uid
+            self.wrong_request = wrong_request
+            self.timeouts = []
+            self.closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.closed = True
+
+        def settimeout(self, timeout):
+            self.timeouts.append(timeout)
+
+        def connect(self, path):
+            assert path == str(runtime.socket_path)
+            clock[0] += .05
+
+        def getsockopt(self, *_):
+            return local_runtime.struct.pack("3i", 123, self.uid, os.getgid())
+
+        def sendall(self, data):
+            request = json.loads(data)
+            response = dict(version=4, request_id="wrong" if self.wrong_request else request["request_id"],
+                            ok=True, snapshot=idle_snapshot())
+            self.remaining = local_runtime.encode_message(response)
+            clock[0] += .05
+
+        def recv(self, limit):
+            delay, final = next(self.delays)
+            timeout = self.timeouts[-1]
+            clock[0] += min(delay, timeout)
+            if delay > timeout:
+                raise socket.timeout("synthetic bounded receive timeout")
+            count = min(limit, len(self.remaining)) if final else 1
+            result, self.remaining = self.remaining[:count], self.remaining[count:]
+            return result
+
+    def setup(delays, **kwargs):
+        connection = Connection(delays, **kwargs)
+
+        def connect(*_):
+            calls.append(connection)
+            return connection
+
+        monkeypatch.setattr(local_runtime.socket, "socket", connect)
+        monkeypatch.setattr(local_runtime, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+        return runtime, connection, clock, calls
+
+    return setup
+
+
+def test_lifecycle_probe_accepts_delayed_reply_with_one_three_second_budget(probe_connection):
+    runtime, connection, clock, calls = probe_connection([(.9, False), (.4, True)])
+    snapshot, pid = runtime._probe_version(4)
+    assert runtime.PROBE_TIMEOUT_S == 3.
+    assert pid == 123 and snapshot["mode"] == "live"
+    assert clock[0] == pytest.approx(101.4)
+    assert connection.timeouts == pytest.approx([3., 2.9, 2.])
+    assert len(calls) == 1 and connection.closed
+
+
+def test_lifecycle_probe_trickle_does_not_reset_deadline_or_retry_protocol(probe_connection):
+    runtime, connection, clock, calls = probe_connection([(1., False)] * 3)
+    with pytest.raises(TimeoutError):
+        runtime._probe()
+    assert clock[0] == pytest.approx(103.)
+    assert connection.timeouts == pytest.approx([3., 2.9, 1.9, .9])
+    assert len(calls) == 1 and connection.closed
+
+
+def test_delayed_lifecycle_probe_still_rejects_wrong_request_identity(probe_connection):
+    runtime, connection, _, _ = probe_connection([(1., True)], wrong_request=True)
+    with pytest.raises(ValueError, match="工作站协议"):
+        runtime._probe_version(4)
+    assert connection.closed
+
+
+def test_lifecycle_probe_still_authenticates_peer_before_request(probe_connection):
+    runtime, connection, _, _ = probe_connection([], uid=os.getuid() + 1)
+    with pytest.raises(PermissionError, match="当前用户"):
+        runtime._probe_version(4)
+    assert not hasattr(connection, "remaining")
+    assert connection.closed
 
 
 def test_environment_detection_is_a_draft_without_starting_or_saving(runtime_factory, tmp_path):

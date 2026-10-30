@@ -31,6 +31,34 @@ def test_empty_cloud_valid():
     assert frame.header['point_count'] == 0
 
 
+def test_driver_origin_roundtrip_requires_honest_counts_and_no_rgbd_sampling():
+    origin=dict(source='realsense',topic='/cam/depth/color/points',native_frame_id='depth',input_points=4,invalid_points=2)
+    meta=dict(header(),origin=origin)
+    wire=pack_cloud_frame(meta,struct.pack('<6f',1,2,3,4,5,6),bytes(8))
+    assert unpack_cloud_frame(wire).header['origin']==origin
+    for bad in (dict(origin,invalid_points=1),dict(origin,source='unknown'),dict(origin,input_points=MAX_POINTS+1)):
+        with pytest.raises(CloudProtocolError):pack_cloud_frame(dict(meta,origin=bad),bytes(24),bytes(8))
+    with pytest.raises(CloudProtocolError):
+        pack_cloud_frame(dict(meta,sampling=dict(width=2,height=2,stride=1,min_depth_m=.1,max_depth_m=3.)),bytes(24),bytes(8))
+
+
+def test_full_720p_wire_roundtrip_and_sampling_metadata():
+    count=1280*720
+    meta=header(count)
+    meta['sampling']=dict(width=1280,height=720,stride=1,min_depth_m=.1,max_depth_m=3.)
+    xyz=struct.pack('<fff',0.,0.,1.)*count
+    rgba=bytes([1,2,3,255])*count
+    frame=unpack_cloud_frame(pack_cloud_frame(meta,xyz,rgba))
+    assert frame.xyz_bytes==xyz and frame.rgba_bytes==rgba
+    assert frame.header['sampling']==meta['sampling']
+
+
+def test_malformed_sampling_metadata_is_rejected():
+    for sampling in (None, {}, dict(width=1280,height=720,stride=0,min_depth_m=.1,max_depth_m=3.)):
+        with pytest.raises(CloudProtocolError):
+            pack_cloud_frame(dict(header(0),sampling=sampling),b'',b'')
+
+
 def test_bad_lengths_nonfinite_and_oversized_count_rejected():
     for meta, xyz, rgba in [
         (header(), b'bad', b'bad'),
@@ -108,3 +136,27 @@ def test_released_memoryview_is_a_protocol_error():
         pack_cloud_frame(header(1), view, bytes(4))
     with pytest.raises(CloudProtocolError, match='unavailable'):
         unpack_cloud_frame(view)
+
+
+def test_zero_copy_decode_reuses_immutable_wire_with_same_validation():
+    xyz=struct.pack('<6f',1,2,3,4,5,6)
+    rgba=bytes(range(8))
+    wire=pack_cloud_frame(header(),xyz,rgba)
+    frame=unpack_cloud_frame(wire,copy_payload=False)
+    assert frame.xyz_bytes.obj is wire and frame.rgba_bytes.obj is wire
+    assert frame.xyz_bytes.readonly and frame.rgba_bytes.readonly
+    assert frame.xyz_bytes==xyz and frame.rgba_bytes==rgba
+    corrupted=wire[:-32]+struct.pack('<f',float('nan'))+wire[-28:]
+    with pytest.raises(CloudProtocolError,match='finite'):
+        unpack_cloud_frame(corrupted,copy_payload=False)
+
+
+@pytest.mark.parametrize('readonly', [False,True])
+def test_zero_copy_mode_freezes_mutable_owner_before_exposing_views(readonly):
+    xyz=struct.pack('<6f',1,2,3,4,5,6)
+    wire=bytearray(pack_cloud_frame(header(),xyz,bytes(8)))
+    supplied=memoryview(wire).toreadonly() if readonly else wire
+    frame=unpack_cloud_frame(supplied,copy_payload=False)
+    wire[-32:]=bytes(32)
+    assert frame.xyz_bytes==xyz
+    assert isinstance(frame.xyz_bytes.obj,bytes)

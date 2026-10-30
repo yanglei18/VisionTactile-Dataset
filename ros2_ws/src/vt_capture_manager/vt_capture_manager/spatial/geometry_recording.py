@@ -111,6 +111,7 @@ class GeometryRecorder:
                 display_from_world=getattr(cfg, 'display_from_world', RigidTransform.identity()).as_dict(),
                 camera_config=deepcopy(list(cfg.cameras)), reference_camera=getattr(cfg, 'reference_camera', None),
                 alignment_config=deepcopy(getattr(cfg, 'alignment_document', None)),
+                preview_notice=getattr(cfg, 'preview_notice', ''),
                 geometry_status='incomplete', complete=False,
                 recorder_state=context['state'], revisions=[], epochs=[], identity_intervals=[], created_realtime_ns=time.time_ns(),
                 notes=['Geometry is a derived sidecar; raw bags are unchanged.',

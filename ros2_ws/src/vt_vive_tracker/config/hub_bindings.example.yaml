@@ -1,0 +1,7 @@
+# Copy outside the repository, replace all serials with actual physical roles,
+# chmod 600. The Hub display number/dongle slot is NOT a persistent identity.
+schema_version: 1
+roles:
+  torso: YOUR_HEAD_SERIAL
+  left_wrist: YOUR_LEFT_SERIAL
+  right_wrist: YOUR_RIGHT_SERIAL

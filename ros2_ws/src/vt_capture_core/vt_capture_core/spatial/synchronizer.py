@@ -82,7 +82,7 @@ class FrameSynchronizer:
                  max_delta_ns=20_000_000, wait_ns=100_000_000,
                  failover_ns=250_000_000, restore_ns=1_000_000_000,
                  max_frames_per_camera=6, mode='live', tracker_buffers=None,
-                 tracker_gap_ns=50_000_000):
+                 tracker_gap_ns=50_000_000, prefer_latest=False, prefer_ready=False):
         camera_ids = tuple(camera_ids)
         if not camera_ids or len(camera_ids) > 32 or len(set(camera_ids)) != len(camera_ids):
             raise ValueError('camera_ids must contain 1 to 32 unique names')
@@ -94,6 +94,8 @@ class FrameSynchronizer:
             raise ValueError('reference_camera must belong to camera_ids')
         if mode not in ('live', 'replay'):
             raise ValueError('mode must be live or replay')
+        if prefer_ready and (mode!='live' or len(camera_ids)!=1):
+            raise ValueError('prefer_ready is only for single-camera live matching')
         for key, value in (('max_delta_ns', max_delta_ns), ('wait_ns', wait_ns),
                            ('failover_ns', failover_ns), ('restore_ns', restore_ns),
                            ('tracker_gap_ns', tracker_gap_ns)):
@@ -109,6 +111,8 @@ class FrameSynchronizer:
         self.preferred_reference_camera = reference_camera
         self.active_reference_camera = reference_camera
         self.mode = mode
+        self.prefer_latest = bool(prefer_latest)
+        self.prefer_ready = bool(prefer_ready)
         self.max_delta_ns, self.wait_ns = max_delta_ns, wait_ns
         self.failover_ns, self.restore_ns = failover_ns, restore_ns
         self.max_frames_per_camera = max_frames_per_camera
@@ -238,12 +242,32 @@ class FrameSynchronizer:
         if explicit:
             anchor_time, received = scene_time_ns, now_monotonic_ns-self.wait_ns
         else:
+            if self.prefer_ready:
+                # A slightly newer image can precede its next Tracker bracket.
+                # Use the newest already-matchable frame, instead of blocking a
+                # healthy camera on that future sample or an older failed gap.
+                # Selection still uses the original timestamp and gap contract.
+                camera=self.active_reference_camera
+                buffer=self.tracker_buffers.get(camera)
+                if (buffer is not None and buffer.latest is not None
+                        and (buffer.latest.time_epoch,buffer.latest.coordinate_epoch)==self._generation[:2]):
+                    for candidate in reversed(self._frames[camera]):
+                        if self._last_scene_time is not None and candidate.source_realtime_ns<=self._last_scene_time:
+                            break
+                        if buffer.select(candidate.source_realtime_ns,max_gap_ns=self.tracker_gap_ns).pose is not None:
+                            self._pending=candidate
+                            break
             if self._pending is None:
                 choices = [item for item in self._frames[self.active_reference_camera]
                            if self._last_scene_time is None or item.source_realtime_ns > self._last_scene_time]
                 if not choices:
                     return None
-                self._pending = choices[0]
+                # A live preview renders fewer frames than its input cameras.
+                # Selecting the oldest queued anchor on every tick creates a
+                # permanent backlog and ages otherwise healthy groups out.
+                # Offline/default selection remains ordered; an already pending
+                # live group still receives its original bounded wait budget.
+                self._pending = choices[-1] if self.mode == 'live' and self.prefer_latest else choices[0]
             anchor_time = self._pending.source_realtime_ns
             received = self._pending.received_monotonic_ns
         if self._last_scene_time is not None and anchor_time <= self._last_scene_time:

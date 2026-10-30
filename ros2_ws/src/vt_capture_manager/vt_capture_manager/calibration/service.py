@@ -13,7 +13,7 @@ import threading
 import time
 import uuid
 
-from vt_capture_core.calibration_protocol import validate_calibration_snapshot
+from vt_capture_core.calibration_protocol import validate_calibration_snapshot, validate_retry_rounds
 
 from .results import ResultStore, validate_candidate
 from .storage import atomic_json, checked_path, digest_document, private_directory, read_document
@@ -121,6 +121,13 @@ class CalibrationService:
             if session.get('schema_version') != 1 or not re.fullmatch(r'[0-9a-f]{32}', session.get('session_id', '')):
                 raise ValueError('invalid persisted calibration session')
             self._session = session
+            progress_path = self._directory() / 'round-progress.json'
+            if progress_path.exists():
+                progress = read_document(progress_path, within=self._directory())
+                if progress.get('session_id') != session['session_id']:
+                    raise ValueError('round checkpoint session mismatch')
+                session.setdefault('metrics', {})['completed_rounds'] = [
+                    entry['round'] for entry in progress.get('rounds', [])]
             self._recovery_pid = saved.get('process')
             self._recovering = self._previous_worker_alive() or self._recorder_alive()
             if self._recovering:
@@ -208,6 +215,8 @@ class CalibrationService:
                     result = self._receipt(False, 'calibration_closed')
                 elif command == 'calibration.start':
                     result = self._start(params, request_id)
+                elif command == 'calibration.resume':
+                    result = self._resume(params, request_id)
                 elif command == 'calibration.restore':
                     result = self._restore_version(params, request_id)
                 elif command in ('calibration.cancel', 'calibration.retry_publish'):
@@ -275,6 +284,82 @@ class CalibrationService:
             self._finish('FAILED', 'worker_start_failed', str(exc))
             raise
         return self._receipt(True, 'calibration_started')
+
+    def _resume(self, params, request_id):
+        if self.busy:
+            return self._receipt(False, 'calibration_busy')
+        session = self._session
+        if session is None or params.get('session_id') != session['session_id']:
+            return self._receipt(False, 'calibration_session_mismatch')
+        if session['mode'] != 'guided' or session['state'] not in {'FAILED', 'CANCELLED', 'INTERRUPTED'}:
+            raise ValueError('Only interrupted guided calibration can be resumed')
+        if params.get('assembly_unchanged') is not True:
+            raise ValueError('Confirm unchanged camera/Tracker mounting and board dimensions before resuming')
+        allowed, reason = _decision(self.can_start())
+        if not allowed:
+            return self._receipt(False, 'calibration_busy', reason)
+        directory = self._directory()
+        request = read_document(directory / 'request.json', within=directory)
+        config = read_document(request['config_path'], within=directory)
+        if (request['session_id'] != session['session_id'] or request['mode'] != 'guided'
+                or checked_path(request['output_root']) != directory):
+            raise ValueError('Saved request differs from interrupted session')
+        # Reuse the frozen config, but verify current live identity and bindings.
+        board = config['board']
+        prepared = self.prepare_config(dict(mode='guided', camera_name=session['camera_name'],
+            tracker_role=session['tracker_role'], config_path=request['config_path'],
+            board=dict(squares_x=board['squares_x'], squares_y=board['squares_y'],
+                square_length_mm=board['square_length_m'] * 1000,
+                marker_length_mm=board['marker_length_m'] * 1000, dictionary=board['dictionary']), bag_paths=[]))
+        if prepared['config'] != config or prepared.get('expected_tracker_id') != request['expected_tracker_id']:
+            raise ValueError('Current devices/configuration differ; create a new calibration instead')
+        retry_rounds = params.get('retry_rounds', [])
+        validate_retry_rounds(retry_rounds)
+        progress = None
+        if retry_rounds:
+            progress = read_document(directory / 'round-progress.json', within=directory)
+            entries = progress.get('rounds')
+            if (progress.get('schema_version') != 1 or progress.get('session_id') != session['session_id']
+                    or not isinstance(entries, list) or any(not isinstance(e, dict) for e in entries)):
+                raise ValueError('Invalid saved round checkpoint')
+            numbers = [e.get('round') for e in entries]
+            if (any(type(n) is not int or not 1 <= n <= 3 for n in numbers)
+                    or len(set(numbers)) != len(numbers) or not set(retry_rounds) <= set(numbers)):
+                raise ValueError('Only saved completed rounds can be selected for recapture')
+        archive = private_directory(directory / 'attempt-history' / uuid.uuid4().hex)
+        if progress is not None:
+            # Archive the complete selection before changing the active checkpoint.
+            # Bags and solved artifacts stay in place, including the retired round.
+            atomic_json(archive / 'round-progress.json', progress)
+            atomic_json(archive / 'retry-selection.json', dict(
+                session_id=session['session_id'], request_id=request_id,
+                retry_rounds=sorted(retry_rounds), assembly_unchanged=True))
+            retained = [e for e in progress['rounds'] if e['round'] not in retry_rounds]
+            atomic_json(directory / 'round-progress.json', {**progress, 'rounds': retained})
+            session['metrics'] = dict(completed_rounds=sorted(e['round'] for e in retained),
+                                      retry_rounds=sorted(retry_rounds))
+        for name in ('status.json', 'cancel.json', 'worker.log'):
+            path = checked_path(directory / name, within=directory)
+            if path.exists():
+                path.rename(archive / name)
+        session.update(state='PREPARING', hint_code='resuming_saved_rounds', detail='',
+                       round=0, accepted=0, result=None, preview=None, updated_ns=time.time_ns())
+        self._candidate = self._last_status = self._worker_error = None
+        self._remember('calibration.resume', params, request_id, self._receipt(True, 'calibration_resumed'))
+        self._persist()
+        args = [self.worker_python, '-m', 'vt_tracker_camera_calib.guided_worker',
+                '--request', str(directory / 'request.json'), '--status', str(directory / 'status.json'),
+                '--cancel', str(directory / 'cancel.json')]
+        try:
+            self._log = open(directory / 'worker.log', 'xb', buffering=0)
+            os.chmod(directory / 'worker.log', 0o600)
+            self._job = self._popen(args, stdin=subprocess.DEVNULL, stdout=self._log, stderr=subprocess.STDOUT,
+                                    start_new_session=True, close_fds=True)
+            self._persist()
+        except (OSError, ValueError) as exc:
+            self._finish('FAILED', 'worker_start_failed', str(exc))
+            raise
+        return self._receipt(True, 'calibration_resumed')
 
     def _restore_version(self, params, request_id):
         if self.busy:

@@ -65,6 +65,14 @@ def test_cancel_requires_session_and_manager_identity():
         encode_message(value)
 
 
+def test_resume_requires_explicit_assembly_confirmation():
+    params = dict(session_id='session', expected_manager_instance_id='manager', assembly_unchanged=True)
+    value = request('calibration.resume', params)
+    assert decode_message(encode_message(value)) == value
+    with pytest.raises(ProtocolError):
+        encode_message(request('calibration.resume', params | dict(assembly_unchanged=False)))
+
+
 def test_v6_does_not_downgrade_capture_start():
     from test_plan_protocol import planned_start
     value = request("capture.start", planned_start())
@@ -107,3 +115,19 @@ def test_v6_typed_models_use_the_same_wire_contract():
     snapshot = CalibrationControlSnapshot("live", "manager")
     response = CalibrationControlResponse("request", snapshot)
     assert decode_message(encode_message(response))["snapshot"]["calibration"]["session"] is None
+
+
+@pytest.mark.parametrize("rounds", [[], [1], [2, 3], [1, 2, 3]])
+def test_resume_accepts_explicit_round_selection(rounds):
+    params = dict(expected_manager_instance_id="manager", session_id="session",
+                  assembly_unchanged=True, retry_rounds=rounds)
+    value = request("calibration.resume", params)
+    assert decode_message(encode_message(value)) == value
+
+
+@pytest.mark.parametrize("rounds", [[0], [4], [True], [1.0], [1, 1], "1", None, [1, 2, 3, 4]])
+def test_resume_rejects_invalid_round_selection(rounds):
+    with pytest.raises(ProtocolError):
+        encode_message(request("calibration.resume", dict(
+            expected_manager_instance_id="manager", session_id="session",
+            assembly_unchanged=True, retry_rounds=rounds)))

@@ -8,7 +8,7 @@ from ..i18n.labels import device_label
 
 import time
 
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QActionGroup
 from PySide6.QtWidgets import QApplication, QWidget as QtWidget
 from ..i18n.widgets import (
@@ -24,6 +24,7 @@ from ..backend.glove_calibration import inspect_status as glove_status, focus_ow
 from ..backend.operation_receipts import operation_for
 from .widgets.workstation_settings import BackendLogDialog, WorkstationSettingsDialog, runtime_busy
 from .icons import icon
+from .presentation_settings import presentation_settings as _presentation_settings
 from ..viewmodels.recording import TRIAL_LABELS, owned_active_trial, recording_access
 from ..viewmodels.capture_plan import capture_plan_view
 from ..viewmodels.operations import OperationCoordinator, OperationUpdate
@@ -31,12 +32,6 @@ from ..viewmodels.operations import OperationCoordinator, OperationUpdate
 
 KIND = {"camera": tr('相机'), "tracker": tr('追踪器'), "glove": tr('手势'), "tactile": tr('触觉')}
 RECORDING = {"UNAVAILABLE": tr('状态未知'), "IDLE": tr('待命'), "RECORDING": tr('录制中'), "COMPLETE": tr('已结束')}
-
-
-def _presentation_settings():
-    # Explicit names also work when launched without the normal app entry point.
-    return QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope,
-                     "visiontactile", "capture-console")
 
 
 def label(text, name="", wrap=False):
@@ -518,6 +513,9 @@ class MainWindow(QMainWindow):
         else:
             status = runtime.status or {}
             text = diagnostic(status.get("detail", "")) or tr('新后台启动前会自动准备本地路径；需要时可调整配置，再按需启动设备。')
+            hub = getattr(runtime, "vivehub", None)
+            if hub is not None and hub.status.get("state") != "idle":
+                text += " " + diagnostic(hub.status.get("detail", ""))
             if status.get("state") == "ready" and not any(
                     group.get("enabled") for group in runtime.configuration.get("process_groups", ())):
                 text += " " + tr('在“配置设备”启用本次需要的模块，再选择模块启动。')

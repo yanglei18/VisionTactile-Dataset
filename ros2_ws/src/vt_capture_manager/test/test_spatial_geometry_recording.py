@@ -51,6 +51,29 @@ def test_geometry_sidecar_preserves_bag_and_freezes_terminal(tmp_path):
     assert list((tmp_path/'raw').iterdir()) == [tmp_path/'raw'/'metadata.yaml']
 
 
+def test_geometry_sidecar_freezes_preview_notice_at_recording_start(tmp_path):
+    trial, context = trial_context(tmp_path)
+    store = Store()
+    store.config = deepcopy(store.config)
+    notice = '左腕·试用候选（最初第3轮；三轮一致性未通过）'
+    store.config.preview_notice = notice
+    recorder = GeometryRecorder(store)
+    try:
+        recorder.observe(trial, context)
+        # A queued write must use captured provenance, never a later live config.
+        store.config.preview_notice = ''
+        recorder.flush()
+        recorder.observe(trial, dict(context, state=5, recorder_alive=False))
+        recorder.flush()
+        manifest = json.loads((Path(context['output_path']+'.spatial')/'manifest.json').read_text())
+        assert manifest['preview_notice'] == notice
+        assert manifest['complete']
+        assert manifest['geometry_status'] == 'incomplete'
+        assert (tmp_path/'raw'/'metadata.yaml').read_text() == 'original bag bytes'
+    finally:
+        recorder.close()
+
+
 def test_foreign_session_and_existing_foreign_sidecar_are_never_adopted(tmp_path):
     trial, context = trial_context(tmp_path)
     recorder = GeometryRecorder(Store())

@@ -55,6 +55,14 @@ def build_node(config, *, context=None, model=None):
                     depth = 8
                     group = MutuallyExclusiveCallbackGroup()
                     self._image_callback_groups.append(group)
+                elif device.kind == "tracker":
+                    # Hub samples arrive in bursts. A five-message history and
+                    # the shared CameraInfo/service group can lose the bracketing
+                    # poses needed by image-time interpolation under RGB-D load.
+                    # Keep a bounded burst window; source-age checks still apply.
+                    depth = 128
+                    group = MutuallyExclusiveCallbackGroup()
+                    self._image_callback_groups.append(group)
                 qos = QoSProfile(depth=depth, reliability=reliability, durability=DurabilityPolicy.VOLATILE)
                 self._subscriptions_owned.append(self.create_subscription(
                     types[device.kind], device.topic,
@@ -90,7 +98,21 @@ def build_node(config, *, context=None, model=None):
 def build_executor(node):
     """Keep image callbacks independent of recorder responses with bounded workers."""
     from rclpy.executors import MultiThreadedExecutor
-    executor = MultiThreadedExecutor(num_threads=4, context=node.context)
+
+    class FairMultiThreadedExecutor(MultiThreadedExecutor):
+        def _spin_once_impl(self, *args, **kwargs):
+            try:
+                return super()._spin_once_impl(*args, **kwargs)
+            finally:
+                # A continuously-ready RGB-D wait set can let the dispatcher
+                # monopolize the GIL while callback, preview and IPC threads
+                # wait. Yield scheduling, not data: retain all callbacks, QoS,
+                # four workers and source-time/identity admission checks.
+                # Jazzy spin() calls this implementation directly, bypassing
+                # spin_once(); cover both entrypoints at their shared boundary.
+                time.sleep(0)
+
+    executor = FairMultiThreadedExecutor(num_threads=4, context=node.context)
     executor.add_node(node)
     return executor
 

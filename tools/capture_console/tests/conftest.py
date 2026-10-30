@@ -38,9 +38,11 @@ def isolated_qt_widgets(isolated_presentation_settings):
 
 @pytest.fixture(autouse=True)
 def isolated_presentation_settings(tmp_path, monkeypatch):
-    from vt_capture_console.ui import main_window
+    from vt_capture_console.ui import main_window, presentation_settings
     path = str(tmp_path / "presentation.ini")
     monkeypatch.setattr(main_window, "_presentation_settings",
+                        lambda: QSettings(path, QSettings.Format.IniFormat))
+    monkeypatch.setattr(presentation_settings, "presentation_settings",
                         lambda: QSettings(path, QSettings.Format.IniFormat))
 
 

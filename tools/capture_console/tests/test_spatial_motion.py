@@ -12,6 +12,87 @@ from vt_capture_console.ui.widgets.spatial_scene import scene_bounds_points, sce
 from vt_capture_console.viewmodels.spatial import SpatialViewModel, entity_color
 
 
+def test_hub_y_up_grid_and_ceiling_share_display_coordinate_conversion():
+    from vt_capture_console.viewmodels.spatial import display_point
+    frame = dict(demo_scene(0), world_frame='vive_hub_map', trackers=[], cameras=[],
+                 display_from_world=dict(translation_m=[0,0,0],
+                    quaternion_xyzw=[math.sqrt(.5),0,0,math.sqrt(.5)]))
+    original = deepcopy(frame)
+    model = SpatialViewModel()
+    model.layers = {'grid'}
+    model.update(frame)
+    grid = [line for line in scene_lines(model) if line[2] == '#303030']
+    assert len(grid) == 42
+    assert all(abs(point[2]) < 1e-10 for a,b,*_ in grid for point in (a,b))
+    # A native +Y ceiling at 2 m appears overhead, not as a vertical front wall.
+    assert display_point(frame, (.2,2.,.3)) == pytest.approx((.2,-.3,2.))
+    assert frame == original
+
+
+def test_non_hub_reference_grid_retains_original_xy_plane():
+    frame = dict(demo_scene(0), world_frame='vive_map', trackers=[], cameras=[])
+    model = SpatialViewModel()
+    model.layers = {'grid'}
+    model.update(frame)
+    grid = [line for line in scene_lines(model) if line[2] == '#303030']
+    assert all(point[2] == 0 for a,b,*_ in grid for point in (a,b))
+
+
+def test_fit_includes_cloud_extent_and_respects_depth_and_visibility():
+    import numpy as np
+    frame=dict(demo_scene(0),trackers=[],cameras=[])
+    model=SpatialViewModel()
+    model.layers={'cloud'}
+    model.update(frame)
+    cloud=dict(positions=np.array([[0.,0.,1.],[2.,3.,4.],[0.,0.,float('nan')]]),
+               header=dict(world_from_color=dict(translation_m=[10.,0.,0.],quaternion_xyzw=[0,0,0,1])))
+    bounds=scene_bounds_points(model,{'camera':cloud})
+    assert len(bounds)==8
+    assert max(p[0] for p in bounds)==12.
+    assert max(p[2] for p in bounds)==4.
+    clipped=scene_bounds_points(model,{'camera':cloud},max_depth=2.)
+    assert max(p[2] for p in clipped)==1.
+    model.hidden_entities.add('camera')
+    assert scene_bounds_points(model,{'camera':cloud})==[]
+
+
+def test_full_display_does_not_decimate_received_points():
+    import numpy as np
+    from vt_capture_console.ui.widgets.spatial_scene import display_cloud_data
+    from vt_capture_core.spatial.cloud_protocol import MAX_POINTS
+    cloud=dict(positions=np.ones((100001,3),dtype='f4'),colors=np.ones((100001,4),dtype='f4'))
+    positions,_=display_cloud_data(cloud,max_points=MAX_POINTS)
+    assert len(positions)==100001
+
+
+def test_cloud_fit_supports_all_points_without_rotated_empty_box_margin():
+    import numpy as np
+    from vt_capture_console.ui.widgets.spatial_scene import scene_fit_points,camera_fit_bounds,camera_components
+    from vt_capture_console.viewmodels.spatial import transform,display_point
+    frame=dict(demo_scene(0),trackers=[],cameras=[],display_from_world=dict(
+        translation_m=[.4,-.2,.1],quaternion_xyzw=[math.sqrt(.5),0,0,math.sqrt(.5)]))
+    model=SpatialViewModel();model.layers={'cloud'};model.update(frame)
+    # A sloping thin patch: its local XYZ box contains much empty space.
+    t=np.linspace(-2,2,1001)
+    xyz=np.column_stack((t,t*.7,t*.4+2.))
+    pose=dict(translation_m=[2,-1,.5],quaternion_xyzw=[0,0,math.sin(.3),math.cos(.3)])
+    cloud=dict(positions=xyz,header=dict(world_from_color=pose))
+    ht,vt=.8*math.tan(math.pi/6),.8*math.tan(math.pi/6)/2.5
+    support=scene_fit_points(model,{'cam':cloud},0.,-55.,25.,horizontal_tan=ht,vertical_tan=vt)
+    center,projected=camera_fit_bounds(support,-55.,25.)
+    distance=max(max(z+abs(x)/ht,z+abs(y)/vt) for x,y,z in projected)
+    all_points=[display_point(frame,transform(p,pose['translation_m'],pose['quaternion_xyzw'])) for p in xyz]
+    exact_center,exact=camera_fit_bounds(all_points,-55.,25.)
+    exact_distance=max(max(z+abs(x)/ht,z+abs(y)/vt) for x,y,z in exact)
+    assert center==pytest.approx(exact_center)
+    assert distance==pytest.approx(exact_distance)
+    assert len(support)<=14
+    for x,y,z in exact:
+        assert distance-z>=max(abs(x)/ht,abs(y)/vt)-1e-8
+    # Nothing is deleted, even an extreme isolated measured point.
+    assert len(cloud['positions'])==1001
+
+
 @pytest.fixture
 def scene_page(qapp):
     backend = DemoSceneBackend()
@@ -115,16 +196,50 @@ def test_live_camera_starts_still_and_global_motion_reaches_detached_window(qapp
         backend.close()
 
 
-def test_device_surfaces_preserve_calibrated_frusta(scene_page):
+def test_frusta_are_outlines_without_occluding_surfaces(scene_page):
     model = scene_page.model
     frame = model.frame
     surfaces = scene_surfaces(model)
+    lines = scene_lines(model)
+    source = repr(frame)  # Published frames are recursively frozen mappings.
     assert all(0 < alpha <= 1 for _vertices, _color, alpha in surfaces)
     assert model.frame is frame
     model.layers.discard("frustum")
-    # Each calibrated eight-vertex camera frustum contributes six faces;
-    # hardware styling may change without altering those calibrated volumes.
-    assert len(surfaces) - len(scene_surfaces(model)) == 3*6
+    # Frusta add calibrated edges, never filled faces / depth-buffer occluders.
+    assert surfaces == scene_surfaces(model)
+    assert len(lines) - len(scene_lines(model)) == 3*12
+    assert model.frame is frame and repr(model.frame) == source
+
+
+@pytest.mark.parametrize('vertices', [
+    [(0,0,0),(-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)],
+    [(-.1,-.1,.1),(.1,-.1,.1),(.1,.1,.1),(-.1,.1,.1),
+     (-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)],
+])
+def test_frustum_wireframe_preserves_geometry_bounds_and_visibility(vertices):
+    from vt_capture_console.viewmodels.spatial import display_point, transform
+    frame = demo_scene(0, scenario='static')
+    frame['trackers'] = []
+    frame['cameras'] = [frame['cameras'][0]]
+    camera = frame['cameras'][0]
+    camera.update(frustum_vertices=vertices, position_m=[1,2,3],
+                  quaternion_xyzw=[0,0,math.sqrt(.5),math.sqrt(.5)])
+    original = deepcopy(frame)
+    model = SpatialViewModel(); model.layers = {'camera'}; model.update(frame)
+    frozen_frame = model.frame
+    body_surfaces = scene_surfaces(model); body_lines = scene_lines(model)
+    model.layers.add('frustum')
+    lines = scene_lines(model)
+    assert scene_surfaces(model) == body_surfaces
+    edges = lines[len(body_lines):]
+    assert len(edges) == (8 if len(vertices)==5 else 12)
+    expected = [display_point(frame,transform(p,camera['position_m'],camera['quaternion_xyzw'])) for p in vertices]
+    assert {tuple(p) for a,b,*_ in edges for p in (a,b)} == {tuple(p) for p in expected}
+    bounds = scene_bounds_points(model)
+    assert all(tuple(p) in bounds for p in expected)
+    model.hidden_entities.add(camera['id'])
+    assert scene_lines(model) == [] and scene_surfaces(model) == []
+    assert frame == original and model.frame is frozen_frame
 
 
 def test_tracker_shell_and_outline_follow_pose_and_display_transform_without_mutation():

@@ -40,6 +40,89 @@ def test_spatial_navigation_preserves_device_tools_page_id(window):
     assert window.pages.currentIndex() == 2
 
 
+def test_preview_notice_visible_without_entities_and_retained_on_disconnect(qapp):
+    from vt_capture_console.backend.scene_demo import demo_scene
+    backend = DemoSceneBackend()
+    page = SpatialPage(backend)
+    page.show()
+    notice = '左腕·试用候选（三轮一致性未通过） <b>不是正式标定</b>'
+    frame = dict(demo_scene(0), mode='live', trackers=[], cameras=[], preview_notice=notice)
+    try:
+        page.apply_frame(frame, dict(state='ready', message='ready'))
+        qapp.processEvents()
+        assert not page.inspector.isVisible()
+        assert page.preview_notice.isVisible()
+        assert page.preview_notice.wordWrap()
+        assert page.preview_notice.textFormat() == Qt.TextFormat.PlainText
+        assert notice in page.preview_notice.text()
+        page.apply_frame(None, dict(state='offline', message='waiting'))
+        assert page.preview_notice.isVisible()
+        assert notice in page.preview_notice.text()
+        page.open_detail()
+        assert notice in page.detail_window.page.preview_notice.text()
+        # A historical frame without a notice must not inherit live provenance.
+        page.apply_frame(dict(frame, mode='replay', preview_notice=''), dict(state='ready'))
+        assert not page.preview_notice.isVisible()
+        page.apply_frame(dict(frame, mode='replay'), dict(state='ready'))
+        assert page.preview_notice.isVisible()
+        assert notice in page.preview_notice.text()
+    finally:
+        page.close()
+        backend.close()
+
+
+def test_preview_notice_translates_heading_but_preserves_user_provenance(qapp):
+    from vt_capture_console import i18n
+    from vt_capture_console.backend.scene_demo import demo_scene
+    previous = i18n.language()
+    backend = DemoSceneBackend()
+    page = SpatialPage(backend)
+    notice = '左腕·试用候选（三轮一致性未通过）'
+    frame = dict(demo_scene(0), preview_notice=notice)
+    try:
+        i18n.set_language('en', persist=False)
+        page.apply_frame(frame, dict(state='ready'))
+        assert page.preview_notice.text() == 'Preview notice: ' + notice
+        assert frame['preview_notice'] == notice
+        i18n.set_language('zh_CN', persist=False)
+        assert page.preview_notice.text() == '预览提示：' + notice
+    finally:
+        page.close()
+        backend.close()
+        i18n.set_language(previous, persist=False)
+
+
+def test_live_notice_override_does_not_change_source_or_replay(qapp, monkeypatch):
+    from vt_capture_console.backend.scene_demo import demo_scene
+    backend = DemoSceneBackend()
+    page = SpatialPage(backend)
+    page.show()
+    notice = '左腕·试用候选（最初第3轮；三轮一致性未通过）。头部与右腕使用已验收活动外参'
+    frame = dict(demo_scene(0), mode='live', preview_notice=notice)
+    try:
+        monkeypatch.setenv('VT_LIVE_PREVIEW_NOTICE', '')
+        page.apply_frame(frame, dict(state='ready'))
+        assert page.preview_notice.isHidden()
+        assert not page.preview_notice.text()
+        assert frame['preview_notice'] == notice
+        assert page.status.text()
+        page.apply_frame(None, dict(state='offline'))
+        assert page.preview_notice.isHidden()
+        page.open_detail()
+        assert page.detail_window.page.preview_notice.isHidden()
+        monkeypatch.setenv('VT_LIVE_PREVIEW_NOTICE', '实时空间预览')
+        page.apply_frame(frame, dict(state='ready'))
+        assert page.preview_notice.text() == '预览提示：实时空间预览'
+        page.apply_frame(dict(frame, mode='replay'), dict(state='ready'))
+        assert notice in page.preview_notice.text()
+        monkeypatch.delenv('VT_LIVE_PREVIEW_NOTICE')
+        page.apply_frame(frame, dict(state='ready'))
+        assert notice in page.preview_notice.text()
+    finally:
+        page.close()
+        backend.close()
+
+
 def test_settings_preserves_configuration_and_uses_runtime_apply(qapp, tmp_path):
     from vt_capture_console.ui.widgets.spatial_settings import SpatialSettingsDialog
     class Runtime:

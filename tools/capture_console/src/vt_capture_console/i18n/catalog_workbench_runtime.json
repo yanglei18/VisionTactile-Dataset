@@ -1,0 +1,16 @@
+{
+  "全量点（显示端不抽样）": "All points (no display subsampling)",
+  "后台深度范围：等待点云参数": "Backend depth range: waiting for cloud parameters",
+  "RealSense 来源直接使用驱动 XYZ/RGB，后台只去除无效点并转换坐标；不套用 RGB-D 重建的距离过滤。显示端若主动设置距离上限，仍以彩色光学 Z 裁剪。RGB-D 来源的后台范围以原始深度光学 Z 计。": "The RealSense source uses driver XYZ/RGB directly; the backend only removes invalid points and transforms coordinates, without RGB-D reconstruction distance filters. An explicitly enabled display distance limit still clips by color optical Z. The RGB-D backend range uses raw depth optical Z.",
+  " · 暂留上一匹配组（等待新帧）": " · Holding the previous matched group (waiting for new frames)",
+  "保存设置": "Save settings",
+  "立即连接": "Connect now",
+  "位姿来源": "Pose source",
+  "Hub 序列号与角色绑定": "Hub serial-to-role bindings",
+  "Hub SDK 读取程序": "Hub SDK reader",
+  "PyVUT 追踪器启动包": "PyVUT Tracker startup bundle",
+  "PyVUT 角色映射": "PyVUT role mapping",
+  "PyVUT · 旧 HID 驱动": "PyVUT · Legacy HID driver",
+  "VIVE Hub · 官方 SDK（不重新初始化）": "VIVE Hub · Official SDK (no reinitialization)",
+  "Hub 模式：先在 VIVE Hub 中完成连接，再在设备页启动读取。无需抓包或旧初始化；请勿与 PyVUT 同时占用 Dongle。更换来源后须核对空间配置与外参。": "Hub mode: connect in VIVE Hub first, then start reading on the Devices page. No packet capture or legacy initialization is required; do not access the Dongle with PyVUT at the same time. Verify spatial configuration and extrinsics after changing the source."
+}

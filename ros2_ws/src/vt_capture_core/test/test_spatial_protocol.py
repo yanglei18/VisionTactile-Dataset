@@ -32,6 +32,21 @@ def test_read_only_requests_and_response_roundtrip():
         assert decode_scene_message(wire) == message
 
 
+@pytest.mark.parametrize('notice', ['', '左腕·试用候选（三轮一致性未通过）', 'x' * 1024])
+def test_optional_preview_notice_roundtrip(notice):
+    response = dict(protocol='vt.scene', version=1, request_id='notice', ok=True, error=None,
+                    scene=dict(scene(), preview_notice=notice))
+    assert decode_scene_message(encode_scene_message(response)) == response
+
+
+@pytest.mark.parametrize('notice', [None, False, 17, [], {}, 'x' * 1025])
+def test_preview_notice_is_bounded_plain_text(notice):
+    response = dict(protocol='vt.scene', version=1, request_id='notice', ok=True, error=None,
+                    scene=dict(scene(), preview_notice=notice))
+    with pytest.raises(SceneProtocolError, match='preview_notice'):
+        encode_scene_message(response)
+
+
 @pytest.mark.parametrize('message', [
     request('device.start'), request('capture.start'), request('latest', {'after_sequence': -1}),
     request('latest', {'after_sequence': True}), request('latest', {'interest': ['hardware']}),

@@ -25,6 +25,15 @@ not present in the pinned public upstream revision. That approved checkout and
 the private bootstrap inputs are separate prerequisites; they are not
 distributed by this repository.
 
+## VIVE Hub Linux SDK
+
+`tools/vivehub_bridge/` contains this project's adapter source for a separately
+installed HTC VIVE Hub Linux SDK. No HTC SDK headers, libraries, runtime files,
+or linked reader binaries are included in this source distribution. The SDK
+and any binaries linked against it remain subject to HTC's applicable terms;
+this repository's license does not grant permission to redistribute them.
+See the [bridge setup and limitations](tools/vivehub_bridge/README.md).
+
 ## ROS 2 and RealSense
 
 ROS 2, the ROS packages installed from the operating-system package manager,

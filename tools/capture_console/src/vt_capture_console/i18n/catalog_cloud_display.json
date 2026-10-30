@@ -1,0 +1,8 @@
+{
+  "通用上限：不额外裁剪": "General limit: no extra crop",
+  "通用上限 Z ≤ ": "General limit Z ≤ ",
+  "腕部点云：仅显示 7–50 cm": "Wrist clouds: show only 7–50 cm",
+  "按左右腕相机自身的深度方向裁剪预览；头部与原始采集数据保持不变。": "Crop previews along each wrist camera's depth axis; keep the head and original captured data unchanged.",
+  "腕部预览范围：7–50 cm；头部保持原范围。": "Wrist preview range: 7–50 cm; head range unchanged.",
+  "{name}：7–50 cm 内保留 {count:,} 点（显示端裁剪）": "{name}: {count:,} points within 7–50 cm (display crop)"
+}

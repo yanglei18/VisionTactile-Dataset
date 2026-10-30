@@ -16,7 +16,8 @@ PRESETS = {
     "cameras": ("camera", "vt_realsense_capture", "triple_realsense.launch.py",
                 {"config_path", "output_root"}, {"config_path", "output_root"}),
     "trackers": ("tracker", "vt_vive_tracker", "triple_tracker.launch.py",
-                 {"bundle_path", "role_map_path", "frame_id", "pyvut_source", "pyvut_site_packages"},
+                 {"bundle_path", "role_map_path", "frame_id", "pyvut_source", "pyvut_site_packages",
+                  "backend", "hub_bindings_path", "hub_reader_path", "hub_socket_path"},
                  {"bundle_path", "role_map_path"}),
     "glove": ("glove", "vt_glove_bridge", "glove.launch.py",
               {"hand", "launch_gui", "glove_python", "fsglove_source", "mano_assets", "config",
@@ -25,7 +26,14 @@ PRESETS = {
                 {"hand", "config", "port"}, {"hand", "port"}),
 }
 PATH_KEYS = {"config_path", "output_root", "bundle_path", "role_map_path", "glove_python",
-             "fsglove_source", "mano_assets", "config", "port", "socket_path", "pyvut_source", "pyvut_site_packages"}
+             "fsglove_source", "mano_assets", "config", "port", "socket_path", "pyvut_source", "pyvut_site_packages",
+             "hub_bindings_path", "hub_reader_path", "hub_socket_path"}
+
+
+def required_parameters(preset, parameters):
+    if preset == "trackers" and parameters.get("backend", "pyvut") == "vivehub":
+        return {"hub_bindings_path", "hub_reader_path", "hub_socket_path", "frame_id"}
+    return set(PRESETS[preset][4])
 
 
 def parse_profiles(raw):
@@ -62,6 +70,11 @@ def parse_profiles(raw):
                 parameters[key] = str(path)
                 if key in {"pyvut_source", "pyvut_site_packages"} and ":" in parameters[key]:
                     raise ValueError(f"{key} must be one directory, without a PYTHONPATH separator")
+        if preset == "trackers":
+            if parameters.get("backend", "pyvut") not in {"pyvut", "vivehub"}:
+                raise ValueError("tracker backend must be pyvut or vivehub")
+            if parameters.get("backend") == "vivehub" and parameters.get("frame_id") != "vive_hub_map":
+                raise ValueError("VIVE Hub requires frame_id=vive_hub_map; legacy extrinsics are not compatible")
         if preset in {"glove", "tactile"} and parameters.get("hand") not in {"left", "right"}:
             raise ValueError("each hand process requires explicit hand: left or right")
         if preset == "glove":
@@ -75,7 +88,7 @@ def parse_profiles(raw):
                 if not math.isfinite(rate) or not 1 <= rate <= 1000:
                     raise ValueError("output_rate_hz must be between 1 and 1000")
         if enabled:
-            required = set(PRESETS[preset][4])
+            required = required_parameters(preset, parameters)
             if preset == "glove" and parameters.get("launch_gui", "true") == "true":
                 required |= {"glove_python", "fsglove_source", "mano_assets", "port"}
             if any(not parameters.get(key) for key in required):

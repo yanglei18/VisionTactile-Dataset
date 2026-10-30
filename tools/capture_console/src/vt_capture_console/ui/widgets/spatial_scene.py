@@ -18,6 +18,7 @@ from ...viewmodels.spatial import display_point, entity_color, transform
 from ..gpu_status import OpenGLRenderer, inspect_current_context
 from .spatial_glyphs import local_glyph
 from .spatial_labels import layout_entity_labels, draw_entity_labels
+from .spatial_navigation import handle_zoom_gesture, scroll_zoom_factor
 
 
 BOX_EDGES = ((0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
@@ -25,7 +26,6 @@ BOX_EDGES = ((0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
 FRUSTUM_EDGES = ((0, 1), (0, 2), (0, 3), (0, 4), (1, 2), (2, 3), (3, 4), (4, 1))
 BOX_FACES = ((0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5),
              (2, 3, 7, 6), (3, 0, 4, 7))
-FRUSTUM_FACES = ((0, 1, 2), (0, 2, 3), (0, 3, 4), (0, 4, 1), (1, 4, 3, 2))
 
 
 def _pose_signature(pose):
@@ -64,7 +64,7 @@ def _glyph_color(token, model, entity):
             "accent": visible_entity_color(model, entity)}[token]
 
 
-def scene_bounds_points(model):
+def scene_bounds_points(model, clouds=None, max_depth=0.):
     """Fit bodies and calibrated frusta, excluding the infinite reference grid."""
     points = []
     for entity in model.entities():
@@ -72,7 +72,63 @@ def scene_bounds_points(model):
         if "frustum" in model.layers:
             points.extend(transform(p, entity["position_m"], entity["quaternion_xyzw"])
                           for p in entity.get("frustum_vertices", ()))
-    return [display_point(model.frame, point) for point in points]
+    result = [display_point(model.frame, point) for point in points]
+    if 'cloud' in model.layers:
+        import numpy as np
+        from itertools import product
+        for name, cloud in (clouds or {}).items():
+            if name in model.hidden_entities:
+                continue
+            xyz = cloud['positions']
+            valid = np.isfinite(xyz).all(axis=1)
+            if max_depth > 0:
+                valid &= xyz[:,2] <= max_depth
+            xyz = xyz[valid]
+            if not len(xyz):
+                continue
+            low, high = xyz.min(axis=0), xyz.max(axis=0)
+            pose = cloud['header']['world_from_color']
+            for corner in product(*zip(low, high)):
+                world = transform(corner, pose['translation_m'], pose['quaternion_xyzw'])
+                result.append(display_point(model.frame, world))
+    return result
+
+
+def scene_fit_points(model, clouds, max_depth, azimuth, elevation, *, horizontal_tan=None, vertical_tan=None):
+    """Exact view-space support points, not rotated empty bounding-box corners.
+
+    Scan every visible finite point only on explicit/initial fit. Keep extrema
+    for centering and each perspective frustum inequality; these suffice to fit
+    ALL points without quantile clipping or a large Python point list.
+    """
+    import numpy as np
+    result=scene_bounds_points(model)
+    if 'cloud' not in model.layers:
+        return result
+    directions=[(1,0,0),(0,1,0),(0,0,1)]
+    if horizontal_tan is not None and vertical_tan is not None:
+        directions.extend(((1/horizontal_tan,0,1),(-1/horizontal_tan,0,1),
+                           (0,1/vertical_tan,1),(0,-1/vertical_tan,1)))
+    view_basis=np.asarray([camera_components(p,azimuth,elevation) for p in ((1,0,0),(0,1,0),(0,0,1))]).T
+    for name,cloud in clouds.items():
+        if name in model.hidden_entities: continue
+        xyz=cloud['positions']
+        valid=np.isfinite(xyz).all(axis=1)
+        if max_depth>0: valid &= xyz[:,2]<=max_depth
+        xyz=xyz[valid]
+        if not len(xyz): continue
+        pose=cloud['header']['world_from_color']
+        def displayed(p):
+            return np.asarray(display_point(model.frame,transform(p,pose['translation_m'],pose['quaternion_xyzw'])))
+        origin=displayed((0,0,0))
+        basis=np.asarray([displayed(p)-origin for p in ((1,0,0),(0,1,0),(0,0,1))]).T
+        projected=xyz @ (view_basis @ basis).T + view_basis @ origin
+        indices=set()
+        for dx,dy,dz in directions:
+            values=dx*projected[:,0]+dy*projected[:,1]+dz*projected[:,2]
+            indices.update((int(values.argmin()),int(values.argmax())))
+        result.extend(tuple(p) for p in (xyz[sorted(indices)] @ basis.T + origin))
+    return result
 
 
 def visible_entity_color(model, entity):
@@ -83,7 +139,12 @@ def visible_entity_color(model, entity):
 
 
 def scene_surfaces(model):
-    """Schematic device shells and calibrated frusta at measured poses."""
+    """Device shells only; calibrated frusta are wireframes in scene_lines.
+
+    Frustum faces are not physical occluders. Even very low alpha meshes can
+    write the GL depth buffer before the clouds, hiding points behind them.
+    Omitting those faces also avoids tinting point clouds in the CPU fallback.
+    """
     surfaces = []
     if not model.frame:
         return surfaces
@@ -99,12 +160,6 @@ def scene_surfaces(model):
             body = [display_point(model.frame, point) for point in entity_geometry(entity)]
             for index, face in enumerate(BOX_FACES):
                 surfaces.append(([body[i] for i in face], color, (.38 if selected else .24) + index % 3 * .035))
-        vertices = entity.get("frustum_vertices") or ()
-        if "frustum" in model.layers and len(vertices) in (5, 8):
-            frustum = [display_point(model.frame, transform(p, entity["position_m"], entity["quaternion_xyzw"]))
-                       for p in vertices]
-            for index, face in enumerate(FRUSTUM_FACES if len(vertices) == 5 else BOX_FACES):
-                surfaces.append(([frustum[i] for i in face], color, .032 + index % 3 * .013))
     return surfaces
 
 
@@ -154,10 +209,17 @@ def scene_lines(model, *, include_grid=True, include_entities=True):
         result.append((display_point(frame, a), display_point(frame, b), color, width))
 
     if include_grid and "grid" in model.layers:
+        # Official Hub forwards OpenVR's Y-up world, not ROS's usual Z-up.
+        # This is a reference plane through the world origin, not a measured
+        # floor. Keep the native axes unchanged and apply the display transform
+        # once, just as for clouds, tracker bodies and calibrated camera frusta.
+        hub_y_up = frame.get("world_frame") == "vive_hub_map"
+        def ground(x, y):
+            return (x, 0, y) if hub_y_up else (x, y, 0)
         for i in range(-10, 11):
             t = i / 5
-            add((-2, t, 0), (2, t, 0), "#303030")
-            add((t, -2, 0), (t, 2, 0), "#303030")
+            add(ground(-2, t), ground(2, t), "#303030")
+            add(ground(t, -2), ground(t, 2), "#303030")
         for point, color in (((.4, 0, 0), "#c55d63"), ((0, .4, 0), "#54996c"), ((0, 0, .4), "#537fd4")):
             add((0, 0, 0), point, color, 2.)
     for entity in model.entities() if include_entities else ():
@@ -221,6 +283,19 @@ class ProjectionViewport(QWidget):
         self._cloud_color = "source"
         self.setMinimumSize(230, 150)
         self.setMouseTracking(True)
+        self.grabGesture(Qt.GestureType.PinchGesture)
+
+    def event(self, event):
+        if handle_zoom_gesture(event, self._zoom_by):
+            return True
+        return super().event(event)
+
+    def _zoom_by(self, factor):
+        if not math.isfinite(factor) or factor <= 0 or factor == 1.:
+            return
+        self.interacted.emit()
+        self.scale = min(4000., max(15., self.scale * factor))
+        self.update()
 
     def _project(self, point):
         right, up, _ = camera_components(tuple(point[i]-self.target[i] for i in range(3)),
@@ -232,13 +307,16 @@ class ProjectionViewport(QWidget):
         self.update()
 
     def fit(self):
-        if not self.model or not self.model.entities():
+        if not self.model:
             return
-        points = scene_bounds_points(self.model)
+        clouds=getattr(self, '_fit_clouds', {})
+        points = scene_fit_points(self.model, clouds, getattr(self, '_fit_max_depth', 0.), self.azimuth, self.elevation)
+        if not points:
+            return
         self.target, projected = camera_fit_bounds(points, self.azimuth, self.elevation)
         extent_x = max(.12, 2 * max(abs(p[0]) for p in projected))
         extent_y = max(.12, 2 * max(abs(p[1]) for p in projected))
-        self.scale = .62 * min(self.width()/extent_x, self.height()/extent_y)
+        self.scale = (.8 if clouds else .62) * min(self.width()/extent_x, self.height()/extent_y)
         self.update()
 
     def standard_view(self, view):
@@ -309,19 +387,30 @@ class ProjectionViewport(QWidget):
         self._press = self._last = event.position()
 
     def mouseMoveEvent(self, event):
-        if self._last is None or not event.buttons():
-            return
-        delta = event.position()-self._last
+        previous = self._last
         self._last = event.position()
+        if previous is None:
+            return
+        delta = event.position()-previous
         if event.buttons() & Qt.MouseButton.MiddleButton or event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-            a = math.radians(self.azimuth)
-            self.target = (self.target[0]+math.sin(a)*delta.x()/self.scale,
-                           self.target[1]-math.cos(a)*delta.x()/self.scale,
-                           self.target[2]+delta.y()/self.scale)
+            self.interacted.emit()
+            # Move in the viewing plane: up/down remains screen-relative even
+            # in a top or tilted view. Shift also works without a button press.
+            a, e = math.radians(self.azimuth), math.radians(self.elevation)
+            dx, dy = delta.x()/self.scale, delta.y()/self.scale
+            self.target = (self.target[0]+math.sin(a)*dx-math.sin(e)*math.cos(a)*dy,
+                           self.target[1]-math.cos(a)*dx-math.sin(e)*math.sin(a)*dy,
+                           self.target[2]+math.cos(e)*dy)
         elif event.buttons() & Qt.MouseButton.LeftButton:
             self.azimuth -= delta.x()*.5
             self.elevation = max(-89., min(89., self.elevation+delta.y()*.4))
+        else:
+            return
         self.update()
+
+    def leaveEvent(self, event):
+        self._last = None  # Re-entry must not jump from the previous exit point.
+        super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if self._press is not None and (event.position()-self._press).manhattanLength() < 6:
@@ -340,17 +429,18 @@ class ProjectionViewport(QWidget):
         self.fit()
 
     def wheelEvent(self, event):
-        self.interacted.emit()
-        self.scale = min(4000., max(15., self.scale*math.exp(event.angleDelta().y()/1200)))
-        self.update()
+        self._zoom_by(scroll_zoom_factor(event))
+        event.accept()
 
     def set_clouds(self, clouds, color_mode="source", point_size=2., max_points=50000, max_depth=0.):
+        self._fit_clouds, self._fit_max_depth = clouds, max_depth
         self._clouds, self._cloud_color = clouds, color_mode
         self._point_size = point_size
         self._cloud_cache = {key: value for key, value in self._cloud_cache.items() if key in clouds}
         for key, cloud in clouds.items():
             header = cloud["header"]
-            signature = (header["worker_instance_id"], header["cloud_sequence"], max_points, max_depth)
+            signature = (header["worker_instance_id"], header["cloud_sequence"], max_points, max_depth,
+                         cloud.get('display_range_m'))
             cached = self._cloud_cache.get(key)
             if cached is None or cached[0] != signature:
                 self._cloud_cache[key] = (signature, *display_cloud_data(cloud, max_points=max_points, max_depth=max_depth))
@@ -359,6 +449,7 @@ class ProjectionViewport(QWidget):
     def clear_clouds(self):
         """Release source arrays even when a hidden scene cannot paint."""
         self._clouds = {}
+        self._fit_clouds = {}
         self._cloud_cache.clear()
         self.update()
 
@@ -436,6 +527,19 @@ def create_gl_view(parent):
             self.selection = gl.GLScatterPlotItem(pos=np.empty((0, 3)), color=(1., 1., 1., 1.), size=11., pxMode=True, glOptions="opaque")
             self.addItem(self.selection)
             self.label_overlay = LabelOverlay(self)
+            self.grabGesture(Qt.GestureType.PinchGesture)
+            self.setMouseTracking(True)
+
+        def event(self, event):
+            if handle_zoom_gesture(event, self._zoom_by):
+                return True
+            return super().event(event)
+
+        def _zoom_by(self, factor):
+            if not math.isfinite(factor) or factor <= 0 or factor == 1.:
+                return
+            self.interacted.emit()
+            self.setCameraPosition(distance=min(1000., max(.02, self.opts['distance'] / factor)))
 
         def initializeGL(self):
             try:
@@ -515,14 +619,19 @@ def create_gl_view(parent):
             self.update()
 
         def fit(self):
-            if not self.model or not self.model.entities():
+            if not self.model:
                 return
-            points = scene_bounds_points(self.model)
+            clouds=getattr(self, '_fit_clouds', {})
+            margin=.8 if clouds else .62
+            tangent=math.tan(math.radians(self.opts['fov'])/2)
+            aspect=self.width()/max(1,self.height())
+            points = scene_fit_points(self.model, clouds, getattr(self, '_fit_max_depth', 0.),
+                self.opts['azimuth'],self.opts['elevation'],horizontal_tan=margin*tangent,vertical_tan=margin*tangent/aspect)
+            if not points:
+                return
             center, projected = camera_fit_bounds(points, self.opts["azimuth"], self.opts["elevation"])
             self.opts["center"] = QVector3D(*center)
-            tangent = math.tan(math.radians(self.opts["fov"])/2)
-            aspect = self.width()/max(1, self.height())
-            distance = max(max(z + abs(x)/(.62*tangent), z + abs(y)*aspect/(.62*tangent))
+            distance = max(max(z + abs(x)/(margin*tangent), z + abs(y)*aspect/(margin*tangent))
                            for x, y, z in projected)
             self.setCameraPosition(distance=max(.25, distance))
 
@@ -537,8 +646,23 @@ def create_gl_view(parent):
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event):
-            super().mouseMoveEvent(event)
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                position = event.position()
+                previous = getattr(self, 'mousePos', None)
+                self.mousePos = position
+                if previous is not None:
+                    delta = position-previous
+                    self.interacted.emit()
+                    self.pan(delta.x(), delta.y(), 0, relative='view')
+                event.accept()
+            else:
+                super().mouseMoveEvent(event)
             self.label_overlay.update()
+
+        def leaveEvent(self, event):
+            if hasattr(self, 'mousePos'):
+                del self.mousePos
+            super().leaveEvent(event)
 
         def mouseReleaseEvent(self, event):
             if self.model and self._press is not None and (event.position()-self._press).manhattanLength() < 6:
@@ -564,15 +688,15 @@ def create_gl_view(parent):
             self.fit()
 
         def wheelEvent(self, event):
-            self.interacted.emit()
-            super().wheelEvent(event)
-            self.label_overlay.update()
+            self._zoom_by(scroll_zoom_factor(event))
+            event.accept()
 
         def orbit(self, azimuth, elevation=0.):
             super().orbit(azimuth, elevation)
             self.label_overlay.update()
 
         def set_clouds(self, clouds, color_mode="source", point_size=2., max_points=50000, max_depth=0.):
+            self._fit_clouds, self._fit_max_depth = clouds, max_depth
             # Missing sources have ended their display lifetime. Keep objects
             # for continuing cameras, but never retain arbitrary historical IDs.
             self._release_cloud_items(set(self._cloud_items) - clouds.keys())
@@ -582,7 +706,8 @@ def create_gl_view(parent):
                     item = gl.GLScatterPlotItem(glOptions="opaque")
                     self.addItem(item)
                     self._cloud_items[key] = item
-                signature = (cloud["header"]["worker_instance_id"], cloud["header"]["cloud_sequence"], color_mode, point_size, max_points, max_depth)
+                signature = (cloud["header"]["worker_instance_id"], cloud["header"]["cloud_sequence"], color_mode, point_size, max_points, max_depth,
+                             cloud.get('display_range_m'))
                 if getattr(item, "_spatial_signature", None) != signature:
                     positions, colors = display_cloud_data(cloud, max_points=max_points, max_depth=max_depth)
                     color = colors if color_mode == "rgb" else QColor(entity_color({"id": key})).getRgbF()
@@ -622,6 +747,7 @@ def create_gl_view(parent):
                     self.doneCurrent()
 
         def clear_clouds(self):
+            self._fit_clouds = {}
             self._release_cloud_items(tuple(self._cloud_items))
 
         def closeEvent(self, event):
@@ -646,6 +772,7 @@ class SpatialScene(QWidget):
         self._render_signature = None
         self._pending_clouds = None
         self._cloud_signature = None
+        self._cloud_fit_pending = True
         self._motion_enabled = True
         self._cruising = False
         self._last_motion = 0.
@@ -762,11 +889,14 @@ class SpatialScene(QWidget):
             signature = (color_mode, point_size, max_points, max_depth,
                          _pose_signature(frame.get("display_from_world") if frame else None),
                          tuple((key, cloud["header"]["worker_instance_id"], cloud["header"]["cloud_sequence"],
-                                _pose_signature(cloud["header"]["world_from_color"])) for key, cloud in clouds.items()))
+                                _pose_signature(cloud["header"]["world_from_color"]), cloud.get('display_range_m')) for key, cloud in clouds.items()))
             if signature != self._cloud_signature:
                 self.viewport.set_clouds(clouds, color_mode, point_size, max_points, max_depth)
                 self._cloud_signature = signature
             self._pending_clouds = None
+            if clouds and self._cloud_fit_pending:
+                self.viewport.fit()
+                self._cloud_fit_pending = False
 
     def _fit_initial(self):
         if not self.model or not self.model.frame or not self.isVisible() or not self.model.entities():
@@ -775,6 +905,8 @@ class SpatialScene(QWidget):
         identity = tuple(str(frame.get(key)) for key in
                          ("mode", "manager_instance_id", "scene_epoch", "world_frame", "map_identity", "coordinate_epoch"))
         if not self._fitted or identity != self._fit_identity:
+            if identity != self._fit_identity:
+                self._cloud_fit_pending = True
             self.viewport.fit()
             self._fitted, self._fit_identity = True, identity
 
@@ -814,6 +946,7 @@ class SpatialScene(QWidget):
     def reset_view_fit(self):
         """Fit the next visible scene, without changing layers or camera now."""
         self._fitted = False
+        self._cloud_fit_pending = True
 
     def standard_view(self, view):
         self.set_cruising(False)

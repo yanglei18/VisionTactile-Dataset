@@ -49,8 +49,16 @@ class CloudSupervisor:
             registry=self.store.camera_registry
             if registry is None: return None
             geometries={camera['id']:registry.geometry(camera['id']) for camera in self.store.config.cameras}
+            # Independent live preview consumes the same ROS source directly.
+            # Do not relay hundreds of poses through the busy desktop snapshot
+            # process on every control update. Calibration/replay are unchanged.
+            alignment=self.store.config.alignment_document or {}
+            tracker_inputs=({t['role']:t['sample_topic'] for t in alignment.get('trackers',())}
+                if self.store.config.cloud.get('matching_mode')=='independent' else {})
             poses={}
             for role,buffer in self.store.buffers.items():
+                if tracker_inputs:
+                    continue
                 samples=buffer.samples
                 cutoff=samples[-1].source_realtime_ns-700_000_000 if samples else 0
                 poses[role]=[dict(tracker_id=s.tracker_id,parent_frame=s.parent_frame,
@@ -61,6 +69,7 @@ class CloudSupervisor:
                 scene_epoch=self.store.scene_epoch,time_epoch=self.store.time_epoch,
                 coordinate_epoch=self.store.coordinate_epoch,sync_epoch=self.store.sync_epoch,
                 reference_camera=self.store.config.reference_camera,geometries=geometries,poses=poses,
+                tracker_inputs=tracker_inputs,world_frame=self.store.config.world_frame,
                 cloud=self.store.config.cloud,timing=self.store.config.timing,interest=self.store.has_interest('cloud'))
 
     def _event(self,event):
@@ -86,9 +95,42 @@ class CloudSupervisor:
                     raise ValueError('worker identity mismatch')
                 checked[header['camera_id']]=(time.monotonic(),header)
             with self._lock:
-                # Each event is one reference-time group. Omitted cameras are
-                # removed immediately instead of borrowing previous geometry.
-                self._headers=checked
+                expected={camera['id'] for camera in self.store.config.cameras}
+                independent=getattr(self.store.config,'cloud',{}).get('matching_mode')=='independent'
+                if independent:
+                    # Each camera owns its receipt lease and sequence. Updating
+                    # head must not renew a stalled wrist or wait for its packet.
+                    if set(checked)-expected or any(h.get('matching_mode')!='independent' for _,h in checked.values()):
+                        raise ValueError('unexpected independent camera frame')
+                    common=('manager_instance_id','worker_instance_id','scene_epoch','time_epoch','coordinate_epoch','sync_epoch')
+                    if checked:
+                        first=next(iter(checked.values()))[1]
+                        if any(any(h.get(k)!=first.get(k) for k in common) for _,h in checked.values()):
+                            raise ValueError('mixed cloud generations')
+                        if any(any(h.get(k)!=first.get(k) for k in common) for _,h in self._headers.values()):
+                            self._headers.clear()
+                        for name,value in checked.items():
+                            previous=self._headers.get(name)
+                            if previous is None or value[1]['cloud_sequence']>previous[1]['cloud_sequence']:
+                                self._headers[name]=value
+                    return
+                now=time.monotonic()
+                generations=('manager_instance_id','worker_instance_id','scene_epoch',
+                             'time_epoch','coordinate_epoch','sync_epoch',
+                             'geometry_revision','geometry_sha256')
+                # Keep a still-leased COMPLETE group while a partial successor
+                # is in flight. Never fill holes with frames from other groups,
+                # refresh the old receipt time, or cross a geometry/epoch change.
+                # latest_headers() retains its original 0.5 s expiry; SceneStore
+                # also enforces source age and reports delayed frames honestly.
+                retain_complete=(bool(checked) and set(checked)<expected
+                    and set(self._headers)==expected
+                    and all(0<=now-received<.5 for received,_ in self._headers.values())
+                    and all(all(header.get(field)==self._headers[name][1].get(field)
+                                for field in generations)
+                            for name,(_,header) in checked.items()))
+                if not retain_complete:
+                    self._headers=checked
         elif kind in ('sync_change','clock_reset'):
             with self.store._lock:
                 if event.get('time_epoch')!=self.store.time_epoch or event.get('coordinate_epoch')!=self.store.coordinate_epoch:

@@ -31,6 +31,7 @@ from .pairing import pair_static_observations
 from .repeatability import compare_extrinsics, write_repeatability_report
 from .session_io import MAX_DOCUMENT_BYTES, atomic_document, read_document
 from .process_lease import clear_recorder_lease, process_start_token
+from .round_store import RoundStore
 
 @dataclass(frozen=True)
 class Request:
@@ -78,6 +79,7 @@ class Request:
 class StatusWriter:
     def __init__(self, path, session_id):
         self.path = Path(path)
+        self.completed_rounds = []
         self._value = dict(schema_version=1, session_id=session_id, state='PREPARING',
                            round=0, rounds=3, accepted=0, target=50,
                            hint_code='WAITING_INPUT', detail='', metrics={}, preview=None,
@@ -85,6 +87,8 @@ class StatusWriter:
 
     def update(self, **fields):
         candidate = {**self._value, **fields, 'updated_ns': time.time_ns()}
+        candidate['metrics'] = {**candidate.get('metrics', {}),
+                                'completed_rounds': list(self.completed_rounds)}
         atomic_document(self.path, candidate)
         self._value = candidate
 
@@ -140,6 +144,16 @@ class Worker:
         self.cancel_path = Path(cancel_path)
         self.cancel_event = threading.Event()
         self.tracker_id = request.expected_tracker_id
+        self.round_store = RoundStore(request, lambda bag: source_fingerprint(bag, self.check_cancel))
+
+    def _unused_path(self, name):
+        path = self.request.output_root / name
+        attempt = 2
+        while path.exists():
+            original = Path(name)
+            path = self.request.output_root / f'{original.stem}-attempt-{attempt}{original.suffix}'
+            attempt += 1
+        return path
 
     def cancel(self, *_):
         self.cancel_event.set()
@@ -149,7 +163,7 @@ class Worker:
             raise InterruptedError('Calibration cancelled')
 
     def _collect(self, number):
-        directory = self.request.output_root / f'round-{number}'
+        directory = self._unused_path(f'round-{number}')
         directory.mkdir(mode=0o700)
         bag = directory / 'bag'
         recorder = ManagedJob()
@@ -221,7 +235,7 @@ class Worker:
         if source_fingerprint(bag, self.check_cancel) != fingerprint:
             raise ValueError('Source bag changed during calibration')
         training, _ = split_validation_pairs(pairs, self.config.acceptance)
-        result = export_result(output_directory=self.request.output_root / f'round-{number}-result',
+        result = export_result(output_directory=self._unused_path(f'round-{number}-result'),
             config_path=self.request.config_path, bag_path=bag, config=self.config,
             observations=observations, selected_pairs=training, solution=solution)
         validation_path = result / 'independent-validation.json'
@@ -239,10 +253,14 @@ class Worker:
         self.status.update(target=collection_target(self.config.acceptance))
         try:
             self.check_cancel()
-            rounds = []
+            rounds = self.round_store.load() if self.request.mode == 'guided' else []
+            self.status.completed_rounds = [r['round'] for r in rounds]
+            self.status.update(detail='')
             count = 3 if self.request.mode == 'guided' else len(self.request.bag_paths)
             for number in range(1, count + 1):
                 self.check_cancel()
+                if any(r['round'] == number for r in rounds):
+                    continue
                 bag = self._collect(number) if self.request.mode == 'guided' else self.request.bag_paths[number - 1]
                 candidate = self._solve_round(number, bag)
                 for previous in rounds:
@@ -252,15 +270,28 @@ class Worker:
                             or candidate['last_stamp_ns'] < previous['first_stamp_ns']):
                         raise ValueError('Independent round source time windows must not overlap')
                 rounds.append(candidate)
+                if self.request.mode == 'guided':
+                    rounds = self.round_store.save(rounds)
+                    self.status.completed_rounds = [r['round'] for r in rounds]
+                    self.status.update(result=dict(extrinsics_path=candidate['extrinsics_path'],
+                        report_path=candidate['report_path']))
             eligible, repeatability_path = False, None
             selected = rounds[0]
             if len(rounds) == 3:
                 self.status.update(state='COMPARING', hint_code='COMPARING', preview=None)
                 comparison = compare_extrinsics([r['extrinsics_path'] for r in rounds])
-                repeatability_path = self.request.output_root / 'repeatability.json'
+                repeatability_path = self._unused_path('repeatability.json')
                 write_repeatability_report(repeatability_path, comparison)
                 if comparison.status != 'PASS':
-                    raise ValueError('Three-round repeatability failed; inspect rigid mounting and repeat')
+                    self.status.update(state='FAILED', hint_code='REPEATABILITY_FAILED',
+                        detail=(f'Three-round repeatability failed: maximum translation '
+                            f'{comparison.maximum_translation_m * 1000:.3f} mm '
+                            f'(limit {comparison.threshold_translation_m * 1000:.3f} mm), '
+                            f'rotation {comparison.maximum_rotation_deg:.3f} deg '
+                            f'(limit {comparison.threshold_rotation_deg:.3f} deg).'),
+                        result=dict(repeatability_path=str(repeatability_path)),
+                        preview=None)
+                    return 1
                 selected = next(r for r in rounds if '/'.join(Path(r['extrinsics_path']).parts[-2:]) == comparison.recommended_input)
                 eligible = True
             self.check_cancel()

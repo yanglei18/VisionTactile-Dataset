@@ -23,6 +23,36 @@ def test_each_camera_uses_own_frame_time_and_nearest_within_inclusive_tolerance(
     assert sync.poll(130*MS) is None
 
 
+def test_live_preview_can_skip_backlog_without_changing_matching_tolerance():
+    sync = FrameSynchronizer(['a', 'b'], prefer_latest=True)
+    for t in (100, 133, 166):
+        sync.append(frame('a', t))
+        sync.append(frame('b', t+5))
+    result = sync.poll(180*MS)
+    assert result.complete and result.scene_time_ns == 166*MS
+    assert result.residuals_ns['b'] == 5*MS
+    assert sync.poll(181*MS) is None
+
+
+def test_latest_preview_preserves_pending_wait_and_does_not_use_out_of_tolerance_frame():
+    sync = FrameSynchronizer(['a', 'b'], prefer_latest=True)
+    sync.append(frame('a', 100))
+    sync.append(frame('b', 121))
+    assert sync.poll(150*MS) is None
+    sync.append(frame('a', 166))
+    result = sync.poll(200*MS)
+    assert result.scene_time_ns == 100*MS
+    assert result.missing == ('b',)
+
+
+def test_latest_preview_option_does_not_change_replay_order():
+    sync = FrameSynchronizer(['a', 'b'], mode='replay', prefer_latest=True)
+    for t in (100, 133, 166):
+        sync.append(frame('a', t))
+        sync.append(frame('b', t))
+    assert sync.poll(180*MS).scene_time_ns == 100*MS
+
+
 def test_waits_bounded_time_then_publishes_partial_without_reusing_frames():
     sync = FrameSynchronizer(['a', 'b'])
     sync.append(frame('a', 100))

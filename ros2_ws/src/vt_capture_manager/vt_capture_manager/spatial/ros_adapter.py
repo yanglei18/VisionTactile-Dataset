@@ -66,7 +66,10 @@ class SpatialRosAdapter:
     def _source_signature(self, camera):
         owners = []
         signatures = []
-        for topic in (camera.get('color_topic'), camera.get('depth_topic'), camera.get('camera_info_topic'), camera.get('depth_camera_info_topic')):
+        topics = [camera.get('color_topic'), camera.get('depth_topic'), camera.get('camera_info_topic'), camera.get('depth_camera_info_topic')]
+        if 'cloud_topic' in camera:
+            topics.append(camera['cloud_topic'])
+        for topic in topics:
             if not topic:
                 return None
             endpoints = self.node.get_publishers_info_by_topic(topic)

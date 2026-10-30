@@ -23,16 +23,19 @@ def wait_ready(backend, index=0):
 def test_archive_seek_has_new_epoch_and_preserves_world_positions(tmp_path):
     path = tmp_path / "scene.json"
     frames = [demo_scene(0, sequence=1), demo_scene(1, sequence=2)]
+    frames[0]['preview_notice'] = '左腕·试用候选（三轮一致性未通过）'
     path.write_text(json.dumps(dict(schema_version=1, kind="vt.spatial.archive", frames=frames)))
     backend = SpatialReplayBackend()
     try:
         backend.load(path)
         first = wait_ready(backend)
         assert first["mode"] == "replay"
+        assert first['preview_notice'] == frames[0]['preview_notice']
         backend.seek(1)
         second = wait_ready(backend, 1)
         assert first["scene_epoch"] != second["scene_epoch"]
         assert second["trackers"][0]["position_m"] == frames[1]["trackers"][0]["position_m"]
+        assert not second.get('preview_notice')
     finally:
         backend.close()
 

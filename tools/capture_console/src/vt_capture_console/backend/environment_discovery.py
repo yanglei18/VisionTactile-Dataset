@@ -272,6 +272,11 @@ class _Discovery:
                                     self.home / "visiontactile-deps/mano-assets"))
 
     def tracker(self, parameters, group_id, data):
+        if parameters.get("backend") == "vivehub":
+            # Never auto-import legacy bootstrap material into a Hub recipe.
+            self.select(parameters, group_id, "hub_bindings_path", predicate=_file, manual=True)
+            self.select(parameters, group_id, "hub_reader_path", predicate=_file, manual=True)
+            return
         bundle = parameters.get("bundle_path") or self.environment.get("VT_BUNDLE", "")
         # A complete manual configuration does not depend on an unrelated
         # installation pointer, which may be absent or awaiting repair.

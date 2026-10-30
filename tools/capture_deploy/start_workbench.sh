@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Desktop entry: the GUI owns backend setup; hardware starts only by explicit UI action.
+# Desktop entry: GUI owns backend setup and the saved opt-in VIVE Hub connection.
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Use the desktop's X11/Xwayland connection when available. The workstation's

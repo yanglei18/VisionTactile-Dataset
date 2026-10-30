@@ -1,0 +1,11 @@
+{
+  "VIVE Hub 自动连接": "VIVE Hub automatic connection",
+  "VIVE Hub 连接": "VIVE Hub connection",
+  "打开工作台时，自动启动 VIVE Hub 并接入 Tracker 位姿": "Start VIVE Hub and connect tracker poses when opening the workbench",
+  "VIVE Hub 安装目录": "VIVE Hub installation directory",
+  "选择 VIVE Hub 安装目录": "Select the VIVE Hub installation directory",
+  "已有连接会直接复用。实体 Tracker 仍需开机；首次使用或更换场地时，在 Hub 中完成配对和建图。关闭工作台窗口会保留连接。": "Existing connections are reused. Power on the physical trackers; use Hub for initial pairing and mapping at a new location. Closing the workbench keeps connections running.",
+  "打开启动日志": "Open startup log",
+  "设置已保存，下次打开工作台时生效；也可点击“立即连接”。": "Settings saved for the next workbench launch. You can also connect now.",
+  "当前使用 VIVE Hub 官方 SDK。可在设备页通过“VIVE Hub 连接”设置自动接入，再查看实时位姿；配对与建图由 Hub 管理。": "Using the official VIVE Hub SDK. Configure automatic connection through VIVE Hub connection on the Devices page, then view live poses. Hub manages pairing and mapping."
+}

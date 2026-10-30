@@ -16,7 +16,7 @@ from pathlib import Path
 import stat
 
 from PySide6.QtCore import Qt, QTimer
-from vt_capture_core.workstation import PRESETS
+from vt_capture_core.workstation import PRESETS, required_parameters
 from ...i18n.widgets import (
     QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFormLayout,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
@@ -38,7 +38,11 @@ GROUPS = (
 )
 FIELDS = {
     "cameras": (("config_path", tr('相机配置'), "file"), ("output_root", tr('数据输出目录'), "directory")),
-    "trackers": (("bundle_path", tr('追踪器启动包'), "file"), ("role_map_path", tr('角色映射'), "file"),
+    "trackers": (("backend", tr('位姿来源'), "tracker_backend"),
+                 ("hub_bindings_path", tr('Hub 序列号与角色绑定'), "file"),
+                 ("hub_reader_path", tr('Hub SDK 读取程序'), "file"),
+                 ("hub_socket_path", tr('Hub Socket'), "text"),
+                 ("bundle_path", tr('PyVUT 追踪器启动包'), "file"), ("role_map_path", tr('PyVUT 角色映射'), "file"),
                  ("pyvut_source", tr('扩展 PyVUT 源码目录'), "directory"),
                  ("pyvut_site_packages", tr('PyVUT 依赖目录'), "directory")),
     "glove": (("glove_python", tr('手套 Python 环境'), "file"), ("fsglove_source", tr('官方 FSGlove 源码'), "directory"),
@@ -62,7 +66,7 @@ def runtime_busy(runtime):
 
 
 def _required_parameters(group):
-    required = set(PRESETS[group["preset"]][4])
+    required = required_parameters(group["preset"], group.get("parameters", {}))
     if group["preset"] == "glove" and group.get("parameters", {}).get("launch_gui", "true") == "true":
         required.update({"glove_python", "fsglove_source", "mano_assets", "port"})
     return required
@@ -179,7 +183,16 @@ class WorkstationSettingsDialog(QDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         for key, title, kind in FIELDS[group["preset"]]:
             value = group.get("parameters", {}).get(key, "")
-            if kind == "rate":
+            if kind == "tracker_backend":
+                editor = QComboBox()
+                editor.addItem(tr('PyVUT · 旧 HID 驱动'), "pyvut")
+                editor.addItem(tr('VIVE Hub · 官方 SDK（不重新初始化）'), "vivehub")
+                editor.setCurrentIndex(max(0, editor.findData(value or "pyvut")))
+                form.addRow(title, editor)
+            elif kind == "text":
+                editor = QLineEdit(value or ({"frame_id": "vive_map", "hub_socket_path": "/tmp/vut.sock"}.get(key, "")))
+                form.addRow(title, editor)
+            elif kind == "rate":
                 editor = QDoubleSpinBox()
                 editor.setRange(1, 1000)
                 editor.setDecimals(1)
@@ -221,6 +234,12 @@ class WorkstationSettingsDialog(QDialog):
         form_widget.setEnabled(enabled.isChecked())
         layout.addWidget(form_widget)
         if identifier == "trackers":
+            backend = self.fields[(identifier, "backend")]
+            def change_backend():
+                hub = self._value(backend) == "vivehub"
+                group.setdefault("parameters", {})["frame_id"] = "vive_hub_map" if hub else "vive_map"
+            backend.currentIndexChanged.connect(change_backend)
+            layout.addWidget(_label(tr('Hub 模式：先在 VIVE Hub 中完成连接，再在设备页启动读取。无需抓包或旧初始化；请勿与 PyVUT 同时占用 Dongle。更换来源后须核对空间配置与外参。')))
             self.import_tracker_button = QPushButton(tr('导入 Tracker 部署包…'))
             self.import_tracker_button.clicked.connect(self._open_tracker_deployment)
             layout.addWidget(self.import_tracker_button)
@@ -294,7 +313,7 @@ class WorkstationSettingsDialog(QDialog):
             self._set_status(tr('串口名称暂不可枚举，可手动填写路径：{v0}', v0=exc))
             return
         for editor in self.fields.values():
-            if not isinstance(editor, QComboBox):
+            if not isinstance(editor, QComboBox) or not editor.isEditable():
                 continue
             value = self._value(editor)
             editor.blockSignals(True)

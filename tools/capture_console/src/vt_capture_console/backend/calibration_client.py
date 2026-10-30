@@ -5,7 +5,7 @@ import time
 
 from ..i18n import tr
 from ..i18n.messages import message as diagnostic
-from ..viewmodels.calibration import calibration_view, restorable_revision
+from ..viewmodels.calibration import calibration_view, restorable_revision, can_resume
 from .operation_receipts import operation_for
 
 
@@ -69,6 +69,14 @@ class CalibrationClient:
         view = calibration_view(self._snapshot)
         return (self._submit("calibration.cancel", {"session_id": view.session_id})
                 if view.can_cancel else False)
+
+    def resume(self, *, assembly_unchanged, retry_rounds=None):
+        if not can_resume(self._snapshot) or assembly_unchanged is not True:
+            return False
+        params = dict(session_id=calibration_view(self._snapshot).session_id, assembly_unchanged=True)
+        if retry_rounds:
+            params['retry_rounds'] = list(retry_rounds)
+        return self._submit('calibration.resume', params)
 
     def retry_publish(self):
         view = calibration_view(self._snapshot)

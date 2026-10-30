@@ -145,7 +145,7 @@ _SCENE_FIELDS = {
     'time_epoch', 'coordinate_epoch', 'sync_epoch', 'map_identity', 'time_mode',
     'scene_time_ns', 'time_basis', 'config_revision', 'geometry_revision',
     'generated_realtime_ns', 'active_reference_camera', 'display_from_world',
-    'trackers', 'cameras', 'diagnostics',
+    'trackers', 'cameras', 'diagnostics', 'preview_notice',
 }
 
 
@@ -154,14 +154,20 @@ def validate_scene(value):
                                'mode', 'world_frame', 'trackers', 'cameras', 'diagnostics'}, 'scene')
     for key in ('manager_instance_id', 'world_frame'):
         _string(value[key], key)
+    if 'preview_notice' in value:
+        notice = value['preview_notice']
+        if not isinstance(notice, str) or len(notice) > 1024:
+            raise SceneProtocolError('preview_notice must be a string of at most 1024 characters')
     for key in ('scene_epoch', 'time_epoch', 'coordinate_epoch', 'sync_epoch', 'config_revision', 'geometry_revision'):
         if key in value:
             _generation(value[key], key)
     _integer(value['sequence'], 'sequence')
     if value['mode'] not in ('live', 'demo', 'replay'):
         raise SceneProtocolError('invalid scene mode')
-    if value.get('time_mode', 'monitor') not in ('monitor', 'aligned'):
+    if value.get('time_mode', 'monitor') not in ('monitor', 'aligned', 'independent'):
         raise SceneProtocolError('invalid time_mode')
+    if value.get('time_mode')=='independent' and (value.get('scene_time_ns') is not None or value.get('mode')!='live'):
+        raise SceneProtocolError('independent live preview has no common scene time')
     for key in ('generated_realtime_ns', 'scene_time_ns'):
         if value.get(key) is not None:
             _integer(value[key], key)

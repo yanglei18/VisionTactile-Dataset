@@ -47,6 +47,34 @@ def make(kind="glove"):
     return model, clock, identity
 
 
+def test_tracker_preview_uses_explicit_source_frame_not_hardcoded_pyvut():
+    clock = Clock()
+    config = ManagerConfig((DeviceConfig("right_wrist", "Right", "tracker", "right", "/vive/right_wrist/sample"),),
+                           process_groups=({"preset": "trackers", "parameters": {"frame_id": "vive_hub_map"}},))
+    model = SnapshotModel(config, monotonic_ns=clock, realtime_ns=clock, disk_usage=lambda _: NS(free=100))
+    msg = message("tracker", clock)
+    model.observe("right_wrist", msg)
+    assert not model.snapshot()["devices"][0]["preview"]
+    msg.header.frame_id = "vive_hub_map"
+    model.observe("right_wrist", msg)
+    assert model.snapshot()["devices"][0]["preview"]["valid"]
+
+
+def test_readonly_tracker_uses_explicit_scene_world_frame(tmp_path):
+    path=tmp_path/'scene.json'
+    path.write_text('{"schema_version":1,"world_frame":"vive_hub_map"}')
+    clock=Clock()
+    config=ManagerConfig((DeviceConfig('right_wrist','Right','tracker','right','/vive/right_wrist/sample'),),
+                         scene_config_path=str(path))
+    model=SnapshotModel(config,monotonic_ns=clock,realtime_ns=clock,disk_usage=lambda _:NS(free=100))
+    msg=message('tracker',clock);msg.header.frame_id='vive_hub_map'
+    model.observe('right_wrist',msg)
+    assert model.snapshot()['devices'][0]['preview']['valid']
+    from dataclasses import replace
+    incompatible=replace(config,process_groups=({'preset':'trackers','parameters':{'frame_id':'vive_map'}},))
+    with pytest.raises(ValueError,match='world frame'): SnapshotModel(incompatible)
+
+
 def test_glove_preview_preserves_per_frame_sources_and_clears_unknown_metadata():
     model, clock, identity = make()
     sources = dict(reference_node_id=11,

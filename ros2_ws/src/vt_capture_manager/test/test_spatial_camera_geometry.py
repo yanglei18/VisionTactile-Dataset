@@ -90,6 +90,19 @@ def test_invalid_pose_and_missing_geometry_remain_explicit():
     assert registry.camera_entities([dict(tracker(), state="stale")], now_ns=1_000_000_000)[0]["registration_state"] == "tracker_unavailable"
 
 
+def test_independent_geometry_is_not_revoked_by_late_manager_pose():
+    registry=prepared()
+    registry.observe_device_info('cam',NS(serial_number='123'),observed_ns=1_000_000_000)
+    late=dict(tracker(),state='offline')
+    entity=registry.camera_entities([late],now_ns=1_000_000_000,require_live_tracker=False)[0]
+    assert entity['registration_state']=='ready' and entity['state']=='waiting'
+    assert entity['position_m'] is None  # A cloud's own source pose must supply this.
+    assert entity['reason']=='tracker_unavailable'
+    bad=dict(late,tracker_id='other')
+    assert registry.camera_entities([bad],now_ns=1_000_000_000,require_live_tracker=False)[0]['registration_state']!='ready'
+    assert registry.camera_entities([late],now_ns=7_000_000_000,require_live_tracker=False)[0]['registration_state']=='identity_unverified'
+
+
 def test_new_invalid_intrinsics_and_depth_geometry_remove_previous_geometry():
     registry=prepared()
     revision=registry.geometry('cam')['geometry_revision']

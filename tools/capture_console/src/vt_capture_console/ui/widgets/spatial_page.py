@@ -7,6 +7,7 @@ from ...i18n.demo import demo_scene_frame
 from ...i18n.messages import message as display_message
 
 import datetime
+import os
 import uuid
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
@@ -17,6 +18,9 @@ from ...i18n.widgets import (QAbstractItemView, QCheckBox, QComboBox, QDoubleSpi
 from ...viewmodels.spatial import SpatialViewModel, STATE_LABELS
 from .preview import PreviewWidget
 from .spatial_scene import SpatialScene
+from ...backend.cloud_presentation import CloudPresentation
+from ...backend.cloud_display import WristCloudDisplay
+from .. import presentation_settings
 
 
 def plain_label(text="", parent=None, *, name=""):
@@ -57,6 +61,9 @@ class SpatialPage(QWidget):
         self._preview_widgets = {}
         self._last_status = {}
         self._clouds = {}
+        self._wrist_cloud_display = WristCloudDisplay()
+        self._cloud_presentation = CloudPresentation()
+        self._presentation_clouds = None
         self._allow_detail = allow_detail
         self._motion_enabled = True
         self._observed_window = None
@@ -117,6 +124,16 @@ class SpatialPage(QWidget):
         self.inspector_toggle.toggled.connect(self._toggle_inspector)
         toolbar.addWidget(self.inspector_toggle)
         root.addWidget(toolbar_panel)
+        # Keep provenance separate from changing stream/cloud status and hidden
+        # entity panels. It must remain visible even when geometry is unavailable.
+        self.preview_notice = plain_label(name="spatialPreviewNotice")
+        self.preview_notice.setAccessibleName(tr('空间预览说明'))
+        self.preview_notice.setStyleSheet(
+            "QLabel { color: #713f12; background: #fff3cd; border: 1px solid #d9a441; "
+            "border-radius: 5px; padding: 8px 12px; }")
+        self.preview_notice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.preview_notice.hide()
+        root.addWidget(self.preview_notice)
 
         workspace = QHBoxLayout()
         workspace.setContentsMargins(0, 0, 0, 0)
@@ -257,19 +274,29 @@ class SpatialPage(QWidget):
         self.cloud_count = QComboBox()
         for count in (5000, 15000, 50000):
             self.cloud_count.addItem(tr('每路 ≤ {v0:,} 点', v0=count), count)
-        self.cloud_count.setCurrentIndex(2)
+        from vt_capture_core.spatial.cloud_protocol import MAX_POINTS
+        self.cloud_count.addItem(tr('全量点（显示端不抽样）'), MAX_POINTS)
+        self.cloud_count.setCurrentIndex(3)
         self.cloud_count.currentIndexChanged.connect(self._update_clouds)
         cloud_layout.addWidget(self.cloud_count)
         self.cloud_depth = QDoubleSpinBox()
         self.cloud_depth.setRange(0., 100.)
         self.cloud_depth.setDecimals(2)
         self.cloud_depth.setSingleStep(.1)
-        self.cloud_depth.setSpecialValueText(tr('深度：不限'))
-        self.cloud_depth.setPrefix(tr('深度 ≤ '))
+        self.cloud_depth.setSpecialValueText(tr('通用上限：不额外裁剪'))
+        self.cloud_depth.setPrefix(tr('通用上限 Z ≤ '))
         self.cloud_depth.setSuffix(" m")
         self.cloud_depth.setToolTip(tr('仅限制显示的彩色光学坐标 Z，不改变传感器测距范围或采集配置'))
         self.cloud_depth.valueChanged.connect(self._update_clouds)
         cloud_layout.addWidget(self.cloud_depth)
+        self._display_settings = presentation_settings.presentation_settings()
+        self.wrist_depth_check = QCheckBox(tr('腕部点云：仅显示 7–50 cm'))
+        self.wrist_depth_check.setToolTip(tr('按左右腕相机自身的深度方向裁剪预览；头部与原始采集数据保持不变。'))
+        self.wrist_depth_check.setChecked(self._display_settings.value('spatial/wrist_depth_7_50_cm', False, type=bool))
+        self.wrist_depth_check.toggled.connect(self._wrist_depth_changed)
+        cloud_layout.addWidget(self.wrist_depth_check)
+        self.cloud_limits = plain_label(tr('后台深度范围：等待点云参数'), name='spatialCloudLimits')
+        cloud_layout.addWidget(self.cloud_limits)
         cloud_layout.addStretch()
 
         detail_layout = inspector_tab(tr('数据'))
@@ -328,7 +355,8 @@ class SpatialPage(QWidget):
         replay_tools.addWidget(self.play_rate)
         self.replay_bar.hide()
         root.addWidget(self.replay_bar)
-        self.hint = plain_label(tr('拖动旋转 · Shift / 中键平移 · 滚轮缩放 · 点击选择 · 实体外形为示意'))
+        self.hint = plain_label(tr('单指按下拖动旋转 · Shift＋单指滑动平移 · 双指捏合/上下滑动缩放 · 点击选择 · 实体外形为示意'))
+        self.hint.setToolTip(tr('光标放在三维区域，按住 Shift 并在触控板上单指滑动即可平移，无需按下触控板。松开 Shift 后，单指按下拖动可旋转。'))
         self.hint.setObjectName("spatialHint")
         self.hint.setVisible(not self._archive_embedded)
         root.addWidget(self.hint)
@@ -343,6 +371,14 @@ class SpatialPage(QWidget):
 
     def apply_frame(self, frame, status):
         self._last_status = status
+        cloud_backend = getattr(self.backend, 'cloud_backend', None)
+        if not self.model.frozen:
+            enabled = (status.get('state') == 'ready' and 'cloud' in self.model.layers
+                       and frame is not None and frame.get('mode') == 'live'
+                       and cloud_backend is not None)
+            matches = cloud_backend.latest(frame) if enabled else {}
+            frame, matches = self._cloud_presentation.select(frame, matches, enabled=enabled)
+            self._presentation_clouds = matches if enabled else None
         self.model.update(demo_scene_frame(frame))
         self.model.source_available = status.get("state") == "ready"
         self._render()
@@ -350,6 +386,15 @@ class SpatialPage(QWidget):
 
     def _render(self):
         frame = self.model.frame
+        notice = frame.get("preview_notice", "") if frame else ""
+        notice = notice if isinstance(notice, str) else ""
+        # Deployment-level presentation override, including an empty string to
+        # hide an informational banner from an already-running older Manager.
+        # Keep archived provenance, source frames and live diagnostics intact.
+        if frame and frame.get("mode") == "live":
+            notice = os.environ.get("VT_LIVE_PREVIEW_NOTICE", notice)
+        self.preview_notice.setText(tr('预览提示：{notice}', notice=notice) if notice.strip() else "")
+        self.preview_notice.setVisible(bool(notice.strip()))
         mode = frame.get("mode") if frame else getattr(self.backend, "mode", "live")
         prefix = {"demo": tr('合成数据'), "replay": tr('历史帧')}.get(mode, tr('实时监看'))
         if self.model.frozen:
@@ -366,7 +411,9 @@ class SpatialPage(QWidget):
         else:
             self.status.setText(prefix+" · "+str(frame.get("world_frame", "vive_map") if frame else tr('等待数据')))
             if frame:
-                self.status.setText(self.status.text()+(tr(' · 各实体独立时刻') if frame.get("time_mode") == "monitor" else tr(' · 按图像时刻匹配')))
+                timing_label=(tr(' · 逐路独立匹配（非同时采样）') if frame.get('time_mode')=='independent' else
+                              tr(' · 各实体独立时刻') if frame.get('time_mode')=='monitor' else tr(' · 按图像时刻匹配'))
+                self.status.setText(self.status.text()+timing_label)
                 if frame.get("map_identity") is None:
                     self.status.setText(self.status.text()+tr(' · 地图身份未核验'))
         self.status.setToolTip(display_message(self._last_status.get("message", "")))
@@ -415,7 +462,7 @@ class SpatialPage(QWidget):
             elif frame and not frame.get("cameras"):
                 self.hint.setText(tr('追踪器公共坐标 · 参考网格非真实地面。相机需在空间配置中设置时间对齐、外参和设备身份来源。'))
             else:
-                self.hint.setText(tr('拖动旋转 · Shift / 中键平移 · 滚轮缩放 · 点击选择 · 实体外形为示意 · 参考网格非真实地面'))
+                self.hint.setText(tr('单指按下拖动旋转 · Shift＋单指滑动平移 · 双指捏合/上下滑动缩放 · 点击选择 · 实体外形为示意 · 参考网格非真实地面'))
         self._refresh_timeline()
         if self.follow.isChecked() and self.model.selected is not None:
             from ...viewmodels.spatial import display_point, drawable
@@ -499,24 +546,65 @@ class SpatialPage(QWidget):
         self._sync_interest()
         self._update_clouds()
 
+    def _wrist_depth_changed(self, enabled):
+        self._display_settings.setValue('spatial/wrist_depth_7_50_cm', enabled)
+        self._display_settings.sync()
+        self._update_clouds()
+        if self.detail_window is not None:
+            self.detail_window.page.wrist_depth_check.setChecked(enabled)
+
     def _update_clouds(self, *_args):
         if not hasattr(self, "scene"):
             return
         backend = getattr(self.backend, "cloud_backend", None)
         if not self.model.frozen:
-            self._clouds = (backend.latest(self.model.frame) if backend is not None
+            self._clouds = ((self._presentation_clouds if self._presentation_clouds is not None
+                             else backend.latest(self.model.frame)) if backend is not None
                             and "cloud" in self.model.layers and self.model.source_available else {})
         visible = {key: value for key, value in self._clouds.items() if key not in self.model.hidden_entities}
         if "cloud" not in self.model.layers:
             visible = {}
+        visible = self._wrist_cloud_display.select(visible, self.model.frame.get('cameras', ()) if self.model.frame else (),
+                                                   self.wrist_depth_check.isChecked())
         self.scene.set_clouds(visible, self.cloud_color.currentData(), self.cloud_size.value(),
                               self.cloud_count.currentData(), self.cloud_depth.value())
+        limits = []
+        if self.wrist_depth_check.isChecked():
+            limits.append(tr('腕部预览范围：7–50 cm；头部保持原范围。'))
+        for name, value in sorted(self._clouds.items()):
+            source=value['header']['source_realtime_ns']
+            now=self.model.frame.get('generated_realtime_ns',source)
+            camera=next((c for c in self.model.frame.get('cameras',()) if c['id']==name),{})
+            age=max(max(0,now-source)/1e9,camera.get('age_s') or 0.)
+            limits.append(tr('{name}：源帧年龄 {age_ms} ms',name=name,age_ms=round(age*1000)))
+            sampling = value['header'].get('sampling')
+            origin = value['header'].get('origin')
+            if origin and origin.get('source') == 'realsense':
+                limits.append(f"{name}：RealSense 驱动点云（XYZ＋RGB）；后台保留驱动范围；接收 {value['header']['point_count']:,} 有效点 / 驱动 {origin['input_points']:,} 点记录；无效 {origin['invalid_points']:,}；{origin['topic']}")
+            elif sampling:
+                density = '全像素扫描' if sampling['stride'] == 1 else f"每 {sampling['stride']}×{sampling['stride']} 像素取一点"
+                limits.append(f"{name}：后台深度 {sampling['min_depth_m']:g}–{sampling['max_depth_m']:g} m；{density}；接收 {value['header']['point_count']:,} 点")
+            else:
+                limits.append(f"{name}：后台未提供范围/抽样参数；接收 {value['header']['point_count']:,} 点")
+            cropped = visible.get(name)
+            if cropped is not None and cropped.get('display_range_m'):
+                limits.append(tr('{name}：7–50 cm 内保留 {count:,} 点（显示端裁剪）', name=name, count=len(cropped['positions'])))
+        self.cloud_limits.setText('\n'.join(limits) if limits else tr('后台深度范围：等待点云参数'))
+        self.cloud_limits.setToolTip(tr('RealSense 来源直接使用驱动 XYZ/RGB，后台只去除无效点并转换坐标；不套用 RGB-D 重建的距离过滤。显示端若主动设置距离上限，仍以彩色光学 Z 裁剪。RGB-D 来源的后台范围以原始深度光学 Z 计。'))
         self.status.setText(self.status.text().split(tr(' · 点云'))[0].split(tr(' · 未配置相机'))[0])
         if "cloud" in self.model.layers:
             count = len(self.model.frame.get("cameras", ())) if self.model.frame else 0
             note = (tr(' · 点云 {v0}/{v1} 路已匹配', v0=len(self._clouds), v1=count) if self._clouds else
                     tr(' · 未配置相机') if count == 0 else tr(' · 点云未同步或几何未就绪'))
             self.status.setText(self.status.text().split(tr(' · 点云'))[0]+note)
+            independent=self.model.frame and self.model.frame.get('time_mode')=='independent'
+            if independent and len(self._clouds)>1:
+                stamps=[c['header']['source_realtime_ns'] for c in self._clouds.values()]
+                self.status.setText(self.status.text()+tr(' · 路间时间差 {skew_ms} ms',skew_ms=round((max(stamps)-min(stamps))/1e6)))
+            if self._cloud_presentation.held and not self.model.frozen:
+                self.status.setText(self.status.text()+(tr(' · 部分通道暂留上一有效帧') if independent else tr(' · 暂留上一匹配组（等待新帧）')))
+            if self._cloud_presentation.stale_cameras and not self.model.frozen:
+                self.status.setText(self.status.text()+tr(' · 保留画面非实时（最多3秒）'))
             diagnostics = self.model.frame.get("diagnostics", ()) if self.model.frame else ()
             explanation = (display_message(backend.status()) if backend else tr('当前数据源未提供点云'))+"\n"+tr("\n").join(display_message(str(item))[:300] for item in diagnostics[:8])
             self.cloud_check.setToolTip(explanation)
@@ -618,9 +706,12 @@ class SpatialPage(QWidget):
     def _activate_backend(self, backend):
         self.backend.set_interest(self.viewer_id, frozenset())
         self.backend = backend
+        self._cloud_presentation.clear()
+        self._presentation_clouds = None
         self.freeze_button.setChecked(False)
         self.model.clear_frame()
         self._clouds = {}
+        self._wrist_cloud_display.clear()
         self._list_signature = None
         self.scene.reset_view_fit()
         self.cruise_button.setChecked(getattr(backend, "mode", "live") == "demo")
@@ -690,8 +781,11 @@ class SpatialPage(QWidget):
         super().hideEvent(event)
 
     def closeEvent(self, event):
+        self._wrist_cloud_display.clear()
         self.backend.set_interest(self.viewer_id, frozenset())
         self._clouds = {}
+        self._cloud_presentation.clear()
+        self._presentation_clouds = None
         self.scene.clear_clouds()
         if self.detail_window is not None:
             self.detail_window.close()

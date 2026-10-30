@@ -185,6 +185,7 @@ class SceneStore:
 
     def description(self):
         return dict(world_frame=self.config.world_frame, map_identity=self.config.map_identity,
+                    preview_notice=self.config.preview_notice,
                     config_revision=self.config.config_revision, display_from_world=self.config.display_from_world.as_dict(),
                     cameras=self.camera_registry.describe() if self.camera_registry else [],
                     tracker_roles=list(ROLES), time_mode='monitor', units='m', quaternion_order='xyzw')
@@ -196,6 +197,7 @@ class SceneStore:
         generation = dict(manager_instance_id=self.manager_instance_id, scene_epoch=self.scene_epoch,
                           time_epoch=self.time_epoch, coordinate_epoch=self.coordinate_epoch, sync_epoch=self.sync_epoch)
         matching = {}
+        independent=self.config.cloud.get('matching_mode')=='independent'
         for camera in cameras:
             header = headers.get(camera['id'])
             if (not header or any(header.get(k) != v for k, v in generation.items())
@@ -205,9 +207,20 @@ class SceneStore:
                     or not isinstance(header.get('frame_key'), dict)):
                 continue
             frame_time = header['frame_key'].get('scene_time_ns')
-            if type(frame_time) is not int or not 0 <= now-frame_time <= 1_000_000_000:
+            if (type(frame_time) is not int or not 0 <= now-frame_time <= 1_000_000_000
+                    or not 0 <= now-header['source_realtime_ns'] <= 1_000_000_000):
                 continue
+            if independent:
+                bound=header.get('tracker_pose',{})
+                tracker=next((t for t in trackers if t['role']==camera.get('tracker_role')),None)
+                if (header.get('matching_mode')!='independent' or frame_time!=header['source_realtime_ns']
+                        or bound.get('role')!=camera.get('tracker_role') or tracker is None
+                        or bound.get('tracker_id')!=tracker['tracker_id']):
+                    continue
             matching[camera['id']] = header
+        if independent:
+            self._align_independent_scene(trackers,cameras,matching,now)
+            return None,None  # There is deliberately no single scene timestamp.
         if not matching:
             return None, None
         scene_time = max(h['frame_key']['scene_time_ns'] for h in matching.values())
@@ -242,6 +255,39 @@ class SceneStore:
             tracker['trail_segments'] = segments
         return scene_time, reference
 
+    def _align_independent_scene(self, trackers, cameras, matching, now):
+        bound_by_role={}
+        for camera in cameras:
+            header=matching.get(camera['id'])
+            if header is None:
+                camera.update(position_m=None,quaternion_xyzw=None,frame_key=None,
+                              state='waiting',reason='等待本路点云与拍摄时刻位姿')
+                continue
+            pose=RigidTransform.from_dict(header['world_from_color'])
+            age=(now-header['source_realtime_ns'])/1e9
+            camera.update(position_m=list(pose.translation_m),quaternion_xyzw=list(pose.quaternion_xyzw),
+                          source_realtime_ns=header['source_realtime_ns'],age_s=age,reason='',
+                          frame_key=deepcopy(header['frame_key']),state='fresh' if age<=.25 else 'delayed')
+            role=camera['tracker_role']
+            # If several cameras share a Tracker, the one scene marker uses the
+            # newest matched source; each cloud still has its own exact transform.
+            if role not in bound_by_role or header['source_realtime_ns']>bound_by_role[role]['source_realtime_ns']:
+                bound_by_role[role]=header
+        for tracker in trackers:
+            header=bound_by_role.get(tracker['role'])
+            if header is None: continue
+            bound=header['tracker_pose']; stamp=header['source_realtime_ns']
+            pose=RigidTransform.from_dict(bound['world_from_tracker']); age=(now-stamp)/1e9
+            tracker.update(position_m=list(pose.translation_m),quaternion_xyzw=list(pose.quaternion_xyzw),
+                           source_realtime_ns=stamp,age_s=age,valid=True,state='fresh' if age<=.25 else 'delayed',
+                           reason='',before_ns=bound['before_ns'],after_ns=bound['after_ns'],gap_ns=bound['gap_ns'])
+            segments=[]
+            for t,point,broken in self._states[tracker['role']]['trail']:
+                if not stamp-3_000_000_000<=t<=stamp: continue
+                if broken or not segments: segments.append([])
+                segments[-1].append(point)
+            tracker['trail_segments']=segments
+
     def snapshot(self):
         with self._lock:
             now, mono = self.realtime_ns(), self.monotonic_ns()
@@ -266,18 +312,21 @@ class SceneStore:
                     quaternion_xyzw=list(pose.quaternion_xyzw) if pose else None,
                     state=state, age_s=age, valid=state in ('fresh', 'delayed'),
                     reason=s['reason'], trail_segments=segments))
-            cameras = self.camera_registry.camera_entities(trackers, now_ns=now) if self.camera_registry else []
+            independent=self.config.cloud.get('matching_mode')=='independent' and self.has_interest('cloud')
+            cameras = self.camera_registry.camera_entities(trackers, now_ns=now,
+                require_live_tracker=not independent) if self.camera_registry else []
             scene_time, reference = self._align_cloud_scene(trackers, cameras, now)
             diagnostics = list(self._diagnostics)
-            if self.has_interest('cloud') and scene_time is None:
+            if self.has_interest('cloud') and (not any(c.get('frame_key') for c in cameras) if independent else scene_time is None):
                 status = self.cloud_supervisor.status() if self.cloud_supervisor and hasattr(self.cloud_supervisor, 'status') else {}
                 diagnostics.append('点云：'+(status.get('error') or '等待同帧图像、完整几何与有效插值位姿'))
             self.sequence += 1
             return deepcopy(dict(manager_instance_id=self.manager_instance_id, scene_epoch=self.scene_epoch,
                 sequence=self.sequence, mode='live', world_frame=self.config.world_frame,
                 time_epoch=self.time_epoch, coordinate_epoch=self.coordinate_epoch, sync_epoch=self.sync_epoch,
-                time_mode='aligned' if scene_time is not None else 'monitor', scene_time_ns=scene_time, generated_realtime_ns=now,
+                time_mode='independent' if independent else 'aligned' if scene_time is not None else 'monitor', scene_time_ns=scene_time, generated_realtime_ns=now,
                 config_revision=self.config.config_revision, geometry_revision=self.coordinate_epoch,
                 active_reference_camera=reference, map_identity=self.config.map_identity,
+                preview_notice=self.config.preview_notice,
                 display_from_world=self.config.display_from_world.as_dict(), trackers=trackers,
                 cameras=cameras, diagnostics=diagnostics))

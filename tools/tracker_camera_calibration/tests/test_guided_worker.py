@@ -59,7 +59,8 @@ def test_fingerprint_rejects_escaped_storage_path(tmp_path):
         source_fingerprint(tmp_path)
 
 
-def test_three_round_worker_exports_eligible_manifest(tmp_path, monkeypatch):
+@pytest.mark.parametrize('mode', ['offline', 'guided'])
+def test_three_round_worker_exports_eligible_manifest(tmp_path, monkeypatch, mode):
     from dataclasses import replace
     import numpy as np
     import vt_tracker_camera_calib.guided_worker as module
@@ -68,13 +69,13 @@ def test_three_round_worker_exports_eligible_manifest(tmp_path, monkeypatch):
     from vt_tracker_camera_calib.model import CameraIntrinsics, TimedTransform, BoardObservation
     pairs, _ = synthetic_pairs(50)
     bags = []
-    for index in range(3):
+    for index in range(4 if mode == 'guided' else 3):
         bag = tmp_path / f'bag-{index}'
         bag.mkdir()
         (bag / 'metadata.yaml').write_text('rosbag2_bagfile_information:\n  relative_file_paths: [data.mcap]\n')
         (bag / 'data.mcap').write_bytes(bytes([index]))
         bags.append(bag)
-    req = Request.from_document(request(tmp_path, bags=bags))
+    req = Request.from_document(request(tmp_path, mode=mode, bags=bags if mode == 'offline' else []))
     observations = {}
     for index, bag in enumerate(bags):
         offset = (index + 1) * 100_000_000_000
@@ -88,7 +89,26 @@ def test_three_round_worker_exports_eligible_manifest(tmp_path, monkeypatch):
             tuple(tracker), tuple(board), 'a' * 64, 50, 50, 0)
     monkeypatch.setattr(module, 'read_calibration_bag', lambda bag, config, **kw: observations[bag])
     worker = Worker(req, tmp_path / 'status.json', tmp_path / 'cancel')
+    if mode == 'guided':
+        monkeypatch.setattr(worker, '_collect', lambda n: bags[n - 1])
+        solve = worker._solve_round
+        def fail_second(n, bag):
+            if n == 2:
+                raise RuntimeError('temporary round 2 input error')
+            return solve(n, bag)
+        monkeypatch.setattr(worker, '_solve_round', fail_second)
+        assert worker.run() == 1
+        progress = json.loads((tmp_path / 'round-progress.json').read_text())
+        assert [r['round'] for r in progress['rounds']] == [1]
+        saved = Path(progress['rounds'][0]['extrinsics_path']).read_bytes()
+        calls = []
+        worker = Worker(req, tmp_path / 'status.json', tmp_path / 'cancel')
+        monkeypatch.setattr(worker, '_collect', lambda n: calls.append(n) or bags[n - 1])
     assert worker.run() == 0
+    if mode == 'guided':
+        assert calls == [2, 3]
+        assert Path(progress['rounds'][0]['extrinsics_path']).read_bytes() == saved
+        assert json.loads((tmp_path / 'status.json').read_text())['metrics']['completed_rounds'] == [1, 2, 3]
     status = json.loads((tmp_path / 'status.json').read_text())
     assert status['state'] == 'READY'
     manifest = json.loads(Path(status['result']['manifest_path']).read_text())
@@ -97,6 +117,62 @@ def test_three_round_worker_exports_eligible_manifest(tmp_path, monkeypatch):
     assert all(r['validation']['validation_count'] == 10 for r in manifest['rounds'])
     assert all(r['validation']['training_count'] == 40 for r in manifest['rounds'])
     assert json.loads(Path(manifest['repeatability_path']).read_text())['status'] == 'PASS'
+    if mode == 'guided':
+        # Re-comparing saved rounds must not collect or overwrite old reports,
+        # including repeated failures. Failure must not become READY.
+        original_report = (tmp_path / 'repeatability.json').read_bytes()
+        compare = module.compare_extrinsics
+        monkeypatch.setattr(module, 'compare_extrinsics', lambda paths: replace(
+            compare(paths), status='FAIL', maximum_translation_m=.005327))
+        for attempt in (2, 3):
+            retry = Worker(req, tmp_path / 'status.json', tmp_path / 'cancel')
+            monkeypatch.setattr(retry, '_collect', lambda n: pytest.fail('must only recompare'))
+            assert retry.run() == 1
+            state = json.loads((tmp_path / 'status.json').read_text())
+            assert state['state'] == 'FAILED'
+            assert state['hint_code'] == 'REPEATABILITY_FAILED'
+            assert '5.327 mm' in state['detail']
+            assert Path(state['result']['repeatability_path']).name == f'repeatability-attempt-{attempt}.json'
+            assert (tmp_path / 'repeatability.json').read_bytes() == original_report
+        monkeypatch.setattr(module, 'compare_extrinsics', compare)
+
+        # The manager retires only round 1. A failed recapture must still leave
+        # rounds 2 and 3 reusable. New round 1 may be chronologically LAST.
+        retained = [r for r in retry.round_store.load() if r['round'] in (2, 3)]
+        retry.round_store.save(retained)
+        untouched = {Path(r[key]): Path(r[key]).read_bytes()
+                     for r in manifest['rounds']
+                     for key in ('extrinsics_path', 'report_path', 'validation_path')}
+        failed = Worker(req, tmp_path / 'status.json', tmp_path / 'cancel')
+        def fail_recapture(n):
+            assert n == 1
+            raise RuntimeError('temporary recapture input failure')
+        monkeypatch.setattr(failed, '_collect', fail_recapture)
+        assert failed.run() == 1
+        assert [r['round'] for r in failed.round_store.load()] == [2, 3]
+        retry = Worker(req, tmp_path / 'status.json', tmp_path / 'cancel')
+        calls = []
+        monkeypatch.setattr(retry, '_collect', lambda n: calls.append(n) or bags[3])
+        assert retry.run() == 0
+        assert calls == [1]
+        updated = json.loads((tmp_path / 'manifest.json').read_text())
+        assert [r['round'] for r in updated['rounds']] == [1, 2, 3]
+        assert updated['rounds'][1:] == retained
+        assert 'round-1-result-attempt-2' in updated['rounds'][0]['extrinsics_path']
+        assert updated['rounds'][0]['first_stamp_ns'] > updated['rounds'][2]['last_stamp_ns']
+        assert all(path.read_bytes() == data for path, data in untouched.items())
+        assert (tmp_path / 'repeatability.json').read_bytes() == original_report
+        assert json.loads(Path(updated['repeatability_path']).read_text())['status'] == 'PASS'
+
+
+def test_failed_round_gets_new_attempt_path(tmp_path):
+    req = Request.from_document(request(tmp_path, mode='guided'))
+    worker = Worker(req, tmp_path / 'status.json', tmp_path / 'cancel')
+    original = tmp_path / 'round-2'
+    original.mkdir()
+    (original / 'evidence').write_text('keep')
+    assert worker._unused_path('round-2') == tmp_path / 'round-2-attempt-2'
+    assert (original / 'evidence').read_text() == 'keep'
 
 
 def test_single_offline_bag_never_becomes_activation_eligible(tmp_path, monkeypatch):

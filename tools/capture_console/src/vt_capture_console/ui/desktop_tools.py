@@ -37,11 +37,26 @@ class DesktopTools(QObject):
         menu.addSeparator()
         self.folder_action = self._action(menu, tr('打开数据目录'), self.open_data)
         window.settings_actions.insertWidget(window.settings_actions.count() - 1, self.button)
+        self.hub_dialog = None
+        if hasattr(runtime, "vivehub"):
+            self.hub_button = QToolButton(window)
+            self.hub_button.setText(tr('VIVE Hub 连接'))
+            self.hub_button.clicked.connect(self.open_hub)
+            window.settings_actions.insertWidget(window.settings_actions.count() - 1, self.hub_button)
         self.timer = QTimer(self)
         self.timer.setInterval(500)
         self.timer.timeout.connect(self._poll_tools)
         self.timer.start()
         window.installEventFilter(self)
+
+    def open_hub(self):
+        from .widgets.vivehub_connection import ViveHubConnectionDialog
+        if self.hub_dialog is None:
+            self.hub_dialog = ViveHubConnectionDialog(self.runtime.vivehub, self.window)
+        self.hub_dialog.timer.start()
+        self.hub_dialog.show()
+        self.hub_dialog.raise_()
+        self.hub_dialog.activateWindow()
 
     def _tasks_active(self):
         return bool((self.alignment_dialog is not None and self.alignment_dialog.running)
@@ -60,7 +75,7 @@ class DesktopTools(QObject):
                 self.window.statusBar().showMessage(tr('正在结束本窗口的初始化／离线任务；采集节点不受影响。'))
                 event.ignore()
                 return True
-            for dialog in (self.tracker_dialog, self.alignment_dialog):
+            for dialog in (self.tracker_dialog, self.alignment_dialog, self.hub_dialog):
                 if dialog is not None:
                     dialog.close()
         return super().eventFilter(watched, event)
@@ -72,6 +87,10 @@ class DesktopTools(QObject):
         return action
 
     def open_tracker(self):
+        if any(p.get("preset") == "trackers" and p.get("parameters", {}).get("backend") == "vivehub"
+               for p in getattr(self.runtime, "configuration", {}).get("process_groups", ())):
+            self.window.show_tracker_preview(tr('当前使用 VIVE Hub 官方 SDK。可在设备页通过“VIVE Hub 连接”设置自动接入，再查看实时位姿；配对与建图由 Hub 管理。'))
+            return
         if self.tracker_dialog is None:
             if runtime_busy(self.runtime):
                 self.window.show_operation_notice(tr('后台正在处理，请稍候。'))

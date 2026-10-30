@@ -9,6 +9,24 @@ from vt_capture_console.ui.desktop_tools import DesktopTools
 from vt_capture_console.ui.main_window import MainWindow
 
 
+def test_hub_entry_opens_preview_without_legacy_initializer(qapp, monkeypatch):
+    backend = DemoBackend()
+    runtime = SimpleNamespace(configuration={"process_groups": [dict(
+        preset="trackers", parameters={"backend": "vivehub"})]})
+    window = MainWindow(backend)
+    calls = []
+    monkeypatch.setattr(window, "show_tracker_preview", calls.append)
+    tools = DesktopTools(window, backend, runtime)
+    try:
+        tools.open_tracker()
+        assert tools.tracker_dialog is None
+        assert len(calls) == 1 and "VIVE Hub" in calls[0]
+    finally:
+        window.close()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 def test_menu_construction_and_tracker_reopen_do_not_start_processes(qapp, tmp_path, monkeypatch):
     def no_spawn(*args, **kwargs):
         raise AssertionError("Opening a tool must not initialize hardware")

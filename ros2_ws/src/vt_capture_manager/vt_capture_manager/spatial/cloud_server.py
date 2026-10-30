@@ -90,6 +90,11 @@ class CloudServer:
                         uid=struct.unpack('3i',connection.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))[1]
                         if uid!=os.getuid() or len(clients)>=self.max_clients:
                             connection.close(); continue
+                        # A native wrist frame is ~13 MiB. The small Unix
+                        # default send buffer forces dozens of producer/GIL
+                        # handoffs per frame. Bound it explicitly; the kernel
+                        # may cap this hint, correctness never depends on it.
+                        connection.setsockopt(socket.SOL_SOCKET,socket.SO_SNDBUF,2*1024*1024)
                         connection.setblocking(False); client=_Client(connection)
                         clients[connection.fileno()]=client; selector.register(connection,selectors.EVENT_READ,client)
                         continue
@@ -99,7 +104,19 @@ class CloudServer:
                             # This channel has no requests; EOF or client input ends it.
                             client.sock.recv(1); drop(client); continue
                         if mask & selectors.EVENT_WRITE and client.current is not None:
-                            count=client.sock.send(client.current[:65536]); client.current=client.current[count:]
+                            # Full native clouds are 6--15 MiB. A single 64 KiB
+                            # write per selector cycle repeatedly competes with
+                            # the busy ROS Python thread and ages the frame out.
+                            # Drain a bounded burst, retaining partial writes
+                            # and EAGAIN rather than dropping a healthy client.
+                            budget=4*1024*1024
+                            while client.current and budget>0:
+                                try:
+                                    count=client.sock.send(client.current[:min(budget,1024*1024)])
+                                except BlockingIOError:
+                                    break
+                                if count<=0: raise ConnectionError('cloud socket closed')
+                                client.current=client.current[count:]; budget-=count
                             if not client.current:
                                 client.current=None; selector.modify(client.sock,selectors.EVENT_READ,client)
                     except (OSError,ValueError): drop(client)

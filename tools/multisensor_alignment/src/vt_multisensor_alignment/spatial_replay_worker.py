@@ -253,6 +253,7 @@ class BagReplaySource:
                      sync_epoch=0, time_mode='aligned', scene_time_ns=timestamp, generated_realtime_ns=timestamp,
                      config_revision=manifest.get('config_revision', 'recorded'), geometry_revision='recorded',
                      active_reference_camera=self.config.reference_camera, map_identity=None,
+                     preview_notice=manifest.get('preview_notice', ''),
                      display_from_world=self._display_from_world.as_dict(), trackers=trackers, cameras=cameras,
                      diagnostics=diagnostics or ([] if manifest else ['Recorded geometry unavailable; Tracker-only replay.']))
         validate_scene(scene)

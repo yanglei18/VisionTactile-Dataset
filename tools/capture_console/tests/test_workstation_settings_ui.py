@@ -121,6 +121,23 @@ def test_open_and_cancel_only_enumerates_names_never_writes(qapp, monkeypatch):
     dispose(dialog, qapp)
 
 
+def test_hub_selection_survives_refresh_and_needs_no_pyVUT_material(settings):
+    dialog, runtime, _ = settings
+    dialog.enabled_checks["trackers"].setChecked(True)
+    backend = dialog.fields[("trackers", "backend")]
+    backend.setCurrentIndex(backend.findData("vivehub"))
+    for key, value in (("hub_bindings_path", "/private/hub.yaml"),
+                       ("hub_reader_path", "/runtime/reader"), ("hub_socket_path", "/tmp/vut.sock")):
+        fill(dialog, "trackers", key, value)
+    dialog.refresh_ports()
+    assert backend.currentData() == "vivehub"
+    dialog.apply()
+    assert len(runtime.applications) == 1
+    group = next(g for g in runtime.applications[0][0]["process_groups"] if g["id"] == "trackers")
+    assert group["parameters"]["frame_id"] == "vive_hub_map"
+    assert not group["parameters"]["bundle_path"]
+
+
 def test_save_all_six_profiles_preserves_non_form_configuration(settings):
     dialog, runtime, snapshot = settings
     for identifier, *_ in GROUPS:

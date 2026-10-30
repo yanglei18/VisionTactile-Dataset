@@ -2,7 +2,7 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchContext, LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, OpaqueFunction, SetEnvironmentVariable, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -26,16 +26,20 @@ def _launch_setup(context: LaunchContext):
     environment = capture_transport_environment(context.environment)
     actions = [SetEnvironmentVariable(name, value) for name, value in environment.items()
                if context.environment.get(name) != value]
-    for camera in config.cameras:
+    for index, camera in enumerate(config.cameras):
         arguments = camera_launch_arguments(
             camera, config, config_file=str(options_path)
         )
-        actions.append(
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(str(official_launch)),
-                launch_arguments=arguments.items(),
-            )
+        # Avoid simultaneous USB control/option discovery on the three SDK
+        # contexts. Keep each official launch's configuration in its own scope.
+        include = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(str(official_launch)),
+            launch_arguments=arguments.items(),
         )
+        actions.append(TimerAction(
+            period=float(index * 3),
+            actions=[GroupAction(scoped=True, actions=[include])],
+        ))
 
     actions.append(
         Node(

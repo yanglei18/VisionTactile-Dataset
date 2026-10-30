@@ -116,6 +116,27 @@ def test_manager_restart_clears_pending_without_retry():
     client.observe(changed)
     assert not client.pending
     assert client.notice
+
+
+def test_failed_guided_round_can_resume_without_creating_new_session(qapp):
+    backend = Backend()
+    value = snapshot('FAILED', busy=False)
+    value['calibration']['session'].update(mode='guided', round=2, metrics={'completed_rounds': [1]})
+    widget = CalibrationWorkspace(backend)
+    widget.refresh(value)
+    assert not widget.resume_button.isHidden()
+    assert not widget.resume_button.isEnabled()
+    assert '1' in widget.saved_rounds.text()
+    widget.resume_confirmed.setChecked(True)
+    widget.resume_button.click()
+    assert backend.calls == [('calibration.resume', dict(
+        expected_manager_instance_id='manager-a', session_id='session-a', assembly_unchanged=True))]
+    assert widget.client.pending
+    backend.receipts['request-0'] = dict(request_id='request-0', state='accepted', code='calibration_resumed')
+    widget.refresh(value)
+    assert not widget.client.pending
+    assert len(backend.calls) == 1
+    widget.close()
     assert len(backend.calls) == 1
 
 
@@ -131,6 +152,30 @@ def test_another_clients_session_cannot_hide_our_rejected_receipt():
     client.observe(snapshot("COLLECTING"))
     assert not client.pending
     assert "Another client" in client.notice
+
+
+def test_select_only_first_round_keeps_other_rounds_and_survives_refresh(qapp):
+    backend = Backend()
+    value = snapshot('FAILED', busy=False)
+    value['calibration']['session'].update(mode='guided',
+        hint_code='REPEATABILITY_FAILED', metrics={'completed_rounds': [1, 2, 3]})
+    widget = CalibrationWorkspace(backend)
+    widget.refresh(value)
+    assert not widget.retry_round.isHidden()
+    assert widget.retry_round.count() == 4
+    assert widget.retry_round.currentData() == 0
+    widget.retry_round.setCurrentIndex(widget.retry_round.findData(1))
+    widget.resume_confirmed.setChecked(True)
+    widget.refresh(value)
+    assert widget.retry_round.currentData() == 1
+    assert widget.resume_confirmed.isChecked()
+    assert '1' in widget.resume_button.text()
+    widget.resume_button.click()
+    assert backend.calls == [('calibration.resume', dict(
+        expected_manager_instance_id='manager-a', session_id='session-a',
+        assembly_unchanged=True, retry_rounds=[1]))]
+    assert '单轮' in calibration_view(value).instruction
+    widget.close()
 
 
 def test_view_does_not_treat_candidate_or_waiting_publication_as_complete():

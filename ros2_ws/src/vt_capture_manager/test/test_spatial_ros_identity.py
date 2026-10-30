@@ -47,6 +47,14 @@ def test_service_must_have_exactly_one_unambiguous_graph_owner():
     assert not obj._source_matches(CAMERA)
 
 
+def test_driver_cloud_publisher_must_match_camera_owner():
+    obj,_=adapter();camera=dict(CAMERA,cloud_topic='/c/depth/color/points')
+    assert obj._source_matches(camera)
+    original=obj.node.get_publishers_info_by_topic
+    obj.node.get_publishers_info_by_topic=lambda topic: [NS(node_name='other',node_namespace='/',endpoint_gid=bytes(16))] if topic==camera['cloud_topic'] else original(topic)
+    assert not obj._source_matches(camera)
+
+
 def test_duplicate_node_names_fail_closed_even_when_service_name_matches():
     obj, _ = adapter()
     obj.node.nodes.append(('camera', '/c'))

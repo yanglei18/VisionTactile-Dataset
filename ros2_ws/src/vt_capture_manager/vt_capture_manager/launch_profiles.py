@@ -30,6 +30,10 @@ def build_specs(profiles):
             # These two local recipe fields are not ROS launch arguments.
             # Optional values preserve old profiles' inherited environment.
             python_paths = tuple(p.pop(key, "") for key in ("pyvut_source", "pyvut_site_packages"))
+            if p.get("backend") == "vivehub":
+                python_paths = ()  # Hub clients never load the legacy HID driver.
+                p.pop("bundle_path", None)
+                p.pop("role_map_path", None)
         else:
             hand = p["hand"]
             topics = (f"/gloves/{hand}/" + ("state" if preset == "glove" else "tactile/state"),)

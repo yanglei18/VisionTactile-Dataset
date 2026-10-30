@@ -76,6 +76,16 @@ class SnapshotModel:
     def __init__(self, config: ManagerConfig, *, monotonic_ns=time.monotonic_ns,
                  realtime_ns=time.time_ns, disk_usage=shutil.disk_usage, instance_id=None):
         self.config = config
+        tracker_frames = {p.get("parameters", {}).get("frame_id", "vive_map")
+                          for p in config.process_groups if p["preset"] == "trackers"}
+        if config.scene_config_path:
+            # A read-only preview has no launch profiles, but still has an
+            # explicit world frame. Do not reject Hub samples as old PyVUT data.
+            from .spatial.config import load_scene_config
+            tracker_frames.add(load_scene_config(config.scene_config_path).world_frame)
+        if len(tracker_frames) > 1:
+            raise ValueError("Tracker launch profiles/scene disagree on the world frame")
+        self._tracker_frame = next(iter(tracker_frames), "vive_map")
         self._mono, self._wall, self._disk = monotonic_ns, realtime_ns, disk_usage
         self.instance_id = instance_id or uuid.uuid4().hex
         self._lock = threading.RLock()
@@ -164,7 +174,7 @@ class SnapshotModel:
                 raise ValueError("image exceeds 32 MiB preview bound")
             return {}, True, f"{width}x{height} {message.encoding}; preview display only; depth units are not inferred.", False, None
         if kind == "tracker":
-            if message.role != config.id or message.header.frame_id != "vive_map":
+            if message.role != config.id or message.header.frame_id != self._tracker_frame:
                 raise ValueError("tracker role/frame mismatch")
             p, q = message.pose.position, message.pose.orientation
             position = _finite((p.x, p.y, p.z), 3)

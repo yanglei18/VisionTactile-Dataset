@@ -10,6 +10,24 @@ pytestmark = pytest.mark.skipif(os.environ.get("VT_CAPTURE_MANAGER_ROS_TEST") !=
                               reason="opt-in synthetic ROS test requires an isolated ROS domain")
 
 
+def test_tracker_burst_history_and_callback_group_are_independent():
+    import rclpy
+    from rclpy.context import Context
+    from rclpy.qos import ReliabilityPolicy
+    from vt_capture_manager.config import DeviceConfig,ManagerConfig
+    from vt_capture_manager.node import build_node
+    context=Context();rclpy.init(context=context)
+    config=ManagerConfig((DeviceConfig('torso','Head','tracker','','/test_head/sample'),))
+    manager=build_node(config,context=context)
+    try:
+        subscription=next(s for s in manager.subscriptions if s.topic_name=='/test_head/sample')
+        assert subscription.qos_profile.depth==128
+        assert subscription.qos_profile.reliability==ReliabilityPolicy.BEST_EFFORT
+        assert subscription.callback_group is not manager.default_callback_group
+    finally:
+        manager.destroy_node();context.shutdown()
+
+
 def test_tactile_recording_activity_observes_raw_samples_separately_from_state():
     rclpy = pytest.importorskip("rclpy")
     from rclpy.context import Context

@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 LAUNCH_PATH = ROOT / "launch" / "triple_tracker.launch.py"
 EXPECTED_ARGUMENTS = {
+    "backend", "hub_bindings_path", "hub_reader_path", "hub_socket_path",
     "bundle_path",
     "role_map_path",
     "frame_id",

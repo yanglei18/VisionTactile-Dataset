@@ -46,6 +46,40 @@ def test_scene_config_rejects_bad_bounds_and_resolves_paths(tmp_path):
     assert load_scene_config(path).enabled
 
 
+def test_preview_notice_survives_missing_data_without_changing_geometry(tmp_path):
+    notice = '左腕·试用候选（最初第3轮；三轮一致性未通过）'
+    path = tmp_path / 'scene.yaml'
+    path.write_text(json.dumps(dict(schema_version=1, preview_notice=notice)))
+    config = load_scene_config(path)
+    store = SceneStore('notice-test', config)
+    assert store.description()['preview_notice'] == notice
+    snapshot = store.snapshot()
+    assert snapshot['preview_notice'] == notice
+    assert snapshot['cameras'] == []
+    assert all(item['state'] == 'waiting' and not item['valid'] for item in snapshot['trackers'])
+    assert not config.cloud['enabled']
+    assert load_scene_config().preview_notice == ''
+
+
+def test_scene_cloud_source_is_explicit_and_legacy_default_is_preserved(tmp_path):
+    path=tmp_path/'scene.json'
+    path.write_text(json.dumps({'cloud':{'enabled':True}}))
+    assert load_scene_config(path).cloud['source']=='rgbd'
+    path.write_text(json.dumps({'cloud':{'enabled':True,'source':'realsense','max_points_per_camera':2097152}}))
+    assert load_scene_config(path).cloud['source']=='realsense'
+    for cloud in ({'source':'guess'},{'source':'realsense','topics':[]},{'topics':{'cam':'not a topic'}}):
+        path.write_text(json.dumps({'cloud':cloud}))
+        with pytest.raises(ValueError):load_scene_config(path)
+
+
+@pytest.mark.parametrize('notice', [None, False, 17, [], {}, 'x' * 1025])
+def test_preview_notice_rejects_invalid_or_unbounded_values(tmp_path, notice):
+    path = tmp_path / 'scene.yaml'
+    path.write_text(json.dumps(dict(preview_notice=notice)))
+    with pytest.raises(ValueError, match='preview_notice'):
+        load_scene_config(path)
+
+
 def test_common_positions_and_disconnection_are_independent():
     store, clock = make()
     store.observe_tracker("left_wrist", sample(clock))
@@ -222,7 +256,7 @@ def test_cloud_scene_uses_frame_time_pose_and_rejects_old_generation():
     clock.ns += 20_000_000
     store.observe_tracker('left_wrist', sample(clock, position=(3., 0., 0.)))
     class Registry:
-        def camera_entities(self, trackers, now_ns):
+        def camera_entities(self, trackers, now_ns, *, require_live_tracker=True):
             return [dict(id='cam', state='fresh', registration_state='ready', geometry_revision=1,
                          geometry_sha256='a'*64, position_m=[3., 0., 0.], quaternion_xyzw=[0., 0., 0., 1.])]
     header = dict(camera_id='cam', manager_instance_id=store.manager_instance_id, scene_epoch=store.scene_epoch,

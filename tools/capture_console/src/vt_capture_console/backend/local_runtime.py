@@ -1,7 +1,7 @@
 """Asynchronous desktop-owned manager lifecycle, without Qt, ROS or hardware IO.
 
-The fixed deployment script is the only executable recipe. Sensors are never
-started here. Closing a window detaches; restart requires verified ownership,
+The manager uses a fixed deployment recipe. Optional desktop VIVE Hub startup
+is handled separately. Closing a window detaches; restart requires verified ownership,
 a fresh idle snapshot, and a cross-process manager admission lock.
 """
 from __future__ import annotations
@@ -84,6 +84,10 @@ def _snapshot_problem(snapshot):
 class DesktopRuntime:
     STARTUP_TIMEOUT_S = 15.
     STOP_TIMEOUT_S = 4.
+    # Low-frequency lifecycle/admission probes share one bounded deadline.
+    # Live RGB-D processing can delay replies beyond 0.6 s; this does not
+    # change the separate GUI polling transport or relax ownership/idle checks.
+    PROBE_TIMEOUT_S = 3.
     POLL_INTERVAL_S = .25
     AUXILIARY_SOCKET_NAMES = ("manager-scene.sock", "manager-cloud.sock")
 
@@ -108,6 +112,8 @@ class DesktopRuntime:
         self._thread = None
         self._process = None
         self._status = dict(state="stopped", detail="本地后台尚未启动。", last_apply=dict(state="idle", detail=""))
+        from .vivehub_startup import ViveHubStartup
+        self.vivehub = ViveHubStartup(self)
 
     @property
     def configuration(self):
@@ -147,7 +153,7 @@ class DesktopRuntime:
                 raise RuntimeError("已关闭的桌面运行时不能重新使用。")
             if self._status["state"] in {"starting", "applying", "ready"} or not self._tasks.empty():
                 return
-            self._status_update("starting", "正在连接或启动本地后台；不会自动启动任何设备。")
+            self._status_update("starting", "正在连接或启动本地后台。")
             self._tasks.put_nowait(("start", None, None))
             if self._thread is not None and self._thread.is_alive():
                 return  # An explicit retry, never an automatic restart loop.
@@ -241,9 +247,9 @@ class DesktopRuntime:
     def _probe_version(self, version):
         """One bounded request, authenticated to the peer PID on that socket."""
         request = dict(version=version, request_id=uuid.uuid4().hex, command="snapshot", params={})
-        deadline = time.monotonic() + .6
+        deadline = time.monotonic() + self.PROBE_TIMEOUT_S
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(.6)
+            connection.settimeout(self.PROBE_TIMEOUT_S)
             connection.connect(str(self.socket_path))
             pid, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
             if uid != os.getuid():
@@ -503,7 +509,7 @@ class DesktopRuntime:
                             raise RuntimeError("后台身份已变化，未执行串口权限恢复，请重试连接。")
                         if self._repair_idle_backend_session(record, pid):
                             return
-                        self._status_update("ready", "已连接原有工作台后台；设备不会自动启动。")
+                        self._status_update("ready", "已连接原有工作台后台。")
                     return
                 self._clean_owned_socket(record)
                 # The task queue serializes configuration writers. Settings
@@ -607,6 +613,8 @@ class DesktopRuntime:
             try:
                 if action == "start":
                     self._start_worker()
+                    if self.status["state"] == "ready":
+                        self.vivehub.start(automatic=True)
                 else:
                     self._apply_worker(configuration, snapshot)
             except Exception as exc:
@@ -619,5 +627,6 @@ class DesktopRuntime:
         # closes. In-flight explicit apply may already have sent a stop; its
         # worker sees this event before any next lifecycle action.
         self._stop.set()
+        self.vivehub.close()
         with self._lock:
             self._status.update(state="closed", detail="窗口已断开；后台与设备未被自动停止。")

@@ -128,6 +128,103 @@ def test_admission_and_manager_identity_are_checked_before_creating_worker(tmp_p
     assert start(svc, expected_manager_instance_id='other')['code'] == 'manager_instance_mismatch'
 
 
+def test_resume_keeps_session_and_archives_failed_attempt(tmp_path):
+    svc, factory = service(tmp_path)
+    start(svc)
+    sid = svc.snapshot()['session']['session_id']
+    factory.process.returncode = 1
+    svc.tick()
+    root = tmp_path / 'calibration' / 'sessions' / sid
+    atomic_json(root / 'cancel.json', {'session_id': sid})
+    atomic_json(root / 'round-progress.json', {'preserve': True})
+    before = (root / 'config.yaml').read_bytes()
+    factory.process = Process()
+    params = dict(expected_manager_instance_id='manager-1', session_id=sid, assembly_unchanged=True)
+    assert svc.command('calibration.resume', params, 'resume-1')['accepted']
+    assert svc.snapshot()['session']['session_id'] == sid
+    assert len(factory.calls) == 2
+    assert (root / 'config.yaml').read_bytes() == before
+    assert read_document(root / 'round-progress.json') == {'preserve': True}
+    assert not (root / 'cancel.json').exists()
+    assert len(list((root / 'attempt-history').glob('*/cancel.json'))) == 1
+    assert svc.command('calibration.resume', params, 'resume-1')['accepted']
+    assert len(factory.calls) == 2
+    svc.close()
+
+
+def test_resume_first_round_preserves_second_third_and_archives_selection(tmp_path):
+    svc, factory = service(tmp_path)
+    start(svc)
+    sid = svc.snapshot()['session']['session_id']
+    factory.process.returncode = 1
+    svc.tick()
+    root = tmp_path / 'calibration' / 'sessions' / sid
+    progress = dict(schema_version=1, session_id=sid, config_sha256='f'*64,
+                   rounds=[dict(round=n, evidence=f'original-{n}') for n in (1, 2, 3)])
+    atomic_json(root / 'round-progress.json', progress)
+    atomic_json(root / 'repeatability.json', dict(status='FAIL', evidence='original comparison'))
+    (root / 'round-1-original').write_text('never remove original data')
+    params = dict(expected_manager_instance_id='manager-1', session_id=sid,
+                  assembly_unchanged=True, retry_rounds=[1])
+    factory.process = Process()
+    assert svc.command('calibration.resume', params, 'retry-first')['accepted']
+    assert read_document(root / 'round-progress.json')['rounds'] == progress['rounds'][1:]
+    assert svc.snapshot()['session']['metrics']['completed_rounds'] == [2, 3]
+    assert (root / 'round-1-original').read_text() == 'never remove original data'
+    assert read_document(root / 'repeatability.json')['status'] == 'FAIL'
+    archived = list((root / 'attempt-history').glob('*/round-progress.json'))
+    assert len(archived) == 1
+    assert read_document(archived[0]) == progress
+    assert read_document(archived[0].with_name('retry-selection.json'))['retry_rounds'] == [1]
+    assert svc.command('calibration.resume', params, 'retry-first')['accepted']
+    assert len(factory.calls) == 2
+    assert len(list((root / 'attempt-history').glob('*/round-progress.json'))) == 1
+    svc.close()
+
+
+@pytest.mark.parametrize('selection', [[0], [True], [1, 1], [3]])
+def test_bad_recapture_selection_does_not_change_checkpoint(tmp_path, selection):
+    svc, factory = service(tmp_path)
+    start(svc)
+    sid = svc.snapshot()['session']['session_id']
+    factory.process.returncode = 1
+    svc.tick()
+    root = tmp_path / 'calibration' / 'sessions' / sid
+    progress = dict(schema_version=1, session_id=sid, rounds=[dict(round=1), dict(round=2)])
+    atomic_json(root / 'round-progress.json', progress)
+    before = (root / 'round-progress.json').read_bytes()
+    receipt = svc.command('calibration.resume', dict(
+        expected_manager_instance_id='manager-1', session_id=sid,
+        assembly_unchanged=True, retry_rounds=selection), 'bad-retry')
+    assert not receipt['accepted']
+    assert (root / 'round-progress.json').read_bytes() == before
+    assert not (root / 'attempt-history').exists()
+    assert len(factory.calls) == 1
+    svc.close()
+
+
+@pytest.mark.parametrize('problem', ['assembly', 'identity', 'config', 'session'])
+def test_resume_rejects_changed_binding_or_missing_confirmation(tmp_path, problem):
+    svc, factory = service(tmp_path)
+    start(svc)
+    sid = svc.snapshot()['session']['session_id']
+    factory.process.returncode = 1
+    svc.tick()
+    params = dict(expected_manager_instance_id='manager-1', session_id=sid, assembly_unchanged=True)
+    if problem == 'assembly':
+        params['assembly_unchanged'] = False
+    elif problem == 'session':
+        params['session_id'] = 'other'
+    else:
+        changed = config()
+        if problem == 'config':
+            changed['frames']['world'] = 'different_map'
+        svc.prepare_config = lambda p: dict(config=changed, expected_tracker_id='b'*64 if problem == 'identity' else TRACKER_ID)
+    assert not svc.command('calibration.resume', params, 'resume-1')['accepted']
+    assert len(factory.calls) == 1
+    svc.close()
+
+
 def test_three_verified_rounds_commit_and_publish(tmp_path):
     published = []
     svc, factory = service(tmp_path, publish=lambda *args: published.append(args))

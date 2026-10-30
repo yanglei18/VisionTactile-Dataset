@@ -26,6 +26,7 @@ HINTS = {
     "SOLVING": tr('正在计算标定结果'),
     "VERIFYING": tr('正在使用独立数据验证结果'),
     "COMPARING": tr('正在检查三轮结果的一致性'),
+    "resuming_saved_rounds": tr('正在恢复已完成轮次，仅继续未完成轮次'),
 }
 STATE_LABELS = {
     "PREPARING": tr('正在准备标定'), "COLLECTING": tr('引导采集'),
@@ -37,7 +38,7 @@ STATE_LABELS = {
     "COMPLETE": tr('标定已应用并发布'),
     "APPLIED_PENDING_PUBLICATION": tr('标定已应用，发布尚未完成'),
     "FAILED": tr('标定未完成，请查看详情后重试'),
-    "CANCELLED": tr('标定已取消'), "INTERRUPTED": tr('标定已中断，请重新开始'),
+    "CANCELLED": tr('标定已取消'), "INTERRUPTED": tr('标定已中断，已完成轮次保留'),
     "CANCELLING": tr('正在取消并保存已采集的数据'),
 }
 
@@ -49,6 +50,13 @@ TRACKER_ROLES = {
 def tracker_role_label(role: str) -> str:
     """Translate known physical roles, preserving unknown/custom identifiers."""
     return TRACKER_ROLES.get(role, role)
+
+
+def can_resume(snapshot):
+    view = calibration_view(snapshot)
+    session = (snapshot.get('calibration') or {}).get('session') or {}
+    return bool(view.available and not view.busy and session.get('mode') == 'guided'
+                and session.get('state') in {'FAILED', 'CANCELLED', 'INTERRUPTED'})
 
 
 def _count(value, default=0):
@@ -102,6 +110,8 @@ def calibration_view(snapshot: Mapping) -> CalibrationView:
     stage = "collect" if state in COLLECTING_STATES else "result" if state else "prepare"
     instruction = (STATE_LABELS.get(state, tr('正在等待后台状态')) if state in RESULT_STATES else
                    HINTS.get(session.get("hint_code"), STATE_LABELS.get(state, tr('选择设备并确认标定板参数'))))
+    if state == 'FAILED' and session.get('hint_code') == 'REPEATABILITY_FAILED':
+        instruction = tr('单轮验证已通过，三轮一致性未通过；可选择单轮重拍')
     active = next((entry for entry in service.get("active", ())
                    if entry.get("source_session_id") == session.get("session_id")
                    and entry.get("camera_name") == session.get("camera_name")), {})

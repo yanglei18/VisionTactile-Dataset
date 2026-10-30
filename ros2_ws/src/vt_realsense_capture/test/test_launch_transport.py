@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from launch import LaunchContext
-from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable, TimerAction, GroupAction
 
 
 ROOT = Path(__file__).parents[1]
@@ -32,7 +32,7 @@ def test_transport_delta_precedes_camera_includes(tmp_path, monkeypatch, custom)
     context.launch_configurations.update(config_path=str(ROOT / "config/cameras.yaml"), output_root="")
     before = dict(context.environment)
     actions = module._launch_setup(context)
-    first_camera = next(i for i, item in enumerate(actions) if isinstance(item, IncludeLaunchDescription))
+    first_camera = next(i for i, item in enumerate(actions) if isinstance(item, TimerAction))
     changes = [i for i, item in enumerate(actions) if isinstance(item, SetEnvironmentVariable)]
     assert len(changes) == (0 if custom else 1)
     assert all(index < first_camera for index in changes)
@@ -48,3 +48,17 @@ def test_transport_delta_precedes_camera_includes(tmp_path, monkeypatch, custom)
 
 def test_capture_declares_transport_package_dependency():
     assert "<exec_depend>vt_capture_core</exec_depend>" in (ROOT / "package.xml").read_text()
+
+
+def test_camera_launches_are_staggered_and_scoped(monkeypatch):
+    module = load_launch()
+    monkeypatch.setattr(module, "get_package_share_directory", lambda name: str(ROOT))
+    context = LaunchContext()
+    context.launch_configurations.update(config_path=str(ROOT / "config/cameras.yaml"), output_root="")
+    timers = [a for a in module._launch_setup(context) if isinstance(a, TimerAction)]
+    assert len(timers) == 3
+    for index, timer in enumerate(timers):
+        assert timer.period == float(index * 3)
+        assert len(timer.actions) == 1
+        assert isinstance(timer.actions[0], GroupAction)
+        assert any(isinstance(a, IncludeLaunchDescription) for a in timer.actions[0].get_sub_entities())

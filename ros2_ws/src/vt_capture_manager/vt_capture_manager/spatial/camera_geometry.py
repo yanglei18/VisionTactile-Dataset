@@ -246,7 +246,7 @@ class CameraGeometryRegistry:
                          geometry_revision=e['geometry_revision'], geometry_sha256=e['geometry_sha256'])
                     for name, e in self._entries.items()]
 
-    def camera_entities(self, trackers, now_ns=None):
+    def camera_entities(self, trackers, now_ns=None, *, require_live_tracker=True):
         now_ns = time.time_ns() if now_ns is None else now_ns
         if not isinstance(trackers, dict):
             trackers = {v.get('role', v['id']): v for v in trackers}
@@ -286,5 +286,14 @@ class CameraGeometryRegistry:
                 if reason:
                     entity.update(reason=reason, registration_state=reason,
                                   state='invalid' if reason in ('identity_mismatch', 'tracker_mismatch', 'unsupported_geometry') else 'waiting')
+                    if (reason=='tracker_unavailable' and not require_live_tracker and tracker
+                            and tracker.get('tracker_id')==doc['tracker']['tracker_id']):
+                        # Geometry/identity remain verified even if the Manager's
+                        # *current* pose is late. Independent binary packets carry
+                        # their own valid source-time pose; availability is not
+                        # permission to replace it with the latest Tracker pose.
+                        entity['registration_state']='ready'
+                        local=e['color_frustum']
+                        entity['frustum_vertices']=[list(p) for p in local] if local else None
                 result.append(entity)
         return result

@@ -30,6 +30,43 @@ ROS 2 Topic，操作人员即可按照本文从头到尾完成：标定板准备
 身份/内参改变、主机时钟跳变为当前轮终止原因，后续好帧不能抹去这些异常。
 取消时先通知本任务的 Recorder 停止，并等待关闭完成。已有正式录制不由本工具接管。
 
+### 中断后继续与指定单轮重拍
+
+每轮求解及独立验证通过后，立即将结果登记到会话目录的 `round-progress.json`，
+不必等三轮全部结束。第 2 轮失败不会作废第 1 轮；原始 bag 和结果始终保留。
+在失败、取消或中断页面确认 **「相机与追踪器的固定关系、标定板尺寸未改变」**，
+然后点击 **「保留已完成轮次，继续标定」**。程序沿用本会话的冻结配置，核对当前
+设备身份，从未完成的轮次继续；不要点「新建标定」，后者是另开独立会话。
+
+失败轮重新采集到 `round-N-attempt-M/`，旧 bag 不覆盖。旧工作进程日志和状态移至
+`attempt-history/`。即使关闭工作台或后台重启，已完成轮次也可恢复。
+本功能也能登记旧版同一会话已导出的 VALID 外参及 PASS 独立验证结果，不重新拟合。
+部分采集但未完成验证的轮次不当成通过；恢复仍需三轮独立验证及最终重复性通过，
+不是关闭质量检查。三轮均已通过单轮检查但最终重复性不通过时，默认
+**「重新比较三轮结果（不采集）」**只复核已有结果，不会自动重拍或降低阈值。
+
+如需只替换第 1 轮，在结果页的 **「选择重拍轮次」** 下拉框选择
+**「仅重拍第 1 轮，保留其余轮次」**，确认装配与板尺寸未改变后点击同名按钮。
+第 2、3 轮原样复用；原第 1 轮 bag、外参与验证报告也保留，新数据和结果写入
+新的 attempt 目录。旧轮次选择与本次重拍请求保存在 `attempt-history/`，
+只有通过新一轮独立验证后才加入当前三轮比较。重拍再次失败仍可继续未完成轮次，
+不需要重做其余轮次。界面的“已保存并通过单轮验证”不等于三轮重复性已通过。
+
+每次比较使用独立报告文件：首次为 `repeatability.json`，后续为
+`repeatability-attempt-N.json`，不覆盖旧报告，也不会因同名文件阻断重试。
+当前结果页和最终 `manifest.json` 指向本次报告；不要只查看首次报告判断最新状态。
+只有当前三轮独立验证及 5 mm / 0.5° 重复性检查全部通过，后台才应用并发布结果。
+
+Completed rounds are checkpointed immediately. On failure/cancellation/interruption,
+confirm unchanged mounting and board dimensions and choose **Resume calibration,
+keeping completed rounds**. Only unfinished rounds are captured again, in new attempt
+directories. Existing bags/results remain untouched, and the original three-round
+acceptance requirements still apply. New calibration starts a separate session.
+To replace just one completed round, select **Recapture round N only; retain other
+rounds** and confirm unchanged mounting/board dimensions. Retired artifacts remain
+untouched and the selection is archived. Each comparison writes a new report;
+retakes never silently weaken the repeatability thresholds.
+
 The workbench keeps **Calibration and offline tools** as its entry point and embeds
 camera–Tracker calibration in the main theme. Keep the ChArUco board fixed and move
 the rigid camera–Tracker assembly. Guidance and previews run separately from the

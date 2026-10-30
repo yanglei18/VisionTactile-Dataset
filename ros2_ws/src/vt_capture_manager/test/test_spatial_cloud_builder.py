@@ -20,6 +20,30 @@ def geometry():
                 depth_units_source='realsense_ros_z16_mm')
 
 
+def test_full_720p_preserves_every_valid_pixel_and_sparse_mode_is_explicit():
+    from vt_capture_manager.spatial.cloud_builder import sampling_stride
+    g=geometry()
+    g['depth_intrinsics'].update(width=1280,height=720,fx=600.,fy=600.)
+    depth=image(np.full((720,1280),1000,dtype=np.uint16),'16UC1','depth')
+    xyz,rgba=build_cloud(depth,None,g,stride=1,max_points=2_097_152)
+    assert len(xyz)//12 == 1280*720
+    assert len(rgba)//4 == 1280*720
+    assert sampling_stride(720,1280,1,2_097_152)==1
+    assert sampling_stride(720,1280,4,50000)==5
+
+
+@pytest.mark.parametrize('length',[0,4,5,8,12,14])
+def test_projection_without_jacobians_matches_opencv(length):
+    cv2=pytest.importorskip('cv2')
+    from vt_capture_manager.spatial.cloud_builder import project_color
+    rng=np.random.default_rng(42)
+    points=rng.uniform(-.8,.8,(1000,3));points[:,2]=rng.uniform(.2,3.,1000)
+    k=np.array([[640.,0,630.],[0,635.,355.],[0,0,1.]])
+    d=rng.uniform(-.002,.002,length)
+    expected=cv2.projectPoints(points,np.zeros(3),np.zeros(3),k,d)[0].reshape(-1,2)
+    assert project_color(points,k,d)==pytest.approx(expected,abs=1e-8)
+
+
 def test_raw_mm_depth_is_not_rescaled_twice_and_depth_color_transform_applies():
     g=geometry(); g['depth_to_color']=RigidTransform((.1,0.,0.),(0.,0.,0.,1.)).as_dict()
     depth=image(np.array([[1000,0],[2000,65535]],dtype=np.uint16),'16UC1','depth')

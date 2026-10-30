@@ -1,4 +1,11 @@
 {
   "界面语言": "Interface language",
-  "切换中英文界面；不影响采集和录制": "Switch between Chinese and English; capture and recording continue."
+  "切换中英文界面；不影响采集和录制": "Switch between Chinese and English; capture and recording continue.",
+  "空间预览说明": "Spatial preview notice",
+  "预览提示：{notice}": "Preview notice: {notice}",
+  " · 逐路独立匹配（非同时采样）": " · Independent per-camera matching (not simultaneous)",
+  "{name}：源帧年龄 {age_ms} ms": "{name}: source frame age {age_ms} ms",
+  " · 路间时间差 {skew_ms} ms": " · Inter-camera time spread {skew_ms} ms",
+  " · 部分通道暂留上一有效帧": " · Holding previous valid frame on some channels",
+  " · 保留画面非实时（最多3秒）": " · Retained view is not live (up to 3 seconds)"
 }

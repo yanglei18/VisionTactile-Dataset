@@ -6,7 +6,7 @@ import re
 from .validation import (ProtocolError, boolean, bounded_integer, bounded_number,
                          choice, limited_text, mapping, json_value)
 
-CALIBRATION_COMMANDS = frozenset({"calibration.start", "calibration.cancel", "calibration.retry_publish", "calibration.restore"})
+CALIBRATION_COMMANDS = frozenset({"calibration.start", "calibration.resume", "calibration.cancel", "calibration.retry_publish", "calibration.restore"})
 CALIBRATION_STATES = frozenset({
     "PREPARING", "COLLECTING", "STOPPING", "SOLVING", "VERIFYING", "COMPARING", "READY",
     "CANDIDATE", "APPLYING", "COMPLETE", "APPLIED_PENDING_PUBLICATION", "PENDING_IDLE",
@@ -24,6 +24,15 @@ def _path(value, context, *, optional=False):
         raise ProtocolError(f"{context} must be an absolute path without parent traversal")
 
 
+def validate_retry_rounds(value):
+    if type(value) is not list or len(value) > 3:
+        raise ProtocolError("retry_rounds must be a list of up to three round numbers")
+    for number in value:
+        bounded_integer(number, "retry round", minimum=1, maximum=3)
+    if len(set(value)) != len(value):
+        raise ProtocolError("retry_rounds must be distinct")
+
+
 def validate_calibration_command(command, params):
     choice(command, CALIBRATION_COMMANDS, "command")
     common = {"expected_manager_instance_id"}
@@ -35,6 +44,14 @@ def validate_calibration_command(command, params):
         for field in ("revision", "expected_active_revision"):
             if type(params[field]) is not str or not re.fullmatch(r"[0-9a-f]{32}", params[field]):
                 raise ProtocolError(f"{field} must be a calibration revision")
+    elif command == "calibration.resume":
+        mapping(params, common | {"session_id", "assembly_unchanged"}, "calibration params",
+                optional={"retry_rounds"})
+        limited_text(params["session_id"], "session_id", nonempty=True)
+        boolean(params["assembly_unchanged"], "assembly_unchanged")
+        if not params["assembly_unchanged"]:
+            raise ProtocolError("resume requires unchanged assembly confirmation")
+        validate_retry_rounds(params.get("retry_rounds", []))
     elif command != "calibration.start":
         mapping(params, common | {"session_id"}, "calibration params")
         limited_text(params["session_id"], "session_id", nonempty=True)

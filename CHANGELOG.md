@@ -10,6 +10,22 @@ release or a completed hardware acceptance run.
 
 ### Added
 
+- Workbench preview update (2026-10-30): optional read-only Linux VIVE Hub SDK
+  pose bridge, explicit serial-to-role bindings, anchored host-clock mapping,
+  and desktop Hub/bridge connection controls. Vendor SDK files and private
+  device inputs are not distributed.
+- Resumable camera–Tracker calibration rounds, selected-round recapture with
+  retained earlier results, and distinct repeatability reports for retries.
+- Native RealSense PointCloud2 preview with independent per-camera pose
+  matching, an isolated Tracker receiver, bounded asynchronous cloud builds
+  and reduced-copy binary transport. Source timestamps and stale-frame
+  indicators remain explicit; independent preview is not simultaneous capture.
+- Full-point display, point-bound-aware framing, non-occluding camera frustums,
+  optional wrist-only display cropping, and touchpad zoom/pan controls. Camera
+  startup is staggered to reduce simultaneous USB initialization contention.
+  See the [workbench snapshot notes](docs/workbench-preview-20261030.md) for
+  setup and remaining acceptance boundaries.
+
 - Explicit offline preparation-uncertainty initialization for native VQF,
   including per-node evidence age, clock-epoch protection and physical slow-yaw
   regressions. Whole-hand replay still shows per-joint tradeoffs, so this
