@@ -20,14 +20,14 @@ PRESETS = {
                   "backend", "hub_bindings_path", "hub_reader_path", "hub_socket_path"},
                  {"bundle_path", "role_map_path"}),
     "glove": ("glove", "vt_glove_bridge", "hand_service.launch.py",
-              {"hand", "launch_gui", "glove_python", "fsglove_source", "mano_assets", "config",
+              {"hand", "launch_gui", "glove_python", "fsglove_source", "mano_assets", "config", "rest",
                "port", "socket_path", "control_socket", "resources", "output_root", "output_rate_hz"}, {"hand"}),
     "tactile": ("tactile", "vt_tactile_capture", "tactile.launch.py",
-                {"hand", "config", "port", "display_bridge", "display_socket"}, {"hand", "port"}),
+                {"hand", "config", "port", "display_bridge", "display_socket", "resources", "glove_python"}, {"hand", "port"}),
 }
 PATH_KEYS = {"config_path", "output_root", "bundle_path", "role_map_path", "glove_python",
              "fsglove_source", "mano_assets", "config", "port", "socket_path", "pyvut_source", "pyvut_site_packages",
-             "hub_bindings_path", "hub_reader_path", "hub_socket_path", "control_socket", "resources", "display_socket"}
+             "hub_bindings_path", "hub_reader_path", "hub_socket_path", "control_socket", "resources", "display_socket", "rest"}
 
 
 def required_parameters(preset, parameters):
@@ -35,7 +35,7 @@ def required_parameters(preset, parameters):
         return {"hub_bindings_path", "hub_reader_path", "hub_socket_path", "frame_id"}
     if preset == "glove":
         return {"hand", "glove_python", "port"} | (
-            {"resources"} if parameters.get("resources") else {"fsglove_source", "mano_assets", "config"})
+            {"resources"} if parameters.get("resources") else {"fsglove_source", "mano_assets", "config", "rest"})
     return set(PRESETS[preset][4])
 
 

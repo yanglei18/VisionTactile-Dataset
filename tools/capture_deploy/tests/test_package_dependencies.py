@@ -44,6 +44,8 @@ def test_consumers_reject_pre_provenance_core_and_accept_current_release(consume
     requirement = matches[0]
     assert requirement.marker is None, "The core API cannot be optional on some platforms"
     assert "0.5.0" not in requirement.specifier, "Old core lacks the imported glove_sources API"
+    if consumer in {"manager", "console"}:
+        assert "0.7.0" not in requirement.specifier, "Candidate identity requires the v8 core contract"
     assert setup_value(CORE, "version") in requirement.specifier
 
 

@@ -25,6 +25,29 @@ def _operation_headings(window):
             if item.objectName() == "operationEyebrow"}
 
 
+def test_candidate_banner_tracks_verified_backend_and_translates(qapp):
+    backend = DeviceBackend()
+    backend.expected_software = dict(source_revision="a" * 40, source_sha256="b" * 64,
+                                     configuration_path="/candidate/workstation.json")
+    backend.software_verified = True
+    window = MainWindow(backend, scene_backend=DemoSceneBackend())
+    window.timer.stop()
+    try:
+        assert window.banner.text() == "候选 · 后台已核验"
+        assert "/candidate/workstation.json" in window.banner.toolTip()
+        backend.software_verified = False
+        window.refresh()
+        assert window.banner.text() == "候选 · 后台待核验"
+        window._set_language("en")
+        assert window.banner.text() == "Candidate · backend not verified"
+        assert backend.commands == []
+    finally:
+        window.close()
+        window.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
+
+
 def test_shell_and_recording_headings_retranslate_without_changing_page_ids(window, qapp):
     window.timer.stop()
     pages = [window.pages.widget(index) for index in range(window.pages.count())]

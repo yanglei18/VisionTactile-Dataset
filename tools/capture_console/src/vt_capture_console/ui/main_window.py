@@ -1116,6 +1116,12 @@ class MainWindow(QMainWindow):
             else:
                 self.banner.setText(tr('实时 · 采集管理 / 手动控制录制') if managed else tr('实时 · 只读模式 / 预览已有数据流'))
                 self.banner.setToolTip(tr('设备控制需后台单独启用。') if managed else tr('管理功能需后台显式启用。'))
+            identity = getattr(self.backend, "expected_software", None)
+            if identity is not None:
+                self.banner.setText(tr('候选 · 后台已核验') if self.backend.software_verified else tr('候选 · 后台待核验'))
+                self.banner.setToolTip(tr('代码版本：{revision}；源码摘要：{digest}；配置：{configuration}',
+                    revision=identity['source_revision'][:8], digest=identity['source_sha256'][:10],
+                    configuration=identity['configuration_path']))
         if snapshot["events"] != self.last_events:
             self.events_label.setText(tr("\n\n").join(diagnostic(event["message"]) for event in snapshot["events"][:5]) or tr('暂无事件'))
             self.last_events = snapshot["events"]

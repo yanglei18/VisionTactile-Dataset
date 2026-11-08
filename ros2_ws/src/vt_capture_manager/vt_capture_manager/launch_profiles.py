@@ -41,6 +41,8 @@ def build_specs(profiles):
             if p.get("port"):
                 resources += ("serial:" + p["port"],)
             if preset == "tactile":
+                p.pop("resources", None)  # Presentation-only; the reader owns no MANO resources.
+                p.pop("glove_python", None)
                 # The workbench is the viewer; do not launch an unrelated Qt interpreter.
                 from vt_tactile_capture.display_transport import default_workbench_socket
                 p.update(namespace=f"/gloves/{hand}/tactile", gui="false", display_bridge="true")

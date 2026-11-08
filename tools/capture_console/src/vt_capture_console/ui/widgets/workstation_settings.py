@@ -49,8 +49,10 @@ FIELDS = {
               ("resources", tr('本手运行资源包'), "directory"),
               ("fsglove_source", tr('官方 FSGlove 源码（无资源包时）'), "directory"),
               ("mano_assets", tr('MANO 资源目录（无资源包时）'), "directory"), ("port", tr('IMU 串口'), "serial"),
-              ("config", tr('手套配置（无资源包时必填）'), "file"), ("output_rate_hz", tr('姿态输出上限 Hz'), "rate")),
-    "tactile": (("port", tr('触觉串口'), "serial"), ("config", tr('触觉配置（可选）'), "file")),
+              ("config", tr('手套配置（无资源包时必填）'), "file"),
+              ("rest", tr('静态手形参考（无资源包时必填）'), "file"), ("output_rate_hz", tr('姿态输出上限 Hz'), "rate")),
+    "tactile": (("port", tr('触觉串口'), "serial"), ("config", tr('触觉配置（可选）'), "file"),
+                ("resources", tr('纯触觉显示资源包'), "directory")),
 }
 BUSY_STATES = {"starting", "applying", "saving", "restarting", "stopping"}
 
@@ -236,7 +238,7 @@ class WorkstationSettingsDialog(QDialog):
             resources = self.fields[(identifier, "resources")]
             def resource_mode():
                 bundled = bool(resources.text().strip())
-                for key in ("fsglove_source", "mano_assets", "config"):
+                for key in ("fsglove_source", "mano_assets", "config", "rest"):
                     self.fields[(identifier, key)].setEnabled(not bundled)
             resources.textChanged.connect(resource_mode)
             resource_mode()

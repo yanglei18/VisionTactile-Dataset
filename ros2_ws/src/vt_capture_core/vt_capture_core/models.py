@@ -1,15 +1,16 @@
-"""Shared DTOs. Older schemas stay unchanged; v7 adds managed hand sessions."""
+"""Shared DTOs. Older schemas stay unchanged; v8 adds runtime source identity."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
 from .validation import (
-    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, PROTOCOL_VERSION, validate_capabilities, validate_device, validate_event,
+    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION, PROTOCOL_VERSION, validate_capabilities, validate_device, validate_event,
     validate_controller, validate_management, validate_message, validate_operation,
     validate_process_control, validate_process_group, validate_recording, validate_resources, validate_snapshot,
 )
 from .calibration_protocol import empty_calibration
+from .software_identity import empty_identity
 
 
 @dataclass(frozen=True)
@@ -377,3 +378,32 @@ class HandControlRequest(CalibrationControlRequest):
 class HandControlResponse(CalibrationControlResponse):
     snapshot: HandControlSnapshot
     version: int = HAND_PROTOCOL_VERSION
+
+
+@dataclass(frozen=True)
+class IdentityControlSnapshot(HandControlSnapshot):
+    software: dict = field(default_factory=empty_identity)
+
+    def to_dict(self):
+        value = asdict(self)
+        validate_snapshot(value, version=IDENTITY_PROTOCOL_VERSION)
+        return value
+
+
+@dataclass(frozen=True)
+class IdentityControlRequest(HandControlRequest):
+    version: int = IDENTITY_PROTOCOL_VERSION
+    expected_software: dict | None = None
+
+    def to_dict(self):
+        value = asdict(self)
+        if value["expected_software"] is None:
+            del value["expected_software"]
+        validate_message(value)
+        return value
+
+
+@dataclass(frozen=True)
+class IdentityControlResponse(HandControlResponse):
+    snapshot: IdentityControlSnapshot
+    version: int = IDENTITY_PROTOCOL_VERSION

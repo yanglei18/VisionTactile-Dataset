@@ -1,6 +1,9 @@
 """Small, explicit UI vocabulary for the independent hand/touch application."""
 
 TEXT = {
+    "tactile_only": ("纯触觉 · 静态手形", "Touch only · static hand"),
+    "tactile_only_subtitle": ("实时触觉预览 · 固定参考手形", "Live touch preview · fixed reference hand"),
+    "tactile_only_metrics": ("触觉时间差 {touch} · 不含动捕姿态", "Touch age {touch} · no motion pose"),
     "title": ("右手三维展示", "Right Hand 3D Display"),
     "subtitle": ("右手 · 手势与触觉实时预览", "Right hand · live motion and touch"),
     "left_title": ("左手三维展示", "Left Hand 3D Display"),

@@ -191,14 +191,44 @@ def test_managed_hand_bundle_needs_no_source_checkout_or_separate_model(settings
     dialog.enabled_checks[identifier].setChecked(True)
     for key in ("glove_python", "port", "resources"):
         fill(dialog, identifier, key, f"/configured/{hand}/{key}")
-    for key in ("fsglove_source", "mano_assets", "config"):
+    for key in ("fsglove_source", "mano_assets", "config", "rest"):
         assert not dialog.fields[(identifier, key)].isEnabled()
     dialog.apply()
     assert len(runtime.applications) == 1
     group = next(g for g in runtime.applications[0][0]["process_groups"] if g["id"] == identifier)
     assert group["parameters"]["launch_gui"] == "false"
     assert group["parameters"]["resources"] == f"/configured/{hand}/resources"
-    assert all(not group["parameters"].get(key) for key in ("fsglove_source", "mano_assets", "config"))
+    assert all(not group["parameters"].get(key) for key in ("fsglove_source", "mano_assets", "config", "rest"))
+
+
+@pytest.mark.parametrize("hand", ["left", "right"])
+@pytest.mark.parametrize("resources", ["", "/verified/hand-resources"])
+def test_tactile_only_settings_save_without_motion_or_numerical_environment(settings, hand, resources):
+    dialog, runtime, _ = settings
+    identifier = f"{hand}_tactile"
+    dialog.enabled_checks[identifier].setChecked(True)
+    fill(dialog, identifier, "port", "/touch-only")
+    fill(dialog, identifier, "resources", resources)
+    dialog.apply()
+    assert len(runtime.applications) == 1
+    groups = runtime.applications[0][0]["process_groups"]
+    assert [group["id"] for group in groups if group["enabled"]] == [identifier]
+    selected = next(group for group in groups if group["id"] == identifier)
+    assert selected["parameters"]["resources"] == resources
+    assert not selected["parameters"].get("glove_python")
+
+
+def test_explicit_motion_rest_reference_uses_shared_required_parameters(settings):
+    dialog, runtime, _ = settings
+    enable_complete(dialog, "right_glove")
+    fill(dialog, "right_glove", "resources", "")
+    fill(dialog, "right_glove", "rest", "")
+    dialog.apply()
+    assert not runtime.applications
+    assert "静态手形参考" in dialog.status_label.text()
+    fill(dialog, "right_glove", "rest", "/private/rest.json")
+    dialog.apply()
+    assert len(runtime.applications) == 1
 
 
 def test_disabled_empty_groups_can_be_saved(settings):

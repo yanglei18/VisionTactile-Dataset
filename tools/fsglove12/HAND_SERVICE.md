@@ -26,6 +26,16 @@ returns `(resolved_root, manifest)` after checking declared paths, hand, SHA256
 and the 2 MiB JSON limit. It imports no numerical or GUI dependencies. The UI
 adds its own display/tactile semantic checks after this shared validation.
 
+The ROS `hand_service.launch.py` exposes the same four explicit resource paths,
+including `rest:=/absolute/rest.json`. An incomplete explicit selection fails
+before creating a process; the launcher does not search for an adjacent rest
+file or substitute another hand's resources. When a legacy profile also selects
+`resources`, nonempty explicit fields must identify the corresponding members
+of that same bundle. They are then normalized to one bundle argument for the
+worker. Conflicting installations are rejected. Left-hand rest files must
+explicitly identify the left hand, and the selected MANO directory must contain
+the requested hand model.
+
 ## Local control contract
 
 `hand_service_protocol.request(socket_path, document, *, timeout=1.0)` is a

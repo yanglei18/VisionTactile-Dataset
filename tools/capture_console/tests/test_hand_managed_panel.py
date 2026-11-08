@@ -23,7 +23,8 @@ class Panel(QtWidgets.QWidget):
         assert kwargs["owns_session"] is False
     def start(self): pass
     def shutdown(self):
-        self.session.close()
+        if self.session is not None:
+            self.session.close()
         self.tactile.close()
 
 
@@ -179,3 +180,103 @@ def test_new_device_on_same_port_never_uses_previous_device_reference(pane, tmp_
     assert source.response_status.active_cells == 0
     assert source._model.export_reference().baseline_adc == (2000.,) * 400
     assert pane.panel is panel
+
+
+@pytest.fixture(params=["left", "right"])
+def tactile_pane(request, qapp, tmp_path, monkeypatch):
+    monkeypatch.setattr(module, "_Settings", lambda hand: SimpleNamespace(data_root=tmp_path, hand=hand))
+    monkeypatch.setattr(module, "RemoteHandSession", lambda *a: pytest.fail("tactile-only created an IMU client"))
+    backend = SimpleNamespace(supports_device_control=True, calls=[], operation_result=lambda _: None)
+    def submit(command, params):
+        backend.calls.append((command, params))
+        return f"operation-{len(backend.calls)}"
+    backend.submit = submit
+    value = module.ManagedHandPane(request.param, backend, panel_factory=Panel)
+    value.timer.stop()
+    value._metadata = dict(control_socket="", group_id="", tactile_port="/touch")
+    yield value
+    value.shutdown()
+    value.deleteLater()
+    qapp.processEvents()
+
+
+def test_tactile_only_resource_loading_needs_no_motion_socket_or_python(tactile_pane):
+    pane, calls = tactile_pane, []
+    pane._loader.close()
+    pane._loader = SimpleNamespace(request=lambda root, **kw: calls.append((root, kw)) or len(calls), close=lambda: None)
+    pane.update_manager(dict(hand_sessions={pane.hand: dict(resources="/verified", control_socket="",
+        glove_python="/nonexistent/unused/python", tactile_port="/touch")}))
+    assert calls == [("/verified", dict(interpreter=None, tactile_port="/touch"))]
+    pane.update_manager(dict(hand_sessions={pane.hand: dict(resources="", control_socket="")}))
+    assert pane.panel is None and "显示资源包" in pane.notice.text()
+
+
+def test_tactile_only_start_stop_use_existing_group_and_detach_keeps_reader_running(tactile_pane):
+    pane = tactile_pane
+    pane.set_calibration_visible(True)
+    pane._build({})
+    assert pane.session is None and not pane.panel.calibration_toggle.isChecked()
+    pane._manager = dict(instance_id="manager-a", capabilities=dict(device_control=True), process_control=dict(
+        groups=[dict(id="touch-only", topics=[f"/gloves/{pane.hand}/tactile/state"],
+                     can_start=True, can_stop=False, state="STOPPED")]))
+    assert not pane._connection_status("imu")["enabled"]
+    pane._toggle_device("tactile")
+    group = pane._manager["process_control"]["groups"][0]
+    group.update(can_start=False, can_stop=True, state="RUNNING")
+    pane._pending.clear()
+    pane._toggle_device("tactile")
+    assert pane.backend.calls == [(command, dict(group_id="touch-only", expected_manager_instance_id="manager-a"))
+                                   for command in ("device.start", "device.stop")]
+    pane.shutdown()
+    assert len(pane.backend.calls) == 2  # Detaching does not submit another stop.
+
+
+def test_tactile_only_reference_and_response_persist_per_hand(tactile_pane, tmp_path):
+    from test_tactile_managed import sample, NOW
+    pane = tactile_pane
+    identity = TactileDeviceIdentity(123, 456, f"{pane.hand}-touch-only")
+    pane._build(dict(tactile_device_identity=identity))
+    source = pane.tactile
+    source.observe(sample(hand=pane.hand), now_ns=NOW)
+    assert source.bind_device_identity(source.identity_request, identity, now_ns=NOW)
+    source.configure_response(display_range_adc=1750., direction="decrease")
+    source.start_reference(now_ns=NOW)
+    for index in range(1, 31):
+        now = NOW + index * 100_000_000
+        source.observe(sample(index + 1, now, pane.hand), now_ns=now)
+        source.poll(now_ns=now)
+    saved, scope = TactileReferenceStore(tmp_path / "tactile-references", hand=pane.hand).load(identity)
+    assert scope == "saved" and saved.device == identity
+    assert saved.settings == ResponseSettings(1750., "decrease")
+    assert source.response_status.phase == "ready" and not source.reference_persistence_error
+    pane._detach()
+    pane._build(dict(tactile_device_identity=identity))
+    assert pane.tactile.response_settings == ResponseSettings(1750., "decrease")
+
+
+@pytest.mark.parametrize("hand", ["left", "right"])
+def test_candidate_presentation_and_reference_use_only_candidate_directory(hand, qapp, tmp_path, monkeypatch):
+    settings_class = module._Settings
+    locations = []
+    def settings(selected_hand, **kwargs):
+        value = settings_class(selected_hand, **kwargs)
+        locations.append(value)
+        return value
+    monkeypatch.setattr(module, "_Settings", settings)
+    backend = SimpleNamespace(runtime=SimpleNamespace(expected_software={"revision": "candidate"},
+                                                      settings=SimpleNamespace(directory=tmp_path / "candidate")))
+    pane = module.ManagedHandPane(hand, backend, panel_factory=Panel)
+    pane.timer.stop()
+    try:
+        pane._build({})
+        setting = locations[0]
+        assert setting.data_root == tmp_path / "candidate" / f"workbench-hand-{hand}"
+        setting.set("response-option", "candidate-only")
+        assert setting.store.fileName() == str(setting.data_root / "presentation.ini")
+        assert settings_class(hand, directory=tmp_path / "candidate").get("response-option") == "candidate-only"
+        assert settings_class(hand, directory=tmp_path / "separate").get("response-option") is None
+        assert pane.tactile._store.directory == setting.data_root / "tactile-references"
+    finally:
+        pane.shutdown()
+        pane.deleteLater()
+        qapp.processEvents()

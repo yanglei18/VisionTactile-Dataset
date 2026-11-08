@@ -108,6 +108,12 @@ def control_snapshot():
     return value
 
 
+def fetch_legacy_control_snapshot(path, timeout=.6, *, version=1):
+    if version > 2:
+        raise ValueError("fixture supports protocol v2 only")
+    return control_snapshot()
+
+
 def process_snapshot():
     value = DeviceControlSnapshot("live", "manager", process_control=ProcessControlSnapshot(
         enabled=True, groups=[ProcessGroupSnapshot(
@@ -147,7 +153,7 @@ def test_v5_negotiation_retains_process_and_detail_capabilities(idle_backend, mo
         return plan_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
     idle_backend._poll()
-    assert calls == [7, 6, 5]
+    assert calls == [8, 7, 6, 5]
     assert idle_backend.supports_capture_plan
     assert idle_backend.supports_device_control and idle_backend.supports_details
     idle_backend.submit("capture.start", planned_start_params(), "planned")
@@ -264,6 +270,116 @@ def operation(identifier, state="accepted", trial_id="trial"):
             "detail": "accepted intent, not a claim that recording started", "trial_id": trial_id}
 
 
+def candidate_identity():
+    return dict(source_root="/candidate/checkout", source_revision="a" * 40,
+                source_sha256="b" * 64, configuration_path="/candidate/settings/workstation.json")
+
+
+def candidate_snapshot(identity=None):
+    from vt_capture_core import IdentityControlSnapshot
+    value = IdentityControlSnapshot("live", "candidate-manager", software=identity or candidate_identity(),
+        management=ManagementSnapshot(enabled=True, controller=ControllerSnapshot("controller")),
+        process_control=ProcessControlSnapshot(enabled=True)).to_dict()
+    value["capabilities"].update(record=True, device_control=True, hand_control=True)
+    return value
+
+
+@pytest.fixture
+def strict_backend(monkeypatch, tmp_path):
+    monkeypatch.setattr(IpcBackend, "_run", lambda self: None)
+    backend = IpcBackend(tmp_path / "candidate.sock", expected_software=candidate_identity())
+    yield backend
+    backend.close()
+
+
+def test_candidate_only_negotiates_v8_and_binds_mutations_to_the_validated_identity(strict_backend, monkeypatch):
+    calls = []
+    def fetch(path, timeout=.6, *, version=1):
+        calls.append(version)
+        return candidate_snapshot()
+    monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
+    strict_backend._poll()
+    assert calls == [8] and strict_backend.supports_device_control and strict_backend.supports_hand_control
+    strict_backend.submit("batch.create", {"label": "candidate"}, "bound")
+    request = strict_backend._commands.get_nowait()
+    assert request["version"] == 8 and request["expected_software"] == candidate_identity()
+    assert decode_message(encode_message(request)) == request
+    request["expected_software"]["source_root"] = "/mutated/request"
+    assert strict_backend.snapshot()["software"] == candidate_identity()
+
+
+def test_candidate_does_not_fall_back_to_a_working_legacy_backend(strict_backend, monkeypatch):
+    calls = []
+    def fetch(path, timeout=.6, *, version=1):
+        calls.append(version)
+        if version == 8:
+            raise ValueError("old backend has no software identity")
+        return control_snapshot()
+    monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
+    with pytest.raises(ValueError, match="old backend"):
+        strict_backend._poll()
+    assert calls == [8] and strict_backend._snapshot is None
+    strict_backend.submit("batch.create", {"label": "candidate"}, "legacy-blocked")
+    assert strict_backend.operation_result("legacy-blocked")["state"] == "rejected"
+    assert strict_backend._commands.empty()
+    with pytest.raises(ValueError, match="不能降级"):
+        strict_backend._accept_snapshot(control_snapshot(), 7)
+    assert strict_backend._snapshot is None
+
+
+def test_candidate_verification_requires_fresh_transport_not_a_running_recorder(strict_backend):
+    value = candidate_snapshot()
+    value['recording']['state'] = 'UNAVAILABLE'
+    strict_backend._accept_snapshot(value, 8)
+    assert strict_backend.software_verified
+    strict_backend._error = 'connection lost'
+    assert not strict_backend.software_verified
+    strict_backend._error = ''
+    strict_backend._received -= 2
+    assert not strict_backend.software_verified
+
+
+@pytest.mark.parametrize(("field", "other"), [
+    ("source_root", "/other/checkout"), ("source_sha256", "c" * 64),
+    ("configuration_path", "/global/workstation.json"), ("source_revision", "c" * 40),
+])
+def test_candidate_wrong_identity_never_accepts_snapshot_or_submits(strict_backend, monkeypatch, field, other):
+    wrong = candidate_identity() | {field: other}
+    calls = []
+    def fetch(path, timeout=.6, *, version=1):
+        calls.append(version)
+        return candidate_snapshot(wrong)
+    monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
+    monkeypatch.setattr(ipc_client, "_exchange", lambda *a, **kw: pytest.fail("unbound control IO"))
+    with pytest.raises(ValueError, match="来源与候选版本不一致"):
+        strict_backend._poll()
+    assert calls == [8] and strict_backend._snapshot is None
+    assert not strict_backend.supports_device_control and not strict_backend.supports_hand_control
+    strict_backend.submit("batch.create", {"label": "candidate"}, "wrong-identity")
+    assert strict_backend.operation_result("wrong-identity")["state"] == "rejected"
+    assert strict_backend._commands.empty()
+
+
+def test_candidate_changed_backend_response_preserves_history_and_blocks_further_commands(strict_backend, monkeypatch):
+    strict_backend._accept_snapshot(candidate_snapshot(), 8)
+    original = copy.deepcopy(strict_backend._snapshot)
+    strict_backend.submit("batch.create", {"label": "candidate"}, "first")
+    request = strict_backend._commands.get_nowait()
+    calls = []
+    def exchange(path, document, **kwargs):
+        calls.append(copy.deepcopy(document))
+        return dict(version=8, request_id=document["request_id"], ok=True,
+                    snapshot=candidate_snapshot(candidate_identity() | {"source_sha256": "c" * 64}),
+                    operation=operation(document["request_id"]))
+    monkeypatch.setattr(ipc_client, "_exchange", exchange)
+    strict_backend._send_command(request)
+    assert strict_backend._snapshot == original and not strict_backend.supports_device_control
+    assert strict_backend.operation_result("first")["code"] == "TRANSPORT_UNKNOWN"
+    strict_backend.submit("batch.create", {"label": "second"}, "second")
+    assert strict_backend.operation_result("second")["state"] == "rejected"
+    assert len(calls) == 1 and strict_backend._commands.empty()
+
+
 def test_submit_is_bounded_deduplicated_and_detaches_params(idle_backend):
     backend = idle_backend
     params = {"label": "first"}
@@ -346,14 +462,14 @@ def test_v1_fallback_never_grants_control_even_if_server_advertises_record(idle_
         return readonly
     monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
     idle_backend._poll()
-    assert calls == [7, 6, 5, 4, 3, 2, 1]
+    assert calls == [8, 7, 6, 5, 4, 3, 2, 1]
     assert not idle_backend.snapshot()["capabilities"]["record"]
     assert not idle_backend.snapshot()["management"]["enabled"]
     idle_backend.submit("batch.create", {"label": "batch"}, "readonly")
     assert idle_backend.latest_operation["code"] == "READ_ONLY_PROTOCOL"
     assert idle_backend._commands.empty()
     idle_backend._poll()
-    assert calls == [7, 6, 5, 4, 3, 2, 1, 1]
+    assert calls == [8, 7, 6, 5, 4, 3, 2, 1, 1]
 
 
 def test_disconnected_management_keeps_history_but_not_live_controller_or_active_trial(idle_backend):
@@ -395,7 +511,7 @@ def test_queued_request_not_sent_after_disconnect(idle_backend, monkeypatch):
 def test_control_network_call_is_background_and_submit_does_not_wait(tmp_path, monkeypatch):
     entered, release = threading.Event(), threading.Event()
     callers = []
-    monkeypatch.setattr(ipc_client, "fetch_snapshot", lambda *args, **kwargs: control_snapshot())
+    monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch_legacy_control_snapshot)
     def exchange(path, request, **kwargs):
         callers.append(threading.get_ident())
         entered.set()
@@ -462,7 +578,7 @@ def test_v3_to_v2_fallback_preserves_recording_but_rejects_new_features(idle_bac
         return control_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
     idle_backend._poll()
-    assert calls == [7, 6, 5, 4, 3, 2]
+    assert calls == [8, 7, 6, 5, 4, 3, 2]
     assert not idle_backend.supports_details
     assert idle_backend.snapshot()["capabilities"]["record"]
     identifier = idle_backend.request_details("trial")
@@ -478,7 +594,7 @@ def test_v3_to_v2_fallback_preserves_recording_but_rejects_new_features(idle_bac
     idle_backend.submit("capture.stop", {"trial_id": "trial", "expected_controller_instance_id": "c", "expected_session_id": "s"}, "stop")
     assert idle_backend._commands.get_nowait()["version"] == 2
     idle_backend._poll()
-    assert calls == [7, 6, 5, 4, 3, 2, 2]
+    assert calls == [8, 7, 6, 5, 4, 3, 2, 2]
 
 
 def test_details_cache_is_selected_only_detached_and_does_not_overwrite_operation(detailed_backend, monkeypatch):
@@ -611,7 +727,7 @@ def test_control_commands_take_priority_over_pending_detail_request(tmp_path, mo
         assert start.wait(2)
         original_run(self)
     monkeypatch.setattr(IpcBackend, "_run", wait_then_run)
-    monkeypatch.setattr(ipc_client, "fetch_snapshot", lambda *args, **kwargs: control_snapshot())
+    monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch_legacy_control_snapshot)
     def exchange(path, request, **kwargs):
         order.append((request["command"], threading.get_ident()))
         if request["command"] == "trial.details":
@@ -658,7 +774,7 @@ def test_v4_fallback_and_v3_downgrade_keep_details(idle_backend, monkeypatch):
         return process_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", current)
     idle_backend._poll()
-    assert calls == [7, 6, 5, 4]
+    assert calls == [8, 7, 6, 5, 4]
     assert idle_backend.supports_device_control and idle_backend.supports_details
     def older(path, timeout=.6, *, version=1):
         calls.append(version)
@@ -667,12 +783,12 @@ def test_v4_fallback_and_v3_downgrade_keep_details(idle_backend, monkeypatch):
         return control_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", older)
     idle_backend._poll()
-    assert calls == [7, 6, 5, 4, 4, 3]
+    assert calls == [8, 7, 6, 5, 4, 4, 3]
     assert not idle_backend.supports_device_control and idle_backend.supports_details
     idle_backend.request_details("trial")
     assert idle_backend._pending_details[0]["version"] == 3
     idle_backend._poll()
-    assert calls == [7, 6, 5, 4, 4, 3, 3]
+    assert calls == [8, 7, 6, 5, 4, 4, 3, 3]
     idle_backend._next_v2_probe = 0
     monkeypatch.setattr(ipc_client, "fetch_snapshot", current)
     idle_backend._poll()

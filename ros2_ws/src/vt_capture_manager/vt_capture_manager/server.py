@@ -131,6 +131,9 @@ class SnapshotServer:
         if version >= 7:
             result["capabilities"]["hand_control"] = False
             result["hand_sessions"] = {}
+        if version >= 8:
+            from vt_capture_core.software_identity import runtime_identity, source_root
+            result["software"] = runtime_identity(source_root(__file__))
         return result
 
     def _run(self):

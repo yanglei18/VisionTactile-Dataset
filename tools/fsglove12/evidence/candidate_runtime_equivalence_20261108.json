@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "method": "Refit original mounting captures and solve every captured frame; replay fixed raw prefix",
+  "identical": true,
+  "raw_frame_limit": 1000,
+  "baseline": {
+    "right": {
+      "hand": "right",
+      "frames": 353,
+      "available": 349,
+      "fusion_frames": 1000,
+      "fusion_sha256": "3541b0712688bcf3bf6aeb589b2139ff3d25514eafb59e959abf87c6dcec3512",
+      "pose_sha256": "0688eee2ea11fc6515a3406bc8a38b2a0b80b231863ba45c02579a37c4e8bbe8",
+      "raw_sha256": "60ee512b03aa9cfe18e2b86d2ee323786faf3eadf38b77a3d55a585b55d367b5",
+      "config_sha256": "92f04898e153b12ce06edbcf69896672eafc9b436e1099b68246ba9bbbd91353",
+      "rest_sha256": "cf4269b50a5f799ca66f4c724a8eb4abd3ce08cf740b05262f5363662fdd0ea2",
+      "capture_sha256": [
+        "2492094e521cad9a5696aef9cc9378d4493f4cb0cf0404eafb7908284ce9cf39",
+        "487b8f1666a8ea7499d60c7c731d14647dc5cae93acd8b033be7ea630fc8619c",
+        "4bfa01f4b09fa9e3d90804b8719dba997b01be4e121a3993f81be380d4c4851c"
+      ]
+    },
+    "left": {
+      "hand": "left",
+      "frames": 349,
+      "available": 347,
+      "fusion_frames": 1000,
+      "fusion_sha256": "49e0f83fc4a674c5b04a5c363de057b86cc2a41cef90e5cfa17c36b033e0b312",
+      "pose_sha256": "83a9459f65585e2b777da51a867c522867abc01bf59239db5831176e606732b6",
+      "raw_sha256": "951608288e9c460a80c1f47741129bd6522da17aeccdc2cc300bd811a9da0c4f",
+      "config_sha256": "416dc2b1b25fb7ff7c750185563a54ccc615a1f1e9d04735cff5d88849682ef6",
+      "rest_sha256": "260f2704ef1b2e76335bd68fbf1f32485e21ea6a120d1565684e20b004155dac",
+      "capture_sha256": [
+        "873db671c0fc554b83679c1054faf62444b24cc609e224bb6c5c55779933d1f3",
+        "95b259604117eaacd156749e2554da73407fe7e6fc982b243b494fad396b7162",
+        "ad9adb00258caeadff60fdc2139c62d294e93d9a9c428ca4e069ecc6e22bca01"
+      ]
+    }
+  },
+  "candidate": {
+    "right": {
+      "hand": "right",
+      "frames": 353,
+      "available": 349,
+      "fusion_frames": 1000,
+      "fusion_sha256": "3541b0712688bcf3bf6aeb589b2139ff3d25514eafb59e959abf87c6dcec3512",
+      "pose_sha256": "0688eee2ea11fc6515a3406bc8a38b2a0b80b231863ba45c02579a37c4e8bbe8",
+      "raw_sha256": "60ee512b03aa9cfe18e2b86d2ee323786faf3eadf38b77a3d55a585b55d367b5",
+      "config_sha256": "92f04898e153b12ce06edbcf69896672eafc9b436e1099b68246ba9bbbd91353",
+      "rest_sha256": "cf4269b50a5f799ca66f4c724a8eb4abd3ce08cf740b05262f5363662fdd0ea2",
+      "capture_sha256": [
+        "2492094e521cad9a5696aef9cc9378d4493f4cb0cf0404eafb7908284ce9cf39",
+        "487b8f1666a8ea7499d60c7c731d14647dc5cae93acd8b033be7ea630fc8619c",
+        "4bfa01f4b09fa9e3d90804b8719dba997b01be4e121a3993f81be380d4c4851c"
+      ]
+    },
+    "left": {
+      "hand": "left",
+      "frames": 349,
+      "available": 347,
+      "fusion_frames": 1000,
+      "fusion_sha256": "49e0f83fc4a674c5b04a5c363de057b86cc2a41cef90e5cfa17c36b033e0b312",
+      "pose_sha256": "83a9459f65585e2b777da51a867c522867abc01bf59239db5831176e606732b6",
+      "raw_sha256": "951608288e9c460a80c1f47741129bd6522da17aeccdc2cc300bd811a9da0c4f",
+      "config_sha256": "416dc2b1b25fb7ff7c750185563a54ccc615a1f1e9d04735cff5d88849682ef6",
+      "rest_sha256": "260f2704ef1b2e76335bd68fbf1f32485e21ea6a120d1565684e20b004155dac",
+      "capture_sha256": [
+        "873db671c0fc554b83679c1054faf62444b24cc609e224bb6c5c55779933d1f3",
+        "95b259604117eaacd156749e2554da73407fe7e6fc982b243b494fad396b7162",
+        "ad9adb00258caeadff60fdc2139c62d294e93d9a9c428ca4e069ecc6e22bca01"
+      ]
+    }
+  },
+  "baseline_commit": "eaafec6bb0cce77b7fb7019c9f828d5afb97950a",
+  "candidate_description": "codex/integrate-hand-runtime-workbench current repair worktree; this evidence validates the offline numerical hand pipeline only",
+  "candidate_head_at_validation": "ad9894fb253efd080c4695213a1c7577e241baf9",
+  "candidate_contains_uncommitted_repairs": true,
+  "validated_at_utc": "2026-11-08T11:30:01.431813+00:00",
+  "comparison_script": "tools/fsglove12/scripts/compare_hand_runtime.py",
+  "comparison_script_sha256": "c7864b3ac4e8b3ee1e39ee748e90ae36c4e9f41cc384e8b7dc8179f047634994",
+  "hardware_accessed": false,
+  "archived_inputs_modified": false,
+  "detailed_comparison": {
+    "right": {
+      "pose_identical_bytes": true,
+      "fusion_identical_bytes": true,
+      "pose_rows": 353,
+      "identical_pose_rows": 353,
+      "baseline_unavailable_reasons": {
+        "missing_or_stale_root": 4
+      },
+      "candidate_unavailable_reasons": {
+        "missing_or_stale_root": 4
+      },
+      "numeric_fields": {
+        "mano_pose_rotvec": {
+          "numeric_components_compared": 16752,
+          "max_absolute_difference": 0.0,
+          "unit": "rad"
+        },
+        "root_quat_xyzw": {
+          "numeric_components_compared": 1396,
+          "max_absolute_difference": 0.0,
+          "unit": "unitless"
+        },
+        "anatomical_euler_rad": {
+          "numeric_components_compared": 16752,
+          "max_absolute_difference": 0.0,
+          "unit": "rad"
+        },
+        "joints_m": {
+          "numeric_components_compared": 21987,
+          "max_absolute_difference": 0.0,
+          "unit": "m"
+        }
+      }
+    },
+    "left": {
+      "pose_identical_bytes": true,
+      "fusion_identical_bytes": true,
+      "pose_rows": 349,
+      "identical_pose_rows": 349,
+      "baseline_unavailable_reasons": {
+        "missing_or_stale_root": 2
+      },
+      "candidate_unavailable_reasons": {
+        "missing_or_stale_root": 2
+      },
+      "numeric_fields": {
+        "mano_pose_rotvec": {
+          "numeric_components_compared": 16656,
+          "max_absolute_difference": 0.0,
+          "unit": "rad"
+        },
+        "root_quat_xyzw": {
+          "numeric_components_compared": 1388,
+          "max_absolute_difference": 0.0,
+          "unit": "unitless"
+        },
+        "anatomical_euler_rad": {
+          "numeric_components_compared": 16656,
+          "max_absolute_difference": 0.0,
+          "unit": "rad"
+        },
+        "joints_m": {
+          "numeric_components_compared": 21861,
+          "max_absolute_difference": 0.0,
+          "unit": "m"
+        }
+      }
+    }
+  },
+  "scope": {
+    "calibration": "Refit using the three existing mounting captures per hand; no new calibration collected and no archived profile rewritten.",
+    "replay": "Compare the first 1000 fused frames from each archived raw recording and every existing mounting-capture pose using one shared numerical environment.",
+    "limits": [
+      "Finite offline equivalence establishes preservation of the selected baseline behavior; it is not a new physical accuracy measurement.",
+      "This comparison does not exercise serial hardware, GUI rendering, workbench backend admission, or tactile-only startup; those require their separate automated tests."
+    ]
+  }
+}

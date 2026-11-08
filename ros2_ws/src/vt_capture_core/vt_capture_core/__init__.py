@@ -10,11 +10,12 @@ from .models import (
     ControlRequest, ControlResponse, ControlSnapshot, DetailRequest, DetailResponse,
     ProcessGroupSnapshot, ProcessControlSnapshot, DeviceControlSnapshot, DeviceControlRequest, DeviceControlResponse,
     PlanCapabilities, PlanControlSnapshot, PlanControlRequest, PlanControlResponse,
+    IdentityControlSnapshot, IdentityControlRequest, IdentityControlResponse,
     HandCapabilities, HandControlSnapshot, HandControlRequest, HandControlResponse,
     CalibrationCapabilities, CalibrationControlSnapshot, CalibrationControlRequest, CalibrationControlResponse,
 )
 from .protocol import (
-    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, MAX_MESSAGE_BYTES, PROTOCOL_VERSION, ProtocolError, decode_message, encode_message,
+    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION, MAX_MESSAGE_BYTES, PROTOCOL_VERSION, ProtocolError, decode_message, encode_message,
 )
 
 __all__ = [
@@ -23,8 +24,9 @@ __all__ = [
     "MAX_MESSAGE_BYTES", "PROTOCOL_VERSION", "ProtocolError", "decode_message", "encode_message",
     "CONTROL_PROTOCOL_VERSION", "DETAIL_PROTOCOL_VERSION", "ControllerSnapshot", "OperationSnapshot", "ManagementSnapshot",
     "ControlRequest", "ControlResponse", "ControlSnapshot", "DetailRequest", "DetailResponse",
-    "PLAN_PROTOCOL_VERSION", "CALIBRATION_PROTOCOL_VERSION", "HAND_PROTOCOL_VERSION", "PlanCapabilities", "PlanControlSnapshot", "PlanControlRequest", "PlanControlResponse",
+    "PLAN_PROTOCOL_VERSION", "CALIBRATION_PROTOCOL_VERSION", "HAND_PROTOCOL_VERSION", "IDENTITY_PROTOCOL_VERSION", "PlanCapabilities", "PlanControlSnapshot", "PlanControlRequest", "PlanControlResponse",
     "DEVICE_PROTOCOL_VERSION", "ProcessGroupSnapshot", "ProcessControlSnapshot", "DeviceControlSnapshot", "DeviceControlRequest", "DeviceControlResponse",
+    "IdentityControlSnapshot", "IdentityControlRequest", "IdentityControlResponse",
     "HandCapabilities", "HandControlSnapshot", "HandControlRequest", "HandControlResponse",
     "CalibrationCapabilities", "CalibrationControlSnapshot", "CalibrationControlRequest", "CalibrationControlResponse",
 ]

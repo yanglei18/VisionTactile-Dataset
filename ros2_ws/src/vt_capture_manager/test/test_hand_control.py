@@ -219,3 +219,71 @@ def test_recording_or_device_transition_blocks_hand_mutation(tmp_path):
     finally:
         service.processes = None
         service.close()
+
+
+@pytest.mark.parametrize("hand", ["left", "right"])
+@pytest.mark.parametrize("bundle", ["", "/verified/display-bundle"])
+def test_tactile_only_metadata_never_contacts_or_claims_a_motion_service(hand, bundle):
+    from vt_capture_core.hand_protocol import validate_hand_sessions
+    calls = []
+    control = HandControl([dict(id=f"{hand}_tactile", preset="tactile", enabled=True,
+        parameters=dict(hand=hand, resources=bundle, glove_python="/unused/python",
+                        port="/touch-serial", display_socket="/touch.sock"))],
+        manager_instance_id="manager-a", allowed=lambda: (True, ""), admission_lock=RLock(),
+        process_snapshot=lambda: dict(groups=[]), exchange=lambda *a, **kw: calls.append(a))
+    control._poll(hand)
+    row = control.snapshot()[hand]
+    validate_hand_sessions(control.snapshot())
+    assert row["resources"] == bundle and row["tactile_port"] == "/touch-serial"
+    assert row["tactile_socket"] == "/touch.sock"
+    assert row["group_id"] == row["control_socket"] == row["port"] == ""
+    assert row["service_instance_id"] == row["session_id"] == ""
+    assert not any(row[key] for key in ("connected", "raw_fresh", "calibration_ready", "pose_valid", "busy"))
+    assert row["service_state"] == "unavailable" and row["age_s"] is None
+    assert control.ready(NS(kind="tactile", id=f"{hand}_tactile")) is None
+    assert not control.busy and calls == []
+    result = control.command(dict(hand=hand, expected_manager_instance_id="manager-a",
+        expected_service_instance_id="no-service", expected_session_id="no-session",
+        expected_profile_version=None, name="capture", args={"step": "neutral"}), "forbidden-motion")
+    assert result["state"] == "rejected" and control._queue.empty() and not control.busy
+
+
+def test_mixed_hand_keeps_motion_resources_and_independent_tactile_endpoint():
+    control = HandControl([
+        dict(id="motion", preset="glove", parameters=dict(hand="left", resources="/motion",
+             port="/imu", control_socket="/motion.sock", glove_python="/motion-python")),
+        dict(id="touch", preset="tactile", parameters=dict(hand="left", resources="/touch-display",
+             port="/touch", display_socket="/touch.sock"))],
+        manager_instance_id="manager-a", allowed=lambda: (True, ""), admission_lock=RLock(),
+        process_snapshot=lambda: dict(groups=[]), exchange=lambda *a, **kw: {})
+    row = control.snapshot()["left"]
+    assert row["resources"] == "/motion" and row["glove_python"] == "/motion-python"
+    assert row["group_id"] == "motion" and row["control_socket"] == "/motion.sock"
+    assert row["port"] == "/imu" and row["tactile_port"] == "/touch"
+    assert row["tactile_socket"] == "/touch.sock"
+
+
+@pytest.mark.parametrize("hand", ["left", "right"])
+@pytest.mark.parametrize("mode", ["disabled", "tactile", "mixed"])
+def test_six_profile_configuration_selects_mode_without_borrowing_disabled_motion_resources(hand, mode):
+    profiles = [dict(id=preset, preset=preset, enabled=False, parameters={})
+                for preset in ("cameras", "trackers")]
+    profiles += [dict(id=f"{side}_{preset}", preset=preset, enabled=False, parameters=dict(hand=side))
+                 for side in ("left", "right") for preset in ("glove", "tactile")]
+    assert len(profiles) == 6
+    for profile in profiles:
+        if profile["preset"] in {"glove", "tactile"}:
+            params = profile["parameters"]
+            params["resources"] = f"/{params['hand']}/{profile['preset']}"
+            profile["enabled"] = (params["hand"] == hand and
+                                  (mode == "mixed" or mode == "tactile" and profile["preset"] == "tactile"))
+    # Missing tactile bundle remains explicit; never borrow a disabled motion bundle.
+    next(p for p in profiles if p["id"] == f"{hand}_tactile")["parameters"]["resources"] = ""
+    control = HandControl(profiles, manager_instance_id="manager-a", allowed=lambda: (True, ""),
+        admission_lock=RLock(), process_snapshot=lambda: dict(groups=[]), exchange=lambda *a, **kw: {})
+    row = control.snapshot()[hand]
+    if mode == "tactile":
+        assert row["group_id"] == row["control_socket"] == row["resources"] == ""
+    else:
+        assert row["group_id"] == f"{hand}_glove" and row["control_socket"]
+        assert row["resources"] == f"/{hand}/glove"

@@ -166,8 +166,10 @@ def _run_manager(args, ros_args):
         if args.enable_recording or args.enable_device_control or getattr(args, "enable_calibration", False):
             from .recorder_adapter import ManagedRosAdapter
             adapter = ManagedRosAdapter(node)
+        from vt_capture_core.software_identity import runtime_identity, source_root
+        software = runtime_identity(source_root(__file__), args.config)
         management = ManagementService(node.model, adapter, enabled=args.enable_recording, state_dir=args.state_dir,
-                                       admission_lock=args.desktop_apply_lock)
+                                       admission_lock=args.desktop_apply_lock, software=software)
         if args.enable_recording and node.scene_store is not None:
             from .spatial.geometry_recording import GeometryRecorder
             geometry_recorder = GeometryRecorder(node.scene_store, event=node.model.event)

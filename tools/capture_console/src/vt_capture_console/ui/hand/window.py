@@ -57,6 +57,7 @@ class HandPanel(QtWidgets.QWidget):
         self.settings, self.resources = settings, resources
         self.hand = resources.get("hand", "right")
         self.pose_controller, self.tactile_source = pose_controller, tactile_source
+        self.motion_available = pose_controller is not None
         self.composer = composer if composer is not None else DisplayComposer(
             resources["neutral_geometry"], hand=self.hand, layout_path=resources.get("layout_path"))
         self.port_discovery = (port_discovery if port_discovery is not None else
@@ -69,7 +70,7 @@ class HandPanel(QtWidgets.QWidget):
         self._bindings = []
         self._snapshot = {"runtime": {"connected": False}, "calibration": {}}
         self._touch_state = self._combined = None
-        self.palm_guide = PalmGuide(resources)
+        self.palm_guide = PalmGuide(resources) if self.motion_available else None
         self._palm_preview = None
         self._action_error = self._error_detail = ""
         self._imu_port_owned = ""
@@ -98,11 +99,13 @@ class HandPanel(QtWidgets.QWidget):
         self.language_combo.activated.connect(lambda index: self.set_language(self.language_combo.itemData(index)))
         header.addWidget(self.language_combo)
         layout.addLayout(header)
-        layout.addWidget(self._label("subtitle", "muted"))
+        layout.addWidget(self._label("subtitle" if self.motion_available else "tactile_only_subtitle", "muted"))
         self.port_combos, self.connection_buttons, self.connection_statuses = {}, {}, {}
+        self.connection_rows = {}
         for kind in ("imu", "tactile"):
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._label(kind + "_port"))
+            port_label = self._label(kind + "_port")
+            row.addWidget(port_label)
             combo = QtWidgets.QComboBox()
             combo.setEditable(True)
             combo.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
@@ -123,6 +126,7 @@ class HandPanel(QtWidgets.QWidget):
             button.clicked.connect(lambda checked=False, channel=kind: self.toggle_connection(channel))
             self.connection_buttons[kind] = button
             row.addWidget(button)
+            self.connection_rows[kind] = (port_label, combo, status, button)
             layout.addLayout(row)
         self.refresh_ports_button = self._button("refresh", self.refresh_ports)
         self.identify_ports_button = self._button("identify_ports", self.identify_ports)
@@ -139,7 +143,8 @@ class HandPanel(QtWidgets.QWidget):
         layout.addLayout(toolbar)
         self.calibration_panel = self._make_calibration()
         self.calibration_toggle.toggled.connect(self.calibration_panel.setVisible)
-        self.calibration_toggle.setChecked(True)
+        self.calibration_toggle.setChecked(self.motion_available)
+        self.calibration_panel.setVisible(self.motion_available)
         layout.addWidget(self.calibration_panel)
         view_toolbar = QtWidgets.QHBoxLayout()
         for label, palmar in (("palmar", True), ("dorsal", False), ("reset_view", True)):
@@ -162,23 +167,26 @@ class HandPanel(QtWidgets.QWidget):
         self.joints_button.toggled.connect(self.view.set_show_joints)
         self._binding = TactileSurfaceBinding(resources["neutral_geometry"], resources["model_axes"],
                                               hand=self.hand, layout_path=resources.get("layout_path"))
-        if demo_factory is None:
-            from .mounting_demo import MountingDemo
-            demo_factory = partial(MountingDemo, mano_assets=resources["mano_assets"],
-                                   demo_clips=resources.get("demo_clips"))
         self.demo_card = QtWidgets.QWidget()
         demo_layout = QtWidgets.QVBoxLayout(self.demo_card)
         demo_layout.setContentsMargins(0, 0, 0, 0)
         self.demo_title = QtWidgets.QLabel()
         demo_layout.addWidget(self.demo_title)
-        self.demo = demo_factory(resources["neutral_geometry"], resources["model_axes"], self.demo_card)
-        # The display basis keeps fingertips along +Y for both models. Mirror
-        # the observer across that axis so the thumb faces both cameras.
+        self.demo = None
+        # Tactile-only uses the verified static bundle directly. It does not
+        # need an IMU source, numerical worker, or synthetic motion demo.
+        if self.motion_available:
+            if demo_factory is None:
+                from .mounting_demo import MountingDemo
+                demo_factory = partial(MountingDemo, mano_assets=resources["mano_assets"],
+                                       demo_clips=resources.get("demo_clips"))
+            self.demo = demo_factory(resources["neutral_geometry"], resources["model_axes"], self.demo_card)
+            self.demo.setMinimumSize(240, 245)
+            demo_layout.addWidget(self.demo, 1)
         azimuth = -20 if self.hand == "left" else -160
-        for panel in (self.demo, self.view):
-            panel.setCameraPosition(elevation=25, azimuth=azimuth, distance=.47)
-        self.demo.setMinimumSize(240, 245)
-        demo_layout.addWidget(self.demo, 1)
+        for panel in (self.view, self.demo):
+            if panel is not None:
+                panel.setCameraPosition(elevation=25, azimuth=azimuth, distance=.47)
         live_card = QtWidgets.QWidget()
         live_layout = QtWidgets.QVBoxLayout(live_card)
         live_layout.setContentsMargins(0, 0, 0, 0)
@@ -256,6 +264,14 @@ class HandPanel(QtWidgets.QWidget):
             self.tactile_baudrate.setEnabled(False)
             for combo in self.port_combos.values():
                 combo.setEnabled(False)
+        if not self.motion_available:
+            for widget in self.connection_rows["imu"]:
+                widget.hide()
+            self.calibration_toggle.hide()
+            self.calibration_toggle.setEnabled(False)
+            self.calibration_panel.hide()
+            self.demo_card.hide()
+            self.live_title.hide()
         self._translate_static()
         self._update_controls()
 
@@ -264,7 +280,8 @@ class HandPanel(QtWidgets.QWidget):
 
     def _reset_views(self, palmar):
         self.view.reset_camera(palmar)
-        self.demo.reset_camera(palmar)
+        if self.demo is not None:
+            self.demo.reset_camera(palmar)
 
     def _label(self, key, object_name=""):
         label = QtWidgets.QLabel(self.tr(key))
@@ -468,6 +485,8 @@ class HandPanel(QtWidgets.QWidget):
         self._action_error, self._error_detail = key, str(error)
 
     def _submit(self, name, **args):
+        if self.pose_controller is None:
+            return False
         if not self.pose_controller.submit(name, **args):
             self._action_error = "queue_busy"
             return False
@@ -480,6 +499,8 @@ class HandPanel(QtWidgets.QWidget):
                     submitted_ns=host_clock.monotonic_ns(), session_id=runtime.get("session_id"))
 
     def toggle_connection(self, kind):
+        if kind == "imu" and not self.motion_available:
+            return
         if self.connection_request is not None and not self._closing:
             try:
                 self.connection_request(kind)
@@ -566,7 +587,8 @@ class HandPanel(QtWidgets.QWidget):
     def start(self):
         if self._started or self._closing:
             return
-        self.pose_controller.start()
+        if self.pose_controller is not None:
+            self.pose_controller.start()
         self.tactile_source.start()
         self.port_discovery.start()
         self._started = True
@@ -581,7 +603,7 @@ class HandPanel(QtWidgets.QWidget):
             return
         try:
             self._sync_ports()
-            self._snapshot = self.pose_controller.latest_snapshot()
+            self._snapshot = self.pose_controller.latest_snapshot() if self.pose_controller is not None else {}
             self._touch_state = self.tactile_source.poll()
             now = host_clock.monotonic_ns()
             runtime = self._snapshot.get("runtime", {})
@@ -605,7 +627,7 @@ class HandPanel(QtWidgets.QWidget):
             calibration = self._snapshot.get("calibration") or {}
             mounting = (calibration.get("active") or {}).get("kind") == "mounting"
             self._palm_preview = (self.palm_guide.update(self._snapshot, now_ns=now)
-                                  if self.calibration_toggle.isChecked() and not combined.uses_tracked_geometry
+                                  if self.motion_available and self.calibration_toggle.isChecked() and not combined.uses_tracked_geometry
                                   and (mounting or not calibration.get("calibrated_nodes")) else None)
             if combined.uses_tracked_geometry:
                 geometry = combined.geometry
@@ -664,7 +686,8 @@ class HandPanel(QtWidgets.QWidget):
         self.tactile_baudrate.setEnabled(not self.tactile_source.can_disconnect and not self._closing and not self._port_identifying)
         _set_text(self.identify_ports_button, self.tr("identifying_ports" if self._port_identifying else "identify_ports"))
         self.identify_ports_button.setEnabled(not self._closing and self._started and not self._port_identifying)
-        self._update_calibration(runtime, calibration, now_ns)
+        if self.motion_available:
+            self._update_calibration(runtime, calibration, now_ns)
         self._update_reference()
         self._update_display_status(runtime, calibration, touch_status)
 
@@ -975,8 +998,8 @@ class HandPanel(QtWidgets.QWidget):
         combined = self._combined
         mode = combined.mode if combined else "waiting"
         mode_key = COMPOSITION_STATUS.get(combined.status, mode) if combined else mode
-        label = self.tr(mode_key)
-        if combined and mode == "waiting":
+        label = self.tr(mode_key) if self.motion_available else self.tr("tactile_only")
+        if self.motion_available and combined and mode == "waiting":
             if self._palm_preview is not None and self._palm_preview.geometry is not None:
                 label = self.tr("palm_touch_waiting" if combined.tactile_frame is not None else "palm_waiting", reason=label)
             else:
@@ -994,9 +1017,10 @@ class HandPanel(QtWidgets.QWidget):
         _set_text(self.live_title, self.tr("my_gesture", source=source))
         def age(value):
             return f"{value:.0f} ms" if isinstance(value, (int, float)) and math.isfinite(value) else "—"
-        metrics = self.tr("metrics", pose=age(combined.pose_age_ms if combined else None),
+        metrics = (self.tr("metrics", pose=age(combined.pose_age_ms if combined else None),
                           touch=age(combined.tactile_age_ms if combined else None),
-                          skew=age(combined.skew_ms if combined else None))
+                          skew=age(combined.skew_ms if combined else None)) if self.motion_available else
+                   self.tr("tactile_only_metrics", touch=age(combined.tactile_age_ms if combined else None)))
         if combined and combined.tactile_frame is not None:
             frame = combined.tactile_frame
             values = [v for v, valid in zip(frame["values"], frame["valid_mask"]) if valid]
@@ -1076,7 +1100,8 @@ class HandPanel(QtWidgets.QWidget):
             self._closing = self._closed = True
             self.timer.stop()
             self.port_discovery.stop()
-            self.pose_controller.close()
+            if self.pose_controller is not None:
+                self.pose_controller.close()
             self.tactile_source.close()
             if hasattr(self.demo, "dispose"):
                 self.demo.dispose()
@@ -1084,7 +1109,8 @@ class HandPanel(QtWidgets.QWidget):
         if not self._closing:
             self._closing = True
             self.port_discovery.stop()
-            self.pose_controller.stop()
+            if self.pose_controller is not None:
+                self.pose_controller.stop()
             self.tactile_source.disconnect()
             self.setEnabled(False)
             self._update_controls()
@@ -1093,7 +1119,7 @@ class HandPanel(QtWidgets.QWidget):
 
     def _finish_shutdown(self):
         self.tactile_source.poll()
-        pose_done = self.pose_controller.join(timeout=0)
+        pose_done = self.pose_controller is None or self.pose_controller.join(timeout=0)
         touch_done = self.tactile_source.can_connect
         discovery_done = self.port_discovery.join(timeout=0)
         if pose_done and touch_done and discovery_done:

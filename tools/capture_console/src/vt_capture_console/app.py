@@ -12,6 +12,7 @@ def main(argv=None):
     mode.add_argument("--demo", action="store_true", help="合成演示，不连接硬件、不保存 bag")
     mode.add_argument("--live", action="store_true", help="连接真实后台；录制控制须后台显式启用（默认模式）")
     mode.add_argument("--desktop", action="store_true", help="桌面工作台：连接本机后台，并按已保存设置自动连接 VIVE Hub")
+    parser.add_argument("--candidate-settings", help="经迁移准备的独立候选配置目录；仅用于 --desktop，必须校验后台源码身份")
     parser.add_argument("--socket", help="管理后台 Unix socket 路径")
     parser.add_argument("--scene-socket", help="只读联合空间 socket；默认与控制 socket 同目录")
     parser.add_argument("--smoke-seconds", type=float, default=0, help="指定秒数后退出，用于 GUI 冒烟测试")
@@ -22,6 +23,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if (args.demo or args.desktop) and (args.socket or args.scene_socket):
         parser.error("演示和桌面模式不能指定外部后台 socket")
+    if args.candidate_settings and not args.desktop:
+        parser.error("--candidate-settings 仅用于 --desktop")
     if args.smoke_seconds < 0 or (args.screenshot and args.smoke_seconds <= 0):
         parser.error("截图需要正数 --smoke-seconds")
     try:
@@ -34,9 +37,13 @@ def main(argv=None):
         parser.error("界面必须运行在独立 PySide6 环境，不能混载 PyQt 或 ROS")
     instance = None
     try:
+        if args.candidate_settings:
+            from .backend.candidate_binding import load_candidate_binding
+            args.candidate_settings, args.expected_software = load_candidate_binding(args.candidate_settings)
         if args.desktop and not args.smoke_seconds:
             from .single_instance import DesktopSingleInstance
-            instance = DesktopSingleInstance()
+            instance = (DesktopSingleInstance(directory=args.candidate_settings)
+                        if args.candidate_settings else DesktopSingleInstance())
             if not instance.acquire_or_activate():
                 return 0
         return _run_application(args, width, height, instance)
@@ -77,12 +84,17 @@ def _run_application(args, width, height, instance=None):
     if args.desktop:
         from .backend.local_runtime import DesktopRuntime
         try:
-            runtime = DesktopRuntime()
+            runtime = (DesktopRuntime(settings_dir=args.candidate_settings,
+                                      expected_software=args.expected_software)
+                       if getattr(args, "candidate_settings", None) else DesktopRuntime())
             runtime.start()
         except (OSError, ValueError, RuntimeError) as exc:
             QMessageBox.critical(None, tr("工作台无法启动"), tr("本地工作站设置无法加载：{v0}\n请检查部署目录与本机配置。未启动任何传感器。", v0=exc))
             return 1
-    backend = DemoBackend() if args.demo else IpcBackend(runtime.socket_path if runtime else args.socket)
+    backend = (DemoBackend() if args.demo else
+               IpcBackend(runtime.socket_path, expected_software=args.expected_software)
+               if getattr(args, "candidate_settings", None) else
+               IpcBackend(runtime.socket_path if runtime else args.socket))
     if runtime is not None:
         backend.runtime = runtime
     scene_backend = DemoSceneBackend() if args.demo else SceneBackend(args.scene_socket, control_path=backend.path)
@@ -92,6 +104,16 @@ def _run_application(args, width, height, instance=None):
         window.desktop_tools = DesktopTools(window, backend, runtime)
         if not any(group.get("enabled") for group in runtime.configuration.get("process_groups", ())):
             window.navigation.button(2).click()
+    if getattr(args, "candidate_settings", None):
+        expected = args.expected_software
+        def update_candidate_title():
+            state = "已核验" if backend.software_verified else "待核验"
+            window.setWindowTitle(f"VisionTactile · 候选工作台 [{state} · {expected['source_revision'][:8]} · {expected['source_sha256'][:10]}]")
+        update_candidate_title()
+        identity_timer = QTimer(window)
+        identity_timer.setInterval(500)
+        identity_timer.timeout.connect(update_candidate_title)
+        identity_timer.start()
     window.resize(width, height)
     window.show()
     if instance is not None:

@@ -9,15 +9,20 @@ import pytest
 
 
 @pytest.mark.parametrize("hand", ["left", "right"])
-def test_headless_launch_starts_before_calibration_and_cleans_up(tmp_path, hand):
+@pytest.mark.parametrize("resource_mode", ["bundle", "explicit"])
+def test_headless_launch_starts_before_calibration_and_cleans_up(tmp_path, hand, resource_mode):
     resources = os.environ.get(f"VT_TEST_{hand.upper()}_RESOURCES")
     python = os.environ.get(f"VT_TEST_{hand.upper()}_PYTHON")
     if not resources or not python:
         pytest.skip("requires explicit real hand resources and numerical interpreter")
     from vt_fsglove12.hand_service_protocol import request
     control, pose = tmp_path / "control.sock", tmp_path / "pose.sock"
+    resource_arguments = ([f"resources:={resources}"] if resource_mode == "bundle" else
+        [f"{key}:={Path(resources) / member}" for key, member in {
+            "config": "config.json", "rest": "rest.json", "mano_assets": "mano",
+            "fsglove_source": "upstream"}.items()])
     command = ["ros2", "launch", "vt_glove_bridge", "hand_service.launch.py",
-               f"hand:={hand}", f"glove_python:={python}", f"resources:={resources}",
+               f"hand:={hand}", f"glove_python:={python}", *resource_arguments,
                f"control_socket:={control}", f"socket_path:={pose}",
                f"output_root:={tmp_path / 'sessions'}"]
     environment = dict(os.environ, OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1", MKL_NUM_THREADS="1")

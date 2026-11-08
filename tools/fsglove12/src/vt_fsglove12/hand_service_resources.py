@@ -79,6 +79,11 @@ def load_service_resources(*, hand, resources=None, config=None, rest=None,
     reference = _read(rest)
     validate_rest(reference)
     check_model_hand(configuration, reference)
+    if hand == "left" and reference.get("provenance", {}).get("hand") != hand:
+        raise ValueError("Left-hand rest model must explicitly identify its hand")
+    model = Path(mano_assets).expanduser().resolve() / "models" / f"MANO_{hand.upper()}.pkl"
+    if not model.is_file():
+        raise ValueError(f"Missing {hand}-hand MANO model in the selected resource directory")
     source = inspect_upstream_sources(fsglove_source)
     configuration["pose_backend"] = "official_fsglove_sparse_adapter"
     configuration["upstream_provenance"] = source

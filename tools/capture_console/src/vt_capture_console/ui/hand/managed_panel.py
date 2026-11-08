@@ -24,11 +24,15 @@ class _NoPortDiscovery:
 
 
 class _Settings:
-    def __init__(self, hand):
+    def __init__(self, hand, *, directory=None):
         self.hand = hand
-        self.store = QtCore.QSettings(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope,
-                                      "visiontactile", f"workbench-hand-{hand}")
-        self.data_root = Path(self.store.fileName()).parent / f"workbench-hand-{hand}"
+        if directory is None:
+            self.store = QtCore.QSettings(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope,
+                                          "visiontactile", f"workbench-hand-{hand}")
+            self.data_root = Path(self.store.fileName()).parent / f"workbench-hand-{hand}"
+        else:
+            self.data_root = Path(directory) / f"workbench-hand-{hand}"
+            self.store = QtCore.QSettings(str(self.data_root / "presentation.ini"), QtCore.QSettings.IniFormat)
 
     @property
     def language(self):
@@ -82,7 +86,7 @@ class ManagedHandPane(QtWidgets.QWidget):
     def set_calibration_visible(self, visible):
         self._calibration_visible = bool(visible)
         if self.panel is not None:
-            self.panel.calibration_toggle.setChecked(visible)
+            self.panel.calibration_toggle.setChecked(visible and self.session is not None)
 
     def update_manager(self, snapshot):
         self._manager = snapshot
@@ -93,11 +97,11 @@ class ManagedHandPane(QtWidgets.QWidget):
         if identity == self._identity:
             return
         self._identity = identity
-        self._generation = self._loader.request(identity[0] if identity[1] else None,
-                                                interpreter=identity[3], tactile_port=identity[4])
+        self._generation = self._loader.request(identity[0],
+            interpreter=identity[3] if identity[1] else None, tactile_port=identity[4])
         self._detach()
-        if not identity[0] or not identity[1]:
-            self.notice.setText(tr('请在设备配置中选择本手的运行资源与手部服务；此页面不会打开串口。'))
+        if not identity[0]:
+            self.notice.setText(tr('请在设备配置中选择本手的显示资源包；此页面不会打开串口。'))
             return
         self.notice.setText(tr('正在校验手部模型与显示资源…'))
 
@@ -106,10 +110,18 @@ class ManagedHandPane(QtWidgets.QWidget):
         from ...backend.tactile_reference_store import TactileReferenceStore
         from vt_tactile_capture.display_response import ResponseSettings
         from .window import HandPanel
-        settings = _Settings(self.hand)
+        runtime = getattr(self.backend, "runtime", None)
+        if getattr(runtime, "expected_software", None) is not None:
+            directory = getattr(getattr(runtime, "settings", None), "directory", None)
+            if directory is None:
+                raise ValueError("Candidate hand settings require an isolated settings directory")
+            settings = _Settings(self.hand, directory=directory)
+        else:
+            settings = _Settings(self.hand)
         reference_store = TactileReferenceStore(settings.data_root / "tactile-references",
                                                 preset_path=resources.get("response_profile"), hand=self.hand)
-        self.session = RemoteHandSession(self.hand, self._metadata["control_socket"], self.backend)
+        self.session = (RemoteHandSession(self.hand, self._metadata["control_socket"], self.backend)
+                        if self._metadata.get("control_socket") else None)
         self.tactile = ManagedTactileSource(hand=self.hand, reference_store=reference_store,
             device_identity=resources.get("tactile_device_identity"),
             default_response_settings=ResponseSettings(display_range_adc=3000.), session_scoped_identity=True)
@@ -124,10 +136,11 @@ class ManagedHandPane(QtWidgets.QWidget):
         self.panel.setMinimumSize(580, 600)
         self.panel.language_combo.hide()  # Workbench owns its global language selection.
         self.panel.title.hide()
-        self.panel.calibration_toggle.setChecked(self._calibration_visible)
+        self.panel.calibration_toggle.setChecked(self._calibration_visible and self.session is not None)
         self.scroll.setWidget(self.panel)
         self.panel.start()
-        self.notice.setText(tr('IMU 与触觉可分别启停；关闭页面仅断开展示，后台采集与录制继续运行。'))
+        self.notice.setText(tr('IMU 与触觉可分别启停；关闭页面仅断开展示，后台采集与录制继续运行。')
+            if self.session is not None else tr('纯触觉模式：在静态手形上显示触觉，未连接或生成动捕姿态。'))
 
     def _group(self, kind):
         for group in self._manager.get("process_control", {}).get("groups", ()):

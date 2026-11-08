@@ -93,7 +93,8 @@ class DesktopRuntime:
     POLL_INTERVAL_S = .25
     AUXILIARY_SOCKET_NAMES = ("manager-scene.sock", "manager-cloud.sock")
 
-    def __init__(self, repo_root=None, settings_dir=None):
+    def __init__(self, repo_root=None, settings_dir=None, *, expected_software=None):
+        self.expected_software = deepcopy(expected_software)
         self.settings = WorkstationSettings(repo_root, settings_dir)
         self.repo_root = self.settings.repo_root
         self.settings_path = self.settings.path
@@ -145,6 +146,9 @@ class DesktopRuntime:
         with self._lock:
             if self._stop.is_set():
                 return
+            if state == "ready" and self.expected_software is not None:
+                identity = self.expected_software
+                detail = f"候选后台已核验 · {identity['source_revision'][:8]} · {identity['source_sha256'][:10]}。 " + str(detail)
             self._status.update(state=state, detail=str(detail)[:2000])
             if apply_state is not None:
                 self._status["last_apply"] = dict(state=apply_state, detail=str(detail)[:2000])
@@ -241,7 +245,9 @@ class DesktopRuntime:
 
     def _probe(self):
         """Read hand admission first; only explicit mismatch permits fallback."""
-        for version in (7, 6):
+        if self.expected_software is not None:
+            return self._probe_version(8)
+        for version in (8, 7, 6):
             try:
                 return self._probe_version(version)
             except _UnsupportedManagerProtocol:
@@ -282,6 +288,11 @@ class DesktopRuntime:
             snapshot = reply["snapshot"]
             if snapshot.get("mode") != "live":
                 raise ValueError("真实工作站拒绝演示后台。")
+            if self.expected_software is not None:
+                from vt_capture_core.software_identity import require_identity
+                require_identity(snapshot.get("software"), self.expected_software)
+                if Path(f"/proc/{pid}/cwd").resolve() != self.repo_root.resolve():
+                    raise ValueError("候选后台工作目录不匹配；未接管其他工作树的后台。")
             return snapshot, pid
 
     def _is_owned(self, record, snapshot, pid):

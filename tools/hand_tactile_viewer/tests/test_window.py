@@ -1291,3 +1291,55 @@ def test_embedded_panel_detaches_without_stopping_owned_acquisition(viewer):
     assert ("disconnect",) not in touch.calls
     assert ("close",) in touch.calls
     assert not window.timer.isActive()
+
+
+@pytest.mark.parametrize("hand", ["left", "right"])
+def test_touch_only_shared_panel_has_static_geometry_and_no_motion_lifecycle(hand, qapp, tmp_path, monkeypatch):
+    bindings, commands = [], []
+    def bind(geometry, axes, *, hand, layout_path):
+        bindings.append((hand, layout_path))
+        return object()
+    monkeypatch.setattr(module, "TactileSurfaceBinding", bind)
+    monkeypatch.setattr(module, "surface_colors", lambda *args: np.full((3, 4), .5))
+    resources = dict(neutral_geometry={"static": hand}, model_axes={}, hand=hand,
+                     layout_path=tmp_path / f"{hand}.json")
+    touch, composer = Touch(), Composer()
+    composer.result = CombinedFrame(None, dict(values=[1, 0], valid_mask=[True, True], levels=[0, 1]),
+                                    False, "waiting", "waiting_pose", tactile_age_ms=20.)
+    panel = module.HandPanel(Settings(tmp_path), resources, None, touch, composer=composer,
+        view_factory=View, demo_factory=lambda *a, **kw: pytest.fail("created a motion demo"),
+        port_discovery=Discovery(), connection_request=commands.append,
+        connection_status=lambda kind: dict(enabled=kind == "tactile", label="启动", state="STOPPED", port="/touch"))
+    try:
+        panel.start()
+        panel.show()
+        qapp.processEvents()
+        assert panel.pose_controller is None and panel.demo is None and panel.palm_guide is None
+        assert not panel.motion_available and panel._snapshot == {}
+        assert all(widget.isHidden() for widget in panel.connection_rows["imu"])
+        assert panel.calibration_toggle.isHidden() and panel.calibration_panel.isHidden()
+        assert panel.demo_card.isHidden() and panel.live_title.isHidden()
+        assert panel.view.geometry == resources["neutral_geometry"] and panel.view.hand_visible
+        assert not panel._combined.pose_current and not panel._combined.uses_tracked_geometry
+        assert bindings == [(hand, resources["layout_path"])]
+        assert "纯触觉" in panel.mode_label.text() and "等待" not in panel.mode_label.text()
+        assert "20 ms" in panel.metrics.text() and "不含动捕姿态" in panel.metrics.text()
+        assert np.all(panel.view.surface_colors == .5)
+        panel.toggle_connection("imu")
+        panel.toggle_connection("tactile")
+        assert commands == ["tactile"]
+        panel.start_reference()
+        assert touch.zeroes == 1
+        panel.response_range.setValue(1750.)
+        panel.configure_response()
+        assert touch.response_settings.display_range_adc == 1750.
+        panel._reset_views(True)
+        panel.set_language("en")
+        assert "Touch only" in panel.mode_label.text()
+        panel.shutdown()
+        assert ("disconnect",) not in touch.calls and ("close",) in touch.calls
+        assert not panel.timer.isActive() and commands == ["tactile"]
+    finally:
+        panel.shutdown()
+        panel.deleteLater()
+        qapp.processEvents()

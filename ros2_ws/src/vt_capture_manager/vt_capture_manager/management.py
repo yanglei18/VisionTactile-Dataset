@@ -39,9 +39,11 @@ class ManagementService:
     """Owns only an intent database and recorder service client, never a recorder."""
     def __init__(self, model, adapter=None, *, enabled=False, state_dir=None,
                  timeout_s=2., poll_interval_s=.5, context_ttl_s=2.5, monotonic=time.monotonic,
-                 quality_runner=None, admission_lock=None):
+                 quality_runner=None, admission_lock=None, software=None):
         if not .01 <= timeout_s <= 30 or not .01 <= poll_interval_s <= 30 or context_ttl_s <= 0:
             raise ValueError("invalid managed capture timing bounds")
+        from vt_capture_core.software_identity import runtime_identity, source_root
+        self.software = deepcopy(software if software is not None else runtime_identity(source_root(__file__)))
         self.model, self.adapter, self.enabled = model, adapter, bool(enabled)
         self.timeout_s, self.poll_interval_s, self.context_ttl_s = timeout_s, poll_interval_s, context_ttl_s
         self._clock = monotonic
@@ -223,11 +225,18 @@ class ManagementService:
                     operation = self.hands.operation(self._hand_request_id)
                     if operation is not None:
                         management["operation"] = operation
+            if version >= 8:
+                value["software"] = deepcopy(self.software)
             return value
 
     def dispatch(self, request):
         validate_message(request)
         readonly = request["command"] in {"snapshot", "ping", "trial.details"}
+        if request["version"] >= 8 and not readonly and request.get("expected_software") != self.software:
+            operation = receipt(request["request_id"], "rejected", "software_identity_mismatch",
+                                "后台代码或配置已变化，未执行操作；请重新连接对应候选版本。")
+            return dict(version=request["version"], request_id=request["request_id"], ok=False,
+                        snapshot=self.snapshot(request["version"]), operation=operation, error=operation["detail"])
         if self._desktop_admission is None or readonly:
             return self._dispatch(request)
         if not self._desktop_admission.acquire():

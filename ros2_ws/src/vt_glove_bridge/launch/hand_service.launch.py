@@ -14,19 +14,49 @@ from vt_glove_bridge.launch_support import gui_environment, pose_options
 
 
 DEFAULTS = {"hand": "right", "glove_python": "", "resources": "", "control_socket": "",
-            "fsglove_source": "", "mano_assets": "", "config": "", "port": "",
+            "fsglove_source": "", "mano_assets": "", "config": "", "rest": "", "port": "",
             "socket_path": "", "output_root": str(Path.home() / "visiontactile-data" / "glove_sessions"),
             "output_rate_hz": ""}
+
+
+def _resource_arguments(values):
+    """Resolve one complete resource selection before constructing a process.
+
+    Legacy profiles may carry paths already inside their selected bundle. They
+    are accepted only when every nonempty path identifies that exact bundle
+    member. Different installations must never be silently combined.
+    """
+    members = {"config": "config.json", "rest": "rest.json",
+               "mano_assets": "mano", "fsglove_source": "upstream"}
+    if values["resources"]:
+        root = Path(values["resources"]).expanduser().resolve(strict=True)
+        for key, relative in members.items():
+            expected = root / relative
+            if values[key] and Path(values[key]).expanduser().resolve(strict=True) != expected.resolve(strict=True):
+                raise ValueError(f"resource bundle conflicts with explicit {key}")
+        # The result-only ROS bridge uses the same installation map as the
+        # worker. The worker receives the bundle alone and validates its hashes.
+        values["config"] = str(root / "config.json")
+        return ["--resources", str(root)]
+    missing = [key for key in members if not values[key]]
+    if missing:
+        raise ValueError("managed hand explicit resources require " + ", ".join(missing)
+                         + "; select a complete hand resource bundle or provide all four paths")
+    arguments = []
+    for key in members:
+        path = Path(values[key]).expanduser().resolve(strict=True)
+        expected_type = path.is_file() if key in {"config", "rest"} else path.is_dir()
+        if not expected_type:
+            raise ValueError(f"invalid {key} resource path")
+        values[key] = str(path)
+        arguments += ["--" + key.replace("_", "-"), str(path)]
+    return arguments
 
 
 def _start(context):
     from vt_capture_core.hand_paths import default_hand_control_socket
     values = {key: LaunchConfiguration(key, default=value).perform(context) for key, value in DEFAULTS.items()}
-    if values["resources"]:
-        resource_config = Path(values["resources"]).expanduser() / "config.json"
-        if values["config"] and Path(values["config"]).expanduser().resolve() != resource_config.resolve():
-            raise ValueError("resource bundle and explicit configuration must identify the same file")
-        values["config"] = str(resource_config)
+    resource_arguments = _resource_arguments(values)
     pose = pose_options(values)
     hand = pose["hand"]
     python = Path(values["glove_python"]).expanduser()
@@ -38,13 +68,7 @@ def _start(context):
     command = [str(python), "-I", "-m", "vt_fsglove12", "hand-service", "--hand", hand,
                "--control-socket", control, "--ros-socket", pose["socket_path"],
                "--output-root", values["output_root"]]
-    if values["resources"]:
-        command += ["--resources", values["resources"]]
-    else:
-        for key in ("fsglove_source", "mano_assets", "config"):
-            if not values[key]:
-                raise ValueError(f"managed hand requires {key} or a resource bundle")
-            command += ["--" + key.replace("_", "-"), values[key]]
+    command += resource_arguments
     if values["port"]:
         command += ["--port", values["port"]]
     if values["output_rate_hz"]:

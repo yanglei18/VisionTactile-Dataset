@@ -33,22 +33,31 @@ class HandControl:
         self._rows, self._seen, self._requests, self._pending = {}, {}, {}, set()
         self._retired = set()
         self._latest_id = None
-        tactile = {p["parameters"]["hand"]: p["parameters"] for p in profiles if p["preset"] == "tactile"}
-        for profile in profiles:
-            if profile["preset"] != "glove":
-                continue
-            params, hand = profile["parameters"], profile["parameters"]["hand"]
-            if hand in self._rows:
-                raise ValueError("each hand must have exactly one managed motion profile")
-            self._rows[hand] = dict(hand=hand, group_id=profile["id"],
-                control_socket=params.get("control_socket") or str(default_hand_control_socket(hand)),
+        tactile_profiles = {p["parameters"]["hand"]: p for p in profiles if p["preset"] == "tactile"}
+        tactile = {hand: profile["parameters"] for hand, profile in tactile_profiles.items()}
+        motion = {p["parameters"]["hand"]: p for p in profiles if p["preset"] == "glove"}
+        if len(motion) != sum(p["preset"] == "glove" for p in profiles):
+            raise ValueError("each hand must have exactly one managed motion profile")
+        # Presentation exists independently of motion acquisition. A tactile-only
+        # hand publishes no motion endpoint, process identity or valid pose.
+        for hand in sorted(motion.keys() | tactile.keys()):
+            profile = motion.get(hand)
+            # The settings form keeps disabled profiles. Enabling touch alone
+            # must not inherit the disabled motion runtime or its resource bundle.
+            if (profile is not None and profile.get("enabled") is False
+                    and tactile_profiles.get(hand, {}).get("enabled", False)):
+                profile = None
+            params = profile["parameters"] if profile else tactile[hand]
+            self._rows[hand] = dict(hand=hand, group_id=profile["id"] if profile else "",
+                control_socket=(params.get("control_socket") or str(default_hand_control_socket(hand))) if profile else "",
                 tactile_socket=tactile.get(hand, {}).get("display_socket") or str(default_workbench_socket(hand)),
-                resources=params.get("resources", ""), port=params.get("port", ""),
+                resources=params.get("resources", ""), port=params.get("port", "") if profile else "",
                 tactile_port=tactile.get(hand, {}).get("port", ""),
                 glove_python=params.get("glove_python", ""),
                 service_instance_id="", service_state="unavailable", connected=False,
                 raw_fresh=False, calibration_ready=False, pose_valid=False,
-                session_id="", profile_version=0, busy=False, age_s=None, detail="手部服务尚未启动。")
+                session_id="", profile_version=0, busy=False, age_s=None,
+                detail="手部服务尚未启动。" if profile else "纯触觉显示；未配置动捕服务。")
 
     def start(self):
         self._thread = threading.Thread(target=self._run, name="managed-hands", daemon=True)
@@ -147,6 +156,8 @@ class HandControl:
     def _poll(self, hand):
         with self._lock:
             path = self._rows[hand]["control_socket"]
+        if not path:
+            return  # Tactile-only presentation never probes or invents an IMU service.
         try:
             reply = self._exchange(path, dict(schema_version=1, op="snapshot", hand=hand), timeout=.25)
             if reply.get("hand") != hand or not reply.get("service_instance_id"):

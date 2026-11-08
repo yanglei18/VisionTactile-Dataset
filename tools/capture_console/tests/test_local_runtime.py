@@ -101,13 +101,13 @@ def runtime_factory(tmp_path, monkeypatch):
 
     monkeypatch.setattr(local_runtime.subprocess, "Popen", popen)
 
-    def factory(*, directory=None, start=True, source=None, child_code=None):
+    def factory(*, directory=None, start=True, source=None, child_code=None, expected_software=None):
         index = len(runtimes)
         directory = directory or tmp_path / str(index)
         source = source or tmp_path / f"snapshot-{index}.json"
         if not source.exists():
             atomic_json(source, idle_snapshot())
-        runtime = DesktopRuntime(tmp_path, directory)
+        runtime = DesktopRuntime(tmp_path, directory, expected_software=expected_software)
         # Keep Unix paths below the kernel limit despite descriptive pytest ids.
         runtime.socket_path = tmp_path / (str(index) + ".sock")
         if directory in [value.settings.directory for value in runtimes]:
@@ -159,10 +159,12 @@ def probe_connection(runtime_factory, monkeypatch):
     calls = []
 
     class Connection:
-        def __init__(self, delays, *, uid=None, wrong_request=False):
+        def __init__(self, delays, *, uid=None, wrong_request=False, version=4, snapshot=None, pid=123):
             self.delays = iter(delays)
             self.uid = os.getuid() if uid is None else uid
             self.wrong_request = wrong_request
+            self.version, self.snapshot, self.pid = version, snapshot, pid
+            self.requests = []
             self.timeouts = []
             self.closed = False
 
@@ -180,12 +182,13 @@ def probe_connection(runtime_factory, monkeypatch):
             clock[0] += .05
 
         def getsockopt(self, *_):
-            return local_runtime.struct.pack("3i", 123, self.uid, os.getgid())
+            return local_runtime.struct.pack("3i", self.pid, self.uid, os.getgid())
 
         def sendall(self, data):
             request = json.loads(data)
-            response = dict(version=4, request_id="wrong" if self.wrong_request else request["request_id"],
-                            ok=True, snapshot=idle_snapshot())
+            self.requests.append(request)
+            response = dict(version=self.version, request_id="wrong" if self.wrong_request else request["request_id"],
+                            ok=True, snapshot=self.snapshot if self.snapshot is not None else idle_snapshot())
             self.remaining = local_runtime.encode_message(response)
             clock[0] += .05
 
@@ -1134,6 +1137,7 @@ def test_hand_calibration_prevents_desktop_configuration_restart():
 
 def test_desktop_probes_hand_protocol_before_explicit_legacy_fallback(monkeypatch):
     runtime = object.__new__(DesktopRuntime)
+    runtime.expected_software = None
     versions = []
     def probe(version):
         versions.append(version)
@@ -1142,7 +1146,7 @@ def test_desktop_probes_hand_protocol_before_explicit_legacy_fallback(monkeypatc
         return "legacy", 123
     monkeypatch.setattr(runtime, "_probe_version", probe)
     assert runtime._probe() == ("legacy", 123)
-    assert versions == [7, 6, 4]
+    assert versions == [8, 7, 6, 4]
     versions.clear()
     def timeout(version):
         versions.append(version)
@@ -1150,4 +1154,80 @@ def test_desktop_probes_hand_protocol_before_explicit_legacy_fallback(monkeypatc
     monkeypatch.setattr(runtime, "_probe_version", timeout)
     with pytest.raises(TimeoutError):
         runtime._probe()
-    assert versions == [7]
+    assert versions == [8]
+
+
+def candidate_software():
+    return dict(source_root=str(Path.cwd()), source_revision="a" * 40, source_sha256="b" * 64,
+                configuration_path="/candidate/workstation.json")
+
+
+def test_candidate_desktop_never_falls_back_from_v8(monkeypatch):
+    runtime = object.__new__(DesktopRuntime)
+    runtime.expected_software = candidate_software()
+    versions = []
+    def probe(version):
+        versions.append(version)
+        if version == 8:
+            raise local_runtime._UnsupportedManagerProtocol("old manager")
+        return "legacy", 123
+    monkeypatch.setattr(runtime, "_probe_version", probe)
+    with pytest.raises(local_runtime._UnsupportedManagerProtocol, match="old manager"):
+        runtime._probe()
+    assert versions == [8]
+
+
+@pytest.mark.parametrize(("field", "other"), [
+    ("source_root", "/other/checkout"), ("source_sha256", "c" * 64),
+    ("configuration_path", "/global/workstation.json"),
+])
+def test_candidate_desktop_rejects_other_backend_identity(probe_connection, field, other):
+    from vt_capture_core import IdentityControlSnapshot
+    expected = candidate_software()
+    snapshot = IdentityControlSnapshot("live", "manager", software=expected | {field: other}).to_dict()
+    runtime, connection, _, calls = probe_connection([(.01, True)], version=8, snapshot=snapshot, pid=os.getpid())
+    runtime.expected_software = expected
+    runtime.repo_root = Path.cwd()
+    with pytest.raises(ValueError, match="来源与候选版本不一致"):
+        runtime._probe()
+    assert len(calls) == 1 and connection.closed
+    assert [request["version"] for request in connection.requests] == [8]
+
+
+@pytest.mark.parametrize("matching_cwd", [False, True])
+def test_candidate_desktop_checks_peer_working_directory(probe_connection, matching_cwd):
+    from vt_capture_core import IdentityControlSnapshot
+    expected = candidate_software()
+    snapshot = IdentityControlSnapshot("live", "manager", software=expected).to_dict()
+    runtime, connection, _, _ = probe_connection([(.01, True)], version=8, snapshot=snapshot, pid=os.getpid())
+    runtime.expected_software = expected
+    if matching_cwd:
+        runtime.repo_root = Path.cwd()
+        assert runtime._probe() == (snapshot, os.getpid())
+    else:
+        with pytest.raises(ValueError, match="工作目录不匹配"):
+            runtime._probe()
+    assert connection.closed
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_candidate_refuses_existing_legacy_backend_without_signalling_or_relaunching(runtime_factory, monkeypatch, owned):
+    first = runtime_factory()
+    eventually(lambda: first.status["state"] == "ready")
+    first.close()
+    first._thread.join(timeout=2.)
+    if not owned:
+        first._registry_path.unlink()
+    before = first.settings_path.read_bytes()
+    inode = first.socket_path.lstat().st_ino
+    replacement = runtime_factory(directory=first.settings.directory, source=first.source, start=False,
+                                  expected_software=candidate_software())
+    replacement.STARTUP_TIMEOUT_S = .2
+    monkeypatch.setattr(replacement, "_signal_owned", lambda *a, **kw: pytest.fail("legacy process signalled"))
+    replacement.start()
+    eventually(lambda: replacement.status["state"] == "error")
+    assert len(runtime_factory.children) == 1 and runtime_factory.children[0].poll() is None
+    assert first.socket_path.lstat().st_ino == inode
+    assert replacement.settings_path.read_bytes() == before
+    with pytest.raises(ValueError):
+        replacement.fresh_snapshot()
