@@ -18,6 +18,8 @@ import queue
 import threading
 import time
 
+from . import host_clock
+
 
 def _open_stream(path):
     return Path(path).open("x", encoding="utf-8")
@@ -37,14 +39,14 @@ def _write_results(paths, incoming, status, written, flushed, flush_interval_s, 
         for name in ("orientations", "poses"):
             streams.append(stream_factory(paths[name]))
         status.send(("ready", None))
-        last_flush = time.monotonic()
+        last_flush = host_clock.monotonic()
         while True:
             if not incoming.poll(.05):
                 if parent is not None and not parent.is_alive():
                     raise OSError("result recording parent exited before drain completed")
-                if time.monotonic() - last_flush >= flush_interval_s:
+                if host_clock.monotonic() - last_flush >= flush_interval_s:
                     flush()
-                    last_flush = time.monotonic()
+                    last_flush = host_clock.monotonic()
                 continue
             try:
                 payload = incoming.recv_bytes()
@@ -61,9 +63,9 @@ def _write_results(paths, incoming, status, written, flushed, flush_interval_s, 
             for stream, line in zip(streams, lines):
                 stream.write(line)
             written.value += 1
-            if force_flush or time.monotonic() - last_flush >= flush_interval_s:
+            if force_flush or host_clock.monotonic() - last_flush >= flush_interval_s:
                 flush()
-                last_flush = time.monotonic()
+                last_flush = host_clock.monotonic()
         flush()
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
@@ -151,13 +153,13 @@ class ProcessResultRecorder:
             self._error = f"result recording sender could not start: {type(exc).__name__}: {exc}"
             self._stop.set()
             self._outgoing.close()
-        deadline = time.monotonic() + startup_timeout
+        deadline = host_clock.monotonic() + startup_timeout
         while True:
             with self._lock:
                 self._refresh()
                 if self._ready or self._error:
                     break
-            remaining = deadline - time.monotonic()
+            remaining = deadline - host_clock.monotonic()
             if remaining <= 0:
                 with self._lock:
                     self._error = "result recording startup timed out before files were ready"
@@ -260,11 +262,11 @@ class ProcessResultRecorder:
         return self.process.is_alive() or self._sender.is_alive()
 
     def join(self, timeout=None):
-        deadline = None if timeout is None else time.monotonic() + max(0., timeout)
+        deadline = None if timeout is None else host_clock.monotonic() + max(0., timeout)
         for worker in (self.process, self._sender):
             if worker is self._sender and not self._sender_started:
                 continue
-            worker.join(None if deadline is None else max(0., deadline - time.monotonic()))
+            worker.join(None if deadline is None else max(0., deadline - host_clock.monotonic()))
         with self._lock:
             self._refresh()
 

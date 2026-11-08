@@ -38,7 +38,7 @@ class GloveViewControls(QWidget):
         row.addStretch()
         self.calibration_button = QPushButton(tr('标定'))
         self.calibration_button.setAutoDefault(False)
-        self.calibration_button.setToolTip(tr('打开本手的原标定工具；已运行时切换窗口，不另建采集进程'))
+        self.calibration_button.setToolTip(tr('在工作台预览中展开本手标定；采集由后台手部服务负责'))
         self.calibration_button.clicked.connect(self.calibration_requested)
         row.addWidget(self.calibration_button)
         self.expand_button = None
@@ -92,7 +92,7 @@ class GloveDetailDialog(QDialog):
         self.preview.glove_view_changed.connect(lambda *_: self.controls.sync(self.preview))
         self.preview.glove_display_changed.connect(self._refresh_status)
         layout.addWidget(self.preview, 1)
-        note = QLabel(tr('来自手势数据主题的解算结果 · 腕部相对坐标，非世界定位。\n拖动旋转、滚轮缩放；标定仍在原 FSGlove 窗口中完成。'))
+        note = QLabel(tr('来自手势数据主题的解算结果 · 腕部相对坐标，非世界定位。\n拖动旋转、滚轮缩放；标定在工作台内嵌手部面板中完成。'))
         note.setWordWrap(True)
         note.setObjectName("muted")
         layout.addWidget(note)

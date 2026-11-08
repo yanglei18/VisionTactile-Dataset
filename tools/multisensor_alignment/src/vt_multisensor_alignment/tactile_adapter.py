@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from numbers import Integral
+import struct
 
 import numpy as np
 
@@ -12,12 +13,43 @@ from .identity import check_identity
 
 
 TACTILE_SAMPLE_TYPE = "vt_tactile_msgs/msg/TactileSampleArray"
+TACTILE_ROW44_SAMPLE_TYPE = "vt_tactile_msgs/msg/TactileRow44Array"
+TACTILE_SAMPLE_TYPES = frozenset((TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE))
 DEFAULT_TACTILE_TOPIC = "/gloves/right/tactile/samples"
 # The STM32 archive is unchanged: 80 rows, 8 groups and 10 values per packet.
 # Only its upper-left 20x20 addresses are physical sensors on this glove.
 WIRE_ROWS = WIRE_COLS = 80
 ROWS = COLS = 20
 GROUPS = 8
+
+
+def validate_serialized_schema(type_name, payload):
+    """Check the common Header/schema prefix before decoding variable arrays.
+
+    Some historical row44 prototypes reused the legacy ROS type name with a
+    different fixed-array layout. Never feed those bytes into the legacy IDL
+    and hope a later ADC-length check detects it. Explicitly versioned types
+    are required; this guard does not guess or migrate unidentified archives.
+    """
+    schemas = {TACTILE_SAMPLE_TYPE: {1}, TACTILE_ROW44_SAMPLE_TYPE: {2},
+               "vt_tactile_msgs/msg/TactileState": {1, 2},
+               "vt_tactile_msgs/msg/TactileGridState": {3}}
+    if type_name not in schemas:
+        return
+    view = memoryview(payload)
+    if len(view) < 18 or bytes(view[:2]) not in (b"\0\0", b"\0\1"):
+        raise ValueError("Unsupported tactile CDR header; refusing schema inference")
+    endian = "<" if view[1] == 1 else ">"
+    length = struct.unpack_from(endian + "I", view, 12)[0]
+    if not 1 <= length <= 4096 or 16 + length > len(view) or view[15 + length] != 0:
+        raise ValueError("Invalid tactile CDR Header.frame_id")
+    offset = (16 + length + 1) & ~1
+    if offset + 2 > len(view):
+        raise ValueError("Missing tactile CDR schema version")
+    version = struct.unpack_from(endian + "H", view, offset)[0]
+    if version not in schemas[type_name]:
+        raise ValueError(f"Tactile type/schema mismatch: {type_name} schema {version}; "
+                         "unversioned historical row44 archives require explicit migration evidence")
 
 
 def _uint(value: object, name: str, bits: int = 64) -> int:
@@ -38,6 +70,13 @@ class TactileBlock:
 
 
 @dataclass(frozen=True)
+class TactileRow:
+    """Native row44 measurement; no invented group or firmware status."""
+    row: int
+    adc: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class TactileEvent:
     reference: MessageRef
     hand: str
@@ -53,16 +92,17 @@ class TactileEvent:
     producer_dropped_total: int
     discarded_bytes_total: int
     malformed_packets_total: int
-    blocks: tuple[TactileBlock, ...]
+    blocks: tuple[TactileBlock | TactileRow, ...]
     usable: bool
     barriers: tuple[str, ...]
     # Scheduling uses source clock high-water, never rosbag receive time.
     effective_ns: int
     boundary_ns: int | None
+    source_type: str = TACTILE_SAMPLE_TYPE
 
     def metadata(self) -> dict[str, object]:
         return {
-            "message": self.reference.as_document(),
+            "message": self.reference.as_document(), "source_type": self.source_type,
             "hand": self.hand, "session_id": self.session_id,
             "stream_epoch": self.stream_epoch, "sequence": self.sequence,
             "first_packet_index": self.first_packet_index,
@@ -82,7 +122,11 @@ class TactileContinuity:
     """Validate the v1 contract and identify resets without retaining payloads."""
 
     def __init__(self, *, max_clock_step_ns: int = 5_000_000,
-                 expected_hand: str | None = None, expected_frame_id: str | None = None) -> None:
+                 expected_hand: str | None = None, expected_frame_id: str | None = None,
+                 source_type: str = TACTILE_SAMPLE_TYPE) -> None:
+        if source_type not in TACTILE_SAMPLE_TYPES:
+            raise ValueError("unsupported tactile source type")
+        self.source_type = source_type
         self.max_clock_step_ns = _uint(max_clock_step_ns, "max_clock_step_ns")
         self.expected_hand, self.expected_frame_id = expected_hand, expected_frame_id
         self.previous: TactileEvent | None = None
@@ -102,7 +146,8 @@ class TactileContinuity:
     def _decode(self, message: object, reference: MessageRef, *, header_stamp_ns: int) -> TactileEvent:
         check_identity(message, reference.topic, expected_hand=self.expected_hand,
                        expected_frame_id=self.expected_frame_id)
-        if _uint(message.schema_version, "schema_version", 16) != 1:
+        expected_schema = 2 if self.source_type == TACTILE_ROW44_SAMPLE_TYPE else 1
+        if _uint(message.schema_version, "schema_version", 16) != expected_schema:
             raise ValueError("unsupported TactileSampleArray schema_version")
         if message.hand not in {"left", "right"}:
             raise ValueError("TactileSampleArray hand must be left or right")
@@ -126,11 +171,16 @@ class TactileContinuity:
         blocks = []
         for block in message.blocks:
             row = _uint(block.row, "row", 16)
-            group = _uint(block.column_group, "column_group", 8)
             adc = tuple(_uint(value, "adc", 16) for value in block.adc)
-            if row >= WIRE_ROWS or group >= GROUPS or len(adc) != 10:
-                raise ValueError("TactileSampleArray block must address 10 cells in the 80x80 stride-8 layout")
-            blocks.append(TactileBlock(row, group, _uint(block.status_raw, "status_raw", 8), adc))
+            if self.source_type == TACTILE_ROW44_SAMPLE_TYPE:
+                if row >= ROWS or len(adc) != COLS:
+                    raise ValueError("row44 requires 20 ADC values in row 0..19")
+                blocks.append(TactileRow(row, adc))
+            else:
+                group = _uint(block.column_group, "column_group", 8)
+                if row >= WIRE_ROWS or group >= GROUPS or len(adc) != 10:
+                    raise ValueError("TactileSampleArray block must address 10 cells in the 80x80 stride-8 layout")
+                blocks.append(TactileBlock(row, group, _uint(block.status_raw, "status_raw", 8), adc))
         barriers: list[str] = []
         timing_ok = (message.time_valid and rt > 0 and mono > 0
                      and message.clock_domain == "CLOCK_MONOTONIC"
@@ -199,7 +249,7 @@ class TactileContinuity:
             malformed_packets_total=integers["malformed_packets_total"],
             blocks=tuple(blocks), usable=usable, barriers=tuple(barriers),
             effective_ns=max(self.highwater_ns, rt),
-            boundary_ns=self.highwater_ns if previous is not None else None,
+            boundary_ns=self.highwater_ns if previous is not None else None, source_type=self.source_type,
         )
         self.highwater_ns = event.effective_ns
         # A rejected/repeated event must not lower these admission bounds and
@@ -215,11 +265,12 @@ class TactileSampleAdapter:
     """Index valid batches with conservative bounds; do not retain dense grids."""
 
     def __init__(self, stream_name: str, *, max_clock_step_ns: int = 5_000_000,
-                 expected_hand: str | None = None, expected_frame_id: str | None = None) -> None:
+                 expected_hand: str | None = None, expected_frame_id: str | None = None,
+                 source_type: str = TACTILE_SAMPLE_TYPE) -> None:
         self.stream_name = stream_name
         self.continuity = TactileContinuity(max_clock_step_ns=max_clock_step_ns,
                                           expected_hand=expected_hand,
-                                          expected_frame_id=expected_frame_id)
+                                          expected_frame_id=expected_frame_id, source_type=source_type)
         self.clock_observations: dict[str, list[ClockObservation]] = {}
         self._samples: list[GenericSample] = []
         self._run: list[GenericSample] = []
@@ -257,6 +308,11 @@ class TactileGrid:
         self.block_monotonic_ns = np.zeros((ROWS, GROUPS), dtype=np.uint64)
         self.block_message_sequence = np.full((ROWS, GROUPS), -1, dtype=np.int64)
         self.block_packet_index = np.full((ROWS, GROUPS), -1, dtype=np.int64)
+        self.row_realtime_ns = np.zeros(ROWS, dtype=np.uint64)
+        self.row_monotonic_ns = np.zeros(ROWS, dtype=np.uint64)
+        self.row_message_sequence = np.full(ROWS, -1, dtype=np.int64)
+        self.row_packet_index = np.full(ROWS, -1, dtype=np.int64)
+        self.source_type = TACTILE_SAMPLE_TYPE
         self.last_event: TactileEvent | None = None
         self.last_contributing_event: TactileEvent | None = None
         self.last_barrier: dict[str, object] | None = None
@@ -268,9 +324,16 @@ class TactileGrid:
         self.block_monotonic_ns.fill(0)
         self.block_message_sequence.fill(-1)
         self.block_packet_index.fill(-1)
+        self.row_realtime_ns.fill(0)
+        self.row_monotonic_ns.fill(0)
+        self.row_message_sequence.fill(-1)
+        self.row_packet_index.fill(-1)
         self.last_contributing_event = None
 
     def apply(self, event: TactileEvent) -> None:
+        if self.source_type != event.source_type:
+            self.clear()
+            self.source_type = event.source_type
         if event.barriers:
             self.clear()
             self.barrier_count += 1
@@ -279,9 +342,18 @@ class TactileGrid:
         if not event.usable:
             return
         for index, block in enumerate(event.blocks):
-            row, group = block.row, block.column_group
+            row = block.row
             if row >= ROWS:
                 continue
+            if event.source_type == TACTILE_ROW44_SAMPLE_TYPE:
+                self.adc[row, :] = block.adc
+                self.row_realtime_ns[row] = event.realtime_ns
+                self.row_monotonic_ns[row] = event.monotonic_ns
+                self.row_message_sequence[row] = event.reference.sequence
+                self.row_packet_index[row] = event.first_packet_index + index
+                self.last_contributing_event = event
+                continue
+            group = block.column_group
             count = len(range(group, COLS, GROUPS))
             self.adc[row, group::GROUPS] = block.adc[:count]
             self.block_realtime_ns[row, group] = event.realtime_ns
@@ -293,14 +365,16 @@ class TactileGrid:
     def snapshot(self, timestamp_ns: int, max_age_ns: int) -> dict[str, np.ndarray]:
         timestamp_ns = _uint(timestamp_ns, "timestamp_ns")
         max_age_ns = _uint(max_age_ns, "max_age_ns")
-        clocks = self.block_realtime_ns[:, np.arange(COLS) % GROUPS]
+        row44 = self.source_type == TACTILE_ROW44_SAMPLE_TYPE
+        clocks = (np.broadcast_to(self.row_realtime_ns[:, None], (ROWS, COLS)) if row44
+                  else self.block_realtime_ns[:, np.arange(COLS) % GROUPS])
         observed = (clocks > 0) & (clocks <= timestamp_ns)
         ages = np.full((ROWS, COLS), -1, dtype=np.int64)
         ages[observed] = timestamp_ns - clocks[observed]
         valid = observed & (ages <= max_age_ns)
         adc = self.adc.copy()
         adc[~valid] = 0
-        return {
+        result = {
             "timestamp_ns": np.asarray(timestamp_ns, dtype=np.uint64),
             "adc": adc, "valid_mask": valid, "age_ns": ages,
             "block_realtime_ns": self.block_realtime_ns.copy(),
@@ -308,3 +382,8 @@ class TactileGrid:
             "block_message_sequence": self.block_message_sequence.copy(),
             "block_packet_index": self.block_packet_index.copy(),
         }
+        if row44:
+            for name in ("realtime_ns", "monotonic_ns", "message_sequence", "packet_index"):
+                result.pop("block_" + name)
+                result["row_" + name] = getattr(self, "row_" + name).copy()
+        return result

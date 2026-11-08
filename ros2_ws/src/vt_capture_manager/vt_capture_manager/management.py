@@ -60,9 +60,11 @@ class ManagementService:
         self.processes = None
         self.geometry_recorder = None
         self.calibration = None
+        self.hands = None
         self.calibration_catalog = dict(cameras=[], trackers=[])
         self.controller_present = lambda: False
         self._device_request_id = None
+        self._hand_request_id = None
         self._desktop_admission = None
         if admission_lock is not None:
             from .desktop_admission import DesktopAdmission
@@ -86,9 +88,23 @@ class ManagementService:
         with self._mutex:
             if self.calibration is not None and self.calibration.busy:
                 return False, "标定任务正在运行；请先取消或等待完成。"
+            if self.hands is not None and self.hands.busy and action != "device.stop":
+                return False, "手部标定操作尚未结束，请先取消或等待完成。"
             return self._idle_allowed(action)
 
     def calibration_allowed(self):
+        with self._mutex:
+            if self.hands is not None and self.hands.busy:
+                return False, "手部标定操作尚未结束。"
+            return self._calibration_idle_allowed()
+
+    def hand_calibration_allowed(self):
+        with self._mutex:
+            if self.calibration is not None and self.calibration.busy:
+                return False, "相机或追踪器标定正在进行，请等待完成。"
+            return self._calibration_idle_allowed()
+
+    def _calibration_idle_allowed(self):
         """Called under the same admission lock as capture START and activation."""
         with self._mutex:
             if self.processes is not None and self.processes.busy:
@@ -136,6 +152,7 @@ class ManagementService:
         with self._mutex:
             return (not self._stop.is_set() and self.enabled and self.model.config.quality_enabled
                     and not (self.calibration is not None and self.calibration.busy)
+                    and not (self.hands is not None and self.hands.busy)
                     and self._fresh_context() and not self._controller["recorder_alive"]
                     and self._controller["state"] in (0, 5, 6) and not self.store.active_trials())
 
@@ -183,6 +200,8 @@ class ManagementService:
             value["capabilities"]["record"] = bool(can_manage and not (self.processes and self.processes.busy))
             if self.calibration is not None and self.calibration.busy:
                 value["capabilities"]["record"] = False
+            if self.hands is not None and self.hands.busy:
+                value["capabilities"]["record"] = False
             if version >= 4:
                 value["process_control"] = self.processes.snapshot() if self.processes else dict(enabled=False, groups=[])
                 value["capabilities"]["device_control"] = self.processes is not None
@@ -197,6 +216,13 @@ class ManagementService:
                 value["calibration"] = self.calibration.snapshot() if self.calibration is not None else empty_calibration()
                 value["calibration"].update(deepcopy(self.calibration_catalog))
                 value["capabilities"]["calibration"] = bool(value["calibration"]["enabled"])
+            if version >= 7:
+                value["hand_sessions"] = self.hands.snapshot() if self.hands else {}
+                value["capabilities"]["hand_control"] = self.hands is not None
+                if self.hands is not None and self._hand_request_id:
+                    operation = self.hands.operation(self._hand_request_id)
+                    if operation is not None:
+                        management["operation"] = operation
             return value
 
     def dispatch(self, request):
@@ -218,7 +244,15 @@ class ManagementService:
         version, request_id, command = request["version"], request["request_id"], request["command"]
         operation = None
         trial_details = None
-        if command.startswith("calibration."):
+        if command == "hand.command":
+            with self._mutex:
+                if self.hands is None:
+                    operation = receipt(request_id, "rejected", "hand_control_disabled", "手部控制服务未启用。")
+                else:
+                    operation = self.hands.command(request["params"], request_id)
+                    self._hand_request_id = request_id
+                    self._device_request_id = None
+        elif command.startswith("calibration."):
             with self._mutex:
                 if self.calibration is None:
                     operation = receipt(request_id, "rejected", "calibration_disabled", "Calibration service is not enabled.")
@@ -233,6 +267,7 @@ class ManagementService:
                 else:
                     operation = self.processes.command(command, request["params"], request_id)
                     self._device_request_id = request_id
+                    self._hand_request_id = None
         elif command == "trial.details":
             trial_details = self.store.details(request["params"]["trial_id"]) if self.store else None
             if trial_details is None:
@@ -240,6 +275,7 @@ class ManagementService:
         elif command not in {"snapshot", "ping"}:
             with self._mutex:
                 self._device_request_id = None
+                self._hand_request_id = None
             try:
                 operation = self._intent(request_id, command, request.get("params", {}))
             except Exception as exc:
@@ -320,6 +356,8 @@ class ManagementService:
             if self._commands.full():
                 return reject("queue_full", "Control queue is full; no command was sent.")
             if command == "capture.start":
+                if self.hands is not None and self.hands.busy:
+                    return reject("hand_calibration_busy", "手部标定操作正在进行，请等待结束后再开始录制。")
                 if self.calibration is not None and self.calibration.busy:
                     return reject("calibration_busy", "标定任务正在运行，请等待结束后再开始录制。")
                 if self.processes and self.processes.busy:
@@ -591,6 +629,8 @@ class ManagementService:
                 raise RuntimeError("Control worker did not shut down within the bounded timeout")
         if self.calibration is not None:
             self.calibration.close()
+        if self.hands is not None:
+            self.hands.close()
         if self.store:
             self.store.close()
         if self._desktop_admission is not None:

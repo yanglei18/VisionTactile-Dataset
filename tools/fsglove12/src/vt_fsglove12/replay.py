@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .arrival_gaps import ArrivalGapMonitor, REFERENCE_LOSS_EVENTS
 from .sensor_quality import GyroNearRailMonitor, quality_warnings
 from .input_contract import describe_input_contract, effective_input_scales, raw_to_si, validate_input_contract
 from .input_diagnostics import InputObservationMonitor, describe_filter_state
@@ -68,19 +69,6 @@ def _configuration(config):
     return settings, scales
 
 
-def _record_gap(diagnostics, node, gap, stamp, *, reset):
-    """Persist forward-gap decisions; clock rollback is tracked separately.
-
-    Call only for gaps above the display-staleness threshold. Counts describe
-    host arrival intervals, not verified device loss; no samples are fabricated.
-    ``filter_resets`` counts gap-triggered resets, not global clock rollbacks.
-    """
-    item = diagnostics.setdefault(node, dict(short_gaps=0, filter_resets=0))
-    item["filter_resets" if reset else "short_gaps"] += 1
-    item.update(last_gap_s=gap, last_gap_timestamp_s=stamp,
-                last_action="filter_reset" if reset else "filter_preserved")
-
-
 def _raw_rows(reader):
     for line, row in enumerate(reader, 2):
         try:
@@ -107,9 +95,8 @@ def replay_raw(raw_path, config: dict, output_path, *, max_frames=None) -> dict:
     an exception; an already-created partial output is retained, never reported
     as a completed replay. ``sample_index`` is a cumulative 1-based per-board
     count. ``epoch`` changes whenever that board's VQF is restarted. Visibility
-    uses ``stale_after_s``; only arrivals exceeding ``filter_reset_gap_s`` reset
-    VQF. Short gaps preserve nominal-sample integration, not a claim of verified
-    continuity. Host intervals cannot detect hidden USB/firmware sample loss.
+    uses ``stale_after_s``. Long gaps and persistent node-specific sampling
+    deficits reset VQF. A shared USB delay alone does not change the epoch.
     """
     validate_input_contract(config)
     parameters = vqf_parameters(config)
@@ -135,7 +122,8 @@ def replay_raw(raw_path, config: dict, output_path, *, max_frames=None) -> dict:
     frames = rows = resets = 0
     stop_reason = "eof"
     pending_warnings = set()
-    gap_diagnostics = {}
+    arrival_gaps = ArrivalGapMonitor(settings)
+    gap_diagnostics = arrival_gaps.diagnostics
     quality_monitor = GyroNearRailMonitor()
     input_observation = InputObservationMonitor(settings["sample_rate_hz"])
     input_guard = ImuInputGuard(config)
@@ -161,24 +149,19 @@ def replay_raw(raw_path, config: dict, output_path, *, max_frames=None) -> dict:
                         if key in states:
                             counts[key]["clock_resets"] += 1
                     states.clear()
+                    arrival_gaps.clear_reference()
                     input_guard.reset()
                 for _, node, values in batch:
                     rows += 1
                     key = str(node)
                     previous = states.get(key)
-                    if previous is not None and stamp - previous["stamp"] > stale_after:
-                        gap = stamp - previous["stamp"]
-                        reset = gap > settings["filter_reset_gap_s"]
-                        _record_gap(gap_diagnostics, key, gap, stamp, reset=reset)
-                        if reset:
+                    gap_event = arrival_gaps.observe(key, stamp)
+                    if gap_event:
+                        pending_warnings.add(f"node_{key}_{gap_event}")
+                        if gap_event in REFERENCE_LOSS_EVENTS:
                             epochs[key] += 1
-                            counts[key]["gaps"] += 1
-                            pending_warnings.add(f"node_{node}_gap_filter_reinitialized")
                             previous = None
                             input_guard.reset(key)
-                        else:
-                            counts[key]["short_gaps"] += 1
-                            pending_warnings.add(f"node_{node}_short_gap_filter_preserved")
                     if previous is None:
                         previous = dict(filter=VQF(period, **parameters), stamp=stamp)
                         states[key] = previous
@@ -229,6 +212,8 @@ def replay_raw(raw_path, config: dict, output_path, *, max_frames=None) -> dict:
                             orientation_valid=state["input_filter"]["orientation_valid"],
                             fusion_gyro_rad_s=list(state["fusion_gyro_rad_s"]),
                             fusion_accel_m_s2=list(state["fusion_accel_m_s2"]))
+                    if arrival_gaps.is_pending(key):
+                        nodes[key].update(orientation_valid=False, continuity="awaiting_backlog")
                 frame = dict(schema_version=1, timestamp_s=stamp, frame_index=frames,
                              orientation_source="vqf_6d",
                              orientation_frame="independent_initial_heading",
@@ -248,6 +233,8 @@ def replay_raw(raw_path, config: dict, output_path, *, max_frames=None) -> dict:
                 if max_frames is not None and frames >= max_frames:
                     stop_reason = "max_frames"
                     break
+    for key, item in gap_diagnostics.items():
+        counts[key].update(gaps=item["filter_resets"], short_gaps=item["short_gaps"])
     quality = quality_monitor.snapshot(last_input if last_input is not None else 0.)
     return dict(schema_version=1, kind="vt_fsglove12.orientation_replay", status="completed",
                 stop_reason=stop_reason, raw_path=str(source.resolve()),

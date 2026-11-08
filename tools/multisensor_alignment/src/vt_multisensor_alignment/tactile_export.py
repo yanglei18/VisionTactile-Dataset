@@ -20,7 +20,7 @@ from .export import TOOL_VERSION
 from .provenance import verify_alignment_source
 from .tactile_adapter import (
     COLS, ROWS, WIRE_COLS, WIRE_ROWS,
-    DEFAULT_TACTILE_TOPIC, TACTILE_SAMPLE_TYPE, TactileContinuity,
+    DEFAULT_TACTILE_TOPIC, TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE, TACTILE_SAMPLE_TYPES, TactileContinuity,
     TactileEvent, TactileGrid,
 )
 
@@ -35,17 +35,18 @@ def iter_tactile_events(
     if not path.is_dir():
         raise FileNotFoundError(f"rosbag2 directory does not exist: {path}")
     reader = _open_reader(path)
-    if _message_types(reader).get(topic) != TACTILE_SAMPLE_TYPE:
+    source_type = _message_types(reader).get(topic)
+    if source_type not in TACTILE_SAMPLE_TYPES:
         raise ValueError(f"tactile source topic is missing or has the wrong type: {topic}")
     # Let storage skip camera payloads, not merely discard them after read_next.
     # Sequence below is still local to this topic, matching alignment MessageRef.
     import rosbag2_py
     reader.set_filter(rosbag2_py.StorageFilter(topics=[topic]))
-    deserialize = _deserializer(TACTILE_SAMPLE_TYPE)
-    hand, frame = stream_identity(topic, TACTILE_SAMPLE_TYPE, expected_hand=expected_hand,
+    deserialize = _deserializer(source_type)
+    hand, frame = stream_identity(topic, source_type, expected_hand=expected_hand,
                                   expected_frame_id=expected_frame_id)
     continuity = TactileContinuity(max_clock_step_ns=max_clock_step_ns,
-                                  expected_hand=hand, expected_frame_id=frame)
+                                  expected_hand=hand, expected_frame_id=frame, source_type=source_type)
     sequence = 0
     while reader.has_next():
         current_topic, payload, bag_timestamp_ns = reader.read_next()
@@ -103,6 +104,8 @@ def reconstruct_frames(
         arrays = grid.snapshot(timestamp, max_age_ns)
         metadata = {
             "frame_index": frame_index, "reference_time_ns": timestamp,
+            "source_type": (grid.last_event.source_type if grid.last_event is not None
+                            else pending.source_type if pending is not None else None),
             "valid_cell_count": int(arrays["valid_mask"].sum()),
             "last_source_event": grid.last_event.metadata() if grid.last_event else None,
             "last_contributing_event": (grid.last_contributing_event.metadata()
@@ -146,8 +149,11 @@ def export_tactile(
         targets = iter_alignment_targets(aligned_frames)
         frames = reconstruct_frames(events, targets, max_age_ns=round(max_age_ms * 1_000_000))
         quality = _QualityAccumulator(max_age_ns=round(max_age_ms * 1_000_000))
+        source_types = set()
         with (temporary / "source_metadata.jsonl").open("w", encoding="utf-8") as output:
             for arrays, metadata in frames:
+                if metadata.get("source_type") is not None:
+                    source_types.add(metadata["source_type"])
                 name = f"frames/{metadata['frame_index']:09d}.npz"
                 np.savez_compressed(temporary / name, **arrays)
                 (temporary / name).chmod(0o600)
@@ -164,35 +170,44 @@ def export_tactile(
             json.dump(quality_report, output, indent=2, allow_nan=False)
             output.write("\n")
         (temporary / "quality_report.json").chmod(0o600)
+        if len(source_types) > 1:
+            raise ValueError("tactile source type changed within one recording")
+        source_type = next(iter(source_types), None)
+        row44 = source_type == TACTILE_ROW44_SAMPLE_TYPE
         manifest = {
             "schema_version": 2, "source_bag": str(Path(bag_path).resolve()),
             "tool": "vt-multisensor-alignment", "tool_version": TOOL_VERSION,
             "provenance": provenance, "quality_summary": quality_report,
             "aligned_frames": str(Path(aligned_frames).resolve()),
-            "source_topic": topic, "source_type": TACTILE_SAMPLE_TYPE,
+            "source_topic": topic, "source_type": source_type,
             "expected_hand": hand, "expected_frame_id": frame,
             "frame_count": quality.frame_count,
             "frames_with_valid_cells": quality.frame_count - quality.empty_frames,
             "rows": ROWS, "cols": COLS, "unit": "adc_counts",
-            "layout_id": "row20_col_group_stride8_v2",
-            "layout": "wire column=column_group+8*k; retain row<20 and column<20",
-            "source_schema_version": 1,
-            "wire_rows": WIRE_ROWS, "wire_cols": WIRE_COLS,
+            "layout_id": "row20_col20_v3" if row44 else "row20_col_group_stride8_v2",
+            "layout": "native consecutive columns, one row per packet" if row44 else "wire column=column_group+8*k; retain row<20 and column<20",
+            "source_schema_version": 2 if row44 else 1,
+            "wire_rows": ROWS if row44 else WIRE_ROWS, "wire_cols": COLS if row44 else WIRE_COLS,
             "physical_roi": {"row_start": 0, "row_stop": ROWS,
                              "col_start": 0, "col_stop": COLS},
-            "selection": "previous_per_block", "max_age_ms": max_age_ms,
+            "selection": "previous_per_row" if row44 else "previous_per_block", "max_age_ms": max_age_ms,
             "max_clock_step_ms": max_clock_step_ms,
             "timestamp_clock": "host_realtime_ns", "timing_source": "host_receive",
             "hardware_synchronized": False,
             "notes": ["Rolling partial coverage, not a simultaneous scan or force/pressure.",
-                      "Only the physical upper-left 20x20 is reconstructed; raw wire packets stay unchanged.",
-                      "Out-of-ROI packets count for continuity but do not refresh physical cells or their clocks.",
+                      "Each source packet keeps its native row/block clocks and original raw ADC.",
+                      "Legacy out-of-ROI packets count for continuity but do not refresh physical cells or their clocks.",
                       "Equal batch clocks are host-read completion, not simultaneous hardware sampling.",
                       "ADC zero is a valid value; use valid_mask, never nonzero(adc).",
                       "age_ns=-1 means unobserved; expired observed cells retain their nonnegative age.",
                       "Block message sequence refers to the source topic's zero-based rosbag message index.",
                       "Discontinuity intervals are conservatively invalidated using one-event lookahead."],
         }
+        if source_type is None:
+            # Empty optional streams still produce an explicit all-invalid
+            # export. Do not label the absent evidence as legacy26 or row44.
+            manifest.update(source_schema_version=None, layout_id=None, layout=None,
+                            wire_rows=None, wire_cols=None, selection="no_observed_source")
         with (temporary / "manifest.json").open("w", encoding="utf-8") as output:
             json.dump(manifest, output, indent=2, allow_nan=False)
             output.write("\n")

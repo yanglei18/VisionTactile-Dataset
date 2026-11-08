@@ -36,4 +36,4 @@ recording:
     - topic: /gloves/right/state
       type: vt_glove_msgs/msg/GloveState
     - topic: /gloves/right/tactile/samples
-      type: vt_tactile_msgs/msg/TactileSampleArray
+      type: vt_tactile_msgs/msg/TactileRow44Array

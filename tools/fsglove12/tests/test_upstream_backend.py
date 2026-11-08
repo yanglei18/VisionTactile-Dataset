@@ -153,6 +153,35 @@ def test_real_calibration_neutral_pose_and_official_result_path(official_core):
     assert profile["upstream_provenance"]["numerical_ast_modified"] is False
 
 
+@pytest.mark.parametrize("missing_slot,unavailable", [(1, {1, 2, 3}), (2, {2, 3}),
+                                                      (14, {14, 15}), (15, {15})])
+def test_lost_configured_segments_keep_only_independent_joints_live(official_core, missing_slot, unavailable):
+    from vt_fsglove12.display_pose import DisplayPoseCache
+    from vt_fsglove12.joint_quality import joint_quality_state
+
+    backend, profile, frame = fit_data(official_core)
+    angles = np.zeros((16, 3))
+    angles[[1, 2, 14, 15], 2] = np.deg2rad([10., 45., 15., 35.])
+    bend = frame_for_anatomical_angles(backend, profile, frame, angles)
+    ok = backend.solve(bend, profile)
+    cache = DisplayPoseCache()
+    cache.update(ok, context=1, now=ok["timestamp_s"])
+    late = deepcopy(bend)
+    late["timestamp_s"] += .18
+    node = next(node for node, slot in backend.config["node_to_slot"].items() if slot == missing_slot)
+    late["nodes"][node]["age_s"] = .18
+    partial = backend.solve(late, profile)
+    valid, _, _ = joint_quality_state(partial)
+    assert {i for i, good in enumerate(valid) if not good} == unavailable
+    assert all(not partial["joint_output_provenance"][i]["base_output_valid"] for i in unavailable)
+    held = cache.update(partial, context=1, now=late["timestamp_s"])
+    assert set(held["held_slots"]) == unavailable
+    assert not held["unknown_slots"]
+    for i in unavailable:
+        np.testing.assert_array_equal(held["mano_pose_rotvec"][i], ok["mano_pose_rotvec"][i])
+    assert all(joint_quality_state(backend.solve(bend, profile))[0])
+
+
 def test_configured_official_shape_parameters_are_not_silently_zeroed(official_core):
     old, captures = make_data(official_core)
     config = deepcopy(old.config)
@@ -393,10 +422,27 @@ def test_motion_diagnostics_ideal_opposite_50_degree_poses_are_nonblocking():
     assert set(diagnostic["by_slot"]) == {"0", "1", "2", "4"}
 
 
+@pytest.mark.parametrize("up,down,retry", [
+    (50., -48., []),
+    (50., 48., ["z_rot_pose_1", "z_rot_pose_2"]),
+    (4., -48., ["z_rot_pose_1"]),
+])
+def test_gravity_tilt_gate_is_independent_of_each_holds_world_heading(up, down, retry):
+    # Arbitrary physical sensor mount, with a different world-Z heading in each hold.
+    inputs = motion_inputs([up, 0., 0.], [down, 0., 0.])
+    for key, yaw in zip(("base_pose", "z_rot_pose_1", "z_rot_pose_2"), (31., 84., -83.)):
+        inputs[key] = (Rotation.from_euler("z", yaw, degrees=True) *
+                       Rotation.from_quat(inputs[key])).as_quat()
+    diag = calibration_motion_diagnostics(inputs, [0], "11")
+    assert diag["redo_steps"] == retry
+    np.testing.assert_allclose(list(diag["root"]["gravity_excursion_deg"].values()),
+                               [abs(up), abs(down)], atol=1e-10)
+
+
 @pytest.mark.parametrize("up,down,warning", [
     ([50., 0., 0.], [0., -50., 0.], "不是反向同轴"),
     ([40., 0., 0.], [-40., 0., 0.], "小于官方建议的 90"),
-    ([5., 0., 0.], [-50., 0., 0.], "不足 15"),
+    ([12., 0., 0.], [-50., 0., 0.], "不足 15"),
 ])
 def test_motion_diagnostics_warn_without_turning_guidance_into_failure(up, down, warning):
     diagnostic = calibration_motion_diagnostics(motion_inputs(up, down), [0, 1, 2], "12")
@@ -484,3 +530,110 @@ def test_uncorrected_calibration_capture_never_clears_live_hinge_history(officia
     # Explicit user disabling still resets; fitting another finger does not.
     backend.solve(frame(.6, sequence=401), {**profile, "functional_enabled": False})
     assert backend._functional_pipeline.hinges._states == {}
+
+
+def _replace_step_rotations(captures, rotations, config):
+    for step, frames in captures.items():
+        for frame in frames:
+            for node, slot in config["node_to_slot"].items():
+                frame["nodes"][node]["quat_xyzw"] = rotations[step][slot]
+
+
+@pytest.mark.parametrize("up,down,retry", [
+    ([0.02, 0., 0.], [-0.02, 0., 0.], ["z_rot_pose_1", "z_rot_pose_2"]),
+    ([0., 0., 45.], [-45., 0., 0.], ["z_rot_pose_1"]),
+    ([44., 0., 0.], [52., 0., 0.], ["z_rot_pose_1", "z_rot_pose_2"]),
+])
+def test_unobservable_palm_tilts_request_only_affected_steps(official_core, up, down, retry):
+    backend, captures = make_data(official_core)
+    _replace_step_rotations(captures, motion_inputs(up, down), backend.config)
+    with pytest.raises(OfficialCalibrationError) as caught:
+        backend.fit_calibration(captures, session_id="test-session")
+    assert list(caught.value.redo_steps) == retry
+
+
+def test_mounting_accepts_equivalent_quaternion_signs(official_core):
+    backend, captures = make_data(official_core)
+    reference = backend.fit_calibration(captures, session_id="test-session")
+    for step in captures:
+        frames = captures[step] = captures[step][:4]
+        for frame in frames[1::2]:
+            for sensor in frame["nodes"].values():
+                sensor["quat_xyzw"] = (-np.asarray(sensor["quat_xyzw"])).tolist()
+    fitted = backend.fit_calibration(captures, session_id="test-session")
+    assert fitted["nodes"].keys() == reference["nodes"].keys()
+    for step in captures:
+        np.testing.assert_allclose(fitted["calibration_inputs"][step],
+                                   reference["calibration_inputs"][step], atol=1e-12)
+
+
+def test_mounting_checks_rigid_motion_after_aligning_independent_headings(official_core):
+    backend, captures = make_data(official_core)
+    sensors = backend.config["node_to_slot"]
+    affected = next(node for node, slot in sensors.items() if slot == 2)
+    for k, frames in captures.items():
+        for frame in frames:
+            for node, sensor in frame["nodes"].items():
+                heading = 31. * int(node) + (20. if node == affected and k == "z_rot_pose_1" else 0.)
+                sensor["quat_xyzw"] = (Rotation.from_euler("z", heading, degrees=True) *
+                                        Rotation.from_quat(sensor["quat_xyzw"])).as_quat().tolist()
+    profile = backend.fit_calibration(captures, session_id="test-session")
+    assert set(profile["rejected_nodes"]) == {affected}
+    assert set(profile["nodes"]) == set(sensors) - {affected}
+    assert 2 in profile["virtual_calibration_slots"]
+    diag = profile["calibration_motion_diagnostics"]
+    assert diag["redo_steps"] == ["z_rot_pose_1"]
+    assert diag["rigid_rejections"] == {affected: ["z_rot_pose_1"]}
+    assert diag["by_slot"]["2"]["rigid_residual_deg"]["z_rot_pose_1"] > 15.
+    for frame in captures["z_rot_pose_1"]:
+        sensor = frame["nodes"][affected]
+        sensor["quat_xyzw"] = (Rotation.from_euler("z", -20., degrees=True) *
+                               Rotation.from_quat(sensor["quat_xyzw"])).as_quat().tolist()
+    recovered = backend.fit_calibration(captures, session_id="test-session")
+    assert set(recovered["nodes"]) == set(sensors)
+    assert recovered["calibration_motion_diagnostics"]["redo_steps"] == []
+    assert recovered["calibration_motion_diagnostics"]["rigid_rejections"] == {}
+
+
+def test_confirmed_heading_reaches_solve_and_functional_sampling_without_changing_installation(official_core):
+    backend, profile, frame = fit_data(official_core)
+    pristine = deepcopy(profile)
+    offsets = {n: Rotation.from_euler("z", 4 * int(n), degrees=True) for n in profile["nodes"]}
+    offsets[backend._root_node] = Rotation.identity()
+
+    def drift(original):
+        changed = deepcopy(original)
+        for n, shift in offsets.items():
+            q = changed["nodes"][n]["quat_xyzw"]
+            changed["nodes"][n]["quat_xyzw"] = (shift * Rotation.from_quat(q)).as_quat().tolist()
+        return changed
+
+    rows = []
+    for i in range(15):
+        row = drift(frame)
+        row["timestamp_s"] += i / 12.
+        for node in row["nodes"].values():
+            node["sample_index"] += i
+        rows.append(row)
+    anchored = backend.reanchor_heading(rows, profile, session_id="test-session")
+    assert profile == pristine == {k: v for k, v in anchored.items() if k != "neutral_heading"}
+    assert backend._live_heading is None  # Computing a candidate does not commit it.
+    angles = np.zeros((16, 3))
+    angles[0] = [.5, -.2, .3]
+    angles[[1, 2, 4, 7, 10, 15], 2] = [.4, .8, .7, 1., .5, .6]
+    angles[[1, 4, 7, 10], 1] = [.30, .08, -.25, .16]
+    movement = frame_for_anatomical_angles(backend, profile, frame, angles)
+    shifted = drift(movement)
+    before = backend.solve(movement, profile)
+    after = backend.solve(shifted, json.loads(json.dumps(anchored)))
+    np.testing.assert_allclose(after["anatomical_euler_rad"], before["anatomical_euler_rad"], atol=2e-6)
+    np.testing.assert_allclose(after["mano_pose_rotvec"], before["mano_pose_rotvec"], atol=2e-6)
+    assert after["neutral_heading_applied"] and after["observed_mask"] == before["observed_mask"]
+    for slot, ref in backend.functional_reference_rotations(movement, profile, [1, 2, 4, 7, 15]).items():
+        corrected = backend.functional_reference_rotations(shifted, anchored, [int(slot)])[slot]
+        d = Rotation.from_quat(ref["quat_xyzw"]).inv() * Rotation.from_quat(corrected["quat_xyzw"])
+        assert d.magnitude() < 1e-7
+        assert ref["identity"] == corrected["identity"]
+    # A local epoch change continues to mask only that sensor.
+    shifted["nodes"]["6"]["epoch"] += 1
+    assert backend.solve(shifted, anchored)["calibration_rejections"]["6"] == "filter_epoch_changed_recalibration_required"

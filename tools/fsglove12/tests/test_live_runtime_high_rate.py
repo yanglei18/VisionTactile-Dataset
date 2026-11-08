@@ -307,3 +307,73 @@ def test_async_recording_failure_marks_live_summary_incomplete(harness):
     assert not summary["recording_complete"]
     assert "test result disk full" in summary["result_recording"]["error"]
     assert any("test result disk full" in error for error in summary["errors"])
+
+
+def test_public_pose_source_time_remains_the_root_receive_time_after_processing_delay(tmp_path):
+    controller, session, _backend, clock = setup_direct(tmp_path)
+    received_ns = int(clock() * 1e9)
+    feed(session, clock, 12)
+    original = session.fusion.snapshot
+
+    def stamped(now):
+        frame = original(now)
+        frame["nodes"]["12"]["host_monotonic_ns"] = received_ns
+        return frame
+
+    session.fusion.snapshot = stamped
+    clock.advance(.1)
+    assert controller._tick(session)
+    pose = controller.latest_snapshot()["pose"]
+    assert pose["timestamp_s"] == clock()
+    assert pose["source_monotonic_ns"] == received_ns
+    assert pose["source_reference_node"] == "12"
+    assert pose["source_monotonic_ns"] < round(pose["timestamp_s"] * 1e9)
+    clock.advance(.05)
+    assert not controller._tick(session)
+    assert controller.latest_snapshot()["pose"]["source_monotonic_ns"] == received_ns
+
+
+@pytest.mark.parametrize("stamp", [None, False, 0, -1, "100000000000"])
+def test_missing_or_invalid_root_source_time_is_not_replaced_by_processing_clock(tmp_path, stamp):
+    controller, session, _backend, clock = setup_direct(tmp_path)
+    feed(session, clock, 12)
+    original = session.fusion.snapshot
+
+    def stamped(now):
+        frame = original(now)
+        frame["nodes"]["12"]["host_monotonic_ns"] = stamp
+        return frame
+
+    session.fusion.snapshot = stamped
+    assert controller._tick(session)
+    pose = controller.latest_snapshot()["pose"]
+    assert pose["source_monotonic_ns"] is None
+    assert pose["source_reference_node"] == "12"
+    assert pose["timestamp_s"] == clock()
+
+
+@pytest.mark.parametrize("root_state", ["absent", "invalid", "stale"])
+def test_unavailable_pose_keeps_only_known_source_metadata(tmp_path, root_state):
+    controller, session, _backend, clock = setup_direct(tmp_path)
+    received_ns = int(clock() * 1e9)
+    feed(session, clock, 12)
+    original = session.fusion.snapshot
+
+    def stamped(now):
+        frame = original(now)
+        root = frame["nodes"]["12"]
+        root["host_monotonic_ns"] = received_ns
+        if root_state == "absent":
+            del frame["nodes"]["12"]
+        elif root_state == "invalid":
+            root["orientation_valid"] = False
+        else:
+            root["age_s"] = controller.config["stale_after_s"] + 1.
+        return frame
+
+    session.fusion.snapshot = stamped
+    assert controller._tick(session)
+    pose = controller.latest_snapshot()["pose"]
+    assert not pose["pose_available"]
+    assert pose["source_reference_node"] == "12"
+    assert pose["source_monotonic_ns"] == (received_ns if root_state == "stale" else None)

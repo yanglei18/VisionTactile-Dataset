@@ -18,7 +18,7 @@ def build_node(config, *, context=None, model=None):
     from sensor_msgs.msg import Image
     from vt_tracker_msgs.msg import TrackerSample
     from vt_glove_msgs.msg import GloveState
-    from vt_tactile_msgs.msg import TactileSampleArray, TactileState
+    from vt_tactile_msgs.msg import TactileRow44Array, TactileGridState
     from vt_camera_msgs.msg import CaptureStatus
     from .image_preview import ImagePreviewWorker
 
@@ -41,7 +41,7 @@ def build_node(config, *, context=None, model=None):
             self._preview_worker = ImagePreviewWorker(self.model).start()
             self._subscriptions_owned = []
             self._image_callback_groups = []
-            types = dict(camera=Image, tracker=TrackerSample, glove=GloveState, tactile=TactileState)
+            types = dict(camera=Image, tracker=TrackerSample, glove=GloveState, tactile=TactileGridState)
             for device in config.devices:
                 reliability = ReliabilityPolicy.RELIABLE if device.kind == "glove" else ReliabilityPolicy.BEST_EFFORT
                 group = None
@@ -70,7 +70,7 @@ def build_node(config, *, context=None, model=None):
                     qos, callback_group=group))
             for topic in self.model.sample_activity_topics():
                 self._subscriptions_owned.append(self.create_subscription(
-                    TactileSampleArray, topic,
+                    TactileRow44Array, topic,
                     lambda _message, name=topic: self.model.observe_topic_activity(name),
                     QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                                durability=DurabilityPolicy.VOLATILE), raw=True))
@@ -193,10 +193,16 @@ def _run_manager(args, ros_args):
                         for spec in specs for topic in spec.topics}
 
             management.controller_present = controller_present
+            from .hand_control import HandControl
+            hands = HandControl(config.process_groups, manager_instance_id=node.model.instance_id,
+                allowed=management.hand_calibration_allowed, admission_lock=management._mutex,
+                process_snapshot=lambda: processes.snapshot() if processes else {"groups": []})
+            management.hands = hands
             processes = ProcessSupervisor(specs, instance_id=node.model.instance_id,
                 state_dir=Path(args.state_dir or default_state_dir()) / "processes", observe=observe,
-                allowed=management.lifecycle_allowed, event=node.model.event)
+                allowed=management.lifecycle_allowed, event=node.model.event, readiness=hands.ready)
             management.processes = processes
+            hands.start()
             processes.start()
         if getattr(args, "enable_calibration", False):
             from pathlib import Path

@@ -57,7 +57,7 @@ class Backend:
         joints = np.zeros((21, 3))
         joints[5], joints[9], joints[17] = [-.08, 0, .03], [-.09, 0, 0], [-.07, 0, -.04]
         return {"vertices_m": [[0, 0, 0], [-.1, 0, 0], [0, 0, .03]], "faces": [[0, 1, 2]],
-                "joints_m": joints.tolist()}
+                "joints_m": joints.tolist(), "provenance": {"hand": getattr(self, "hand", "right")}}
 
 
 @pytest.fixture

@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 import time
 
+from . import host_clock
 from .live_stream import RawSample, iter_csv_samples
 
 
@@ -18,7 +19,7 @@ class PacedCSVSource:
 
     input_kind = "csv_replay"
 
-    def __init__(self, path, *, speed=1., clock=time.monotonic, wall_clock=time.time):
+    def __init__(self, path, *, speed=1., clock=host_clock.monotonic, wall_clock=time.time):
         if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not math.isfinite(speed) or speed <= 0:
             raise ValueError("Replay speed must be a finite positive number")
         self.path, self.speed, self.clock, self.wall_clock = path, speed, clock, wall_clock

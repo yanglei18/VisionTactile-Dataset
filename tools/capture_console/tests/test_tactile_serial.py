@@ -17,12 +17,12 @@ from vt_tactile_capture.serial_source import Batch, SerialWorker
 NOW = 10_000_000_000
 
 
-def batch(sequence=0, stamp=NOW, *, row=0, group=0, **changes):
+def batch(sequence=0, stamp=NOW, *, row=0, **changes):
     value = Batch(hand="right", session_id="test", stream_epoch=1, sequence=sequence,
                   first_packet_index=sequence, host_monotonic_ns=stamp,
                   host_realtime_ns=stamp + 100_000_000_000,
                   connected=True, time_valid=True, reason="ok",
-                  blocks=(Block(row, group, 0, tuple(range(10))),))
+                  blocks=(Block(row, tuple(range(20))),))
     return replace(value, **changes)
 
 
@@ -55,6 +55,40 @@ def source_with_worker():
     return source, source._worker
 
 
+def test_left_serial_source_keeps_hand_through_reconnect_and_rejects_other_hand_batches():
+    source = module.TactileSerialSource(hand="left", worker_factory=Worker)
+    try:
+        for port in ("/dev/left-one", "/dev/left-two"):
+            source.connect(port)
+            worker = source._worker
+            assert worker.options["hand"] == source.hand == "left"
+            worker.queue.append(batch(hand="left", row=3))
+            view = source.poll(NOW)
+            assert view.frame["hand"] == view.raw_frame["hand"] == "left"
+            assert view.valid_cells == 20
+            assert view.raw_frame["values"][60:80] == list(range(20))
+            worker.queue.append(batch(1, hand="right"))
+            assert source.poll(NOW).frame is None
+            assert source.disconnect()
+    finally:
+        source.close()
+
+
+def test_serial_source_hand_and_reference_store_must_agree(tmp_path):
+    from vt_capture_console.backend.tactile_reference_store import TactileReferenceStore
+
+    with pytest.raises(ValueError, match="hand"):
+        module.TactileSerialSource(hand="both", worker_factory=Worker)
+    with pytest.raises(ValueError, match="reference store hand"):
+        module.TactileSerialSource(hand="left", reference_store=TactileReferenceStore(tmp_path))
+    source = module.TactileSerialSource(hand="left", worker_factory=Worker,
+        reference_store=TactileReferenceStore(tmp_path, hand="left"))
+    assert source.hand == "left"
+    with pytest.raises(AttributeError):
+        source.hand = "right"
+    source.close()
+
+
 def test_initialization_and_start_do_not_construct_worker_or_connect():
     calls = []
     source = module.TactileSerialSource(worker_factory=lambda **kwargs: calls.append(kwargs))
@@ -75,7 +109,7 @@ def test_explicit_connect_options_and_no_second_port_until_disconnected():
     with pytest.raises(RuntimeError):
         source.connect("/dev/must-not-open")
     worker.queue.append(batch())
-    assert source.poll(NOW).valid_cells == 3
+    assert source.poll(NOW).valid_cells == 20
     assert source.is_connected
     assert source.disconnect()
     assert source.connection_state == "disconnected" and source.can_connect
@@ -88,13 +122,13 @@ def test_explicit_connect_options_and_no_second_port_until_disconnected():
 def test_ordered_drain_preserves_hidden_health_boundary_and_does_not_refresh_old_data():
     source, worker = source_with_worker()
     worker.queue.append(batch())
-    assert source.poll(NOW).valid_cells == 3
+    assert source.poll(NOW).valid_cells == 20
     worker.queue.extend([
         batch(1, NOW + 10_000_000, connected=False, time_valid=False, blocks=(), reason="no_data_timeout"),
         batch(2, NOW + 20_000_000, first_packet_index=1, row=1),
     ])
     view = source.poll(NOW + 20_000_000)
-    assert view.valid_cells == 3 and view.receive_hz == 0
+    assert view.valid_cells == 20 and view.receive_hz == 0
     assert not any(view.frame["valid_mask"][:20])
     assert view.frame["valid_mask"][20]
     snapshot_time = source._model._sample[4]
@@ -105,14 +139,14 @@ def test_ordered_drain_preserves_hidden_health_boundary_and_does_not_refresh_old
     source.close()
 
 
-def test_nonphysical_packet_does_not_refresh_physical_source_or_hz():
+def test_invalid_row_clears_state_and_cannot_refresh_valid_data():
     source, worker = source_with_worker()
     worker.queue.append(batch())
     source.poll(NOW)
     worker.queue.append(batch(1, NOW + 20_000_000, row=21))
     current = source.poll(NOW + 20_000_000)
-    assert current.age_ms == 20 and current.receive_hz == 0
-    assert source._model._sample[4] == NOW
+    assert current.frame is None and current.raw_frame is None
+    assert current.receive_hz == 0
     source.close()
 
 
@@ -130,7 +164,7 @@ def test_waiting_health_status_persists_across_empty_polls_and_recovers(reason, 
         assert source.is_connected
     worker.queue.append(batch(1, NOW + 310_000_000, first_packet_index=0))
     view = source.poll(NOW + 310_000_000)
-    assert view.valid_cells == 3 and view.status == "部分有效"
+    assert view.valid_cells == 20 and view.status == "部分有效"
     source.close()
 
 
@@ -140,7 +174,7 @@ def test_clock_fault_keeps_distinct_explanation_until_valid_input():
     assert "时钟跳变" in source.poll(NOW).detail
     assert "时钟跳变" in source.poll(NOW + 1_000_000).detail
     worker.queue.append(batch(1, NOW + 20_000_000))
-    assert source.poll(NOW + 20_000_000).valid_cells == 3
+    assert source.poll(NOW + 20_000_000).valid_cells == 20
     source.close()
 
 
@@ -184,6 +218,18 @@ def test_worker_finishing_during_drain_is_kept_until_terminal_events_are_read():
     source.close()
 
 
+def test_worker_exit_without_terminal_event_cancels_reference():
+    source, worker = source_with_worker()
+    worker.queue.append(batch())
+    source.poll(NOW)
+    source.start_reference(NOW)
+    assert source.response_status.phase == "collecting"
+    worker.running = False
+    assert source.poll(NOW + 1).status == "连接失败"
+    assert source.response_status.phase == "unreferenced"
+    source.close()
+
+
 @pytest.mark.parametrize("injected_now", [None, NOW])
 def test_poll_uses_live_clock_after_drain(injected_now, monkeypatch):
     source, worker = source_with_worker()
@@ -214,8 +260,8 @@ def test_windows_120hz_samples_and_display_freshness_share_precise_clock_domain(
     source = module.TactileSerialSource(worker_factory=Worker)
     source.connect("COM12")
     producer = SerialWorker("COM12")
-    blocks = tuple(Block(row, group, 0, tuple(row * 100 + group + 8 * k for k in range(10)))
-                   for row in range(20) for group in range(8))
+    blocks = tuple(Block(row, tuple(row * 100 + col for col in range(20)))
+                   for row in range(20))
     try:
         for index in range(10):
             producer._emit(connected=True, reason="ok", blocks=blocks)
@@ -364,9 +410,10 @@ class FakeSerial:
 def test_shared_serial_parser_assembler_path_exact_400_values_and_release():
     payload = bytearray()
     for row in range(20):
-        for group in range(8):
-            values = [row * 100 + group + 8 * k for k in range(10)]
-            payload.extend(b"\xa5\x5a" + struct.pack(">HBB10H", row, 0, group, *values))
+        values = [row * 100 + col for col in range(20)]
+        payload.extend(b"\xa5\x5a" + struct.pack(">H20H", row, *values))
+    # The next row header confirms the last complete row without fabricating it.
+    payload.extend(b"\xa5\x5a" + struct.pack(">H", 0))
     serial = FakeSerial([bytes(payload[:7]), bytes(payload[7:])])
     opened = []
 
@@ -388,7 +435,10 @@ def test_shared_serial_parser_assembler_path_exact_400_values_and_release():
                 break
             threading.Event().wait(.001)
         assert view.valid_cells == 400
-        assert view.frame["values"] == [row * 100 + col for row in range(20) for col in range(20)]
+        raw = source._assembler.snapshot(module.host_clock.monotonic_ns(), module.MAX_CELL_AGE_NS)
+        assert list(raw.adc) == [row * 100 + col for row in range(20) for col in range(20)]
+        assert view.frame["values"] == [0.] * 400
+        assert view.response.phase == "unreferenced"
         assert len(opened) == 1 and opened[0]["exclusive"] is True
     finally:
         assert source.close()

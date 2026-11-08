@@ -28,8 +28,9 @@ def message(kind, clock, **changes):
             tracking_status=2, pose_valid=True, packet_index=1,
             pose=NS(position=NS(x=1., y=2., z=3.), orientation=NS(x=0., y=0., z=0., w=1.)))
     elif kind == "tactile":
-        fields = dict(header=header, schema_version=2, hand="right", rows=20, cols=20, adc=[0]*400,
-            valid_mask=[True]*400, block_realtime_ns=[clock.ns]*160, host_realtime_ns=clock.ns,
+        fields = dict(header=header, schema_version=3, hand="right", rows=20, cols=20, adc=[0]*400,
+            valid_mask=[True]*400, row_realtime_ns=[clock.ns]*20, row_monotonic_ns=[clock.ns]*20,
+            layout_id="row20_col20_v3", unit="adc_counts", host_realtime_ns=clock.ns,
             max_age_ns=500_000_000, connected=True, time_valid=True, reason="ok", session_id="one",
             stream_epoch=1, source_sequence=1)
     else:
@@ -351,9 +352,9 @@ def test_stale_or_missing_source_not_fresh_from_arrival(stamp):
     assert result["preview"]["valid"] is False
 
 
-def test_tactile_uses_stride8_and_ages_each_cell():
+def test_legacy_tactile_uses_stride8_and_ages_each_cell():
     model, clock, identity = make("tactile")
-    msg = message("tactile", clock)
+    msg = message("tactile", clock, schema_version=2, block_realtime_ns=[clock.ns]*160)
     msg.block_realtime_ns[0] = clock.ns - 600_000_000
     model.observe(identity, msg)
     masks = model.snapshot()["devices"][0]["preview"]["valid_mask"]
@@ -589,3 +590,29 @@ def test_import_does_not_load_ros():
     import subprocess
     result = subprocess.run([sys.executable, "-c", "import vt_capture_manager.node; import sys; assert 'rclpy' not in sys.modules"], capture_output=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_native_tactile_ages_complete_rows_without_refreshing_old_rows():
+    model, clock, identity = make("tactile")
+    msg = message("tactile", clock)
+    msg.row_realtime_ns[0] = clock.ns - 600_000_000
+    model.observe(identity, msg)
+    result = model.snapshot()["devices"][0]
+    masks = result["preview"]["valid_mask"]
+    assert result["status"] == "online"
+    assert not any(masks[:20]) and all(masks[20:])
+    clock.ns += 600_000_000
+    assert not any(model.snapshot()["devices"][0]["preview"]["valid_mask"])
+
+
+@pytest.mark.parametrize("changes", [
+    dict(row_realtime_ns=[1]*19), dict(row_monotonic_ns=[]),
+    dict(layout_id="row20_col_group_stride8_v2"), dict(unit="newtons"),
+    dict(schema_version=2), dict(rows=80, cols=80),
+])
+def test_native_tactile_rejects_mismatched_schema_or_row_contract(changes):
+    model, clock, identity = make("tactile")
+    model.observe(identity, message("tactile", clock, **changes))
+    result = model.snapshot()["devices"][0]
+    assert result["preview"] == {}
+    assert "Rejected malformed tactile" in result["detail"]

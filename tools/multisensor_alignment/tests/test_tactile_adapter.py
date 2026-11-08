@@ -14,7 +14,7 @@ from vt_multisensor_alignment.config import AdditionalStreamConfig, load_config
 from vt_multisensor_alignment.matcher import select_generic_sample
 from vt_multisensor_alignment.model import MessageRef
 from vt_multisensor_alignment.tactile_adapter import (
-    DEFAULT_TACTILE_TOPIC as TOPIC, TACTILE_SAMPLE_TYPE, TactileContinuity,
+    DEFAULT_TACTILE_TOPIC as TOPIC, TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE, TactileContinuity,
     TactileGrid, TactileSampleAdapter,
 )
 from vt_multisensor_alignment.tactile_export import (
@@ -311,7 +311,7 @@ class TactileExportTests(unittest.TestCase):
         self.assertEqual(combined.trackers, original.trackers)
         self.assertEqual(combined.additional_streams[0], original.additional_streams[0])
         tactile = combined.additional_streams[1]
-        self.assertEqual(tactile.type_name, TACTILE_SAMPLE_TYPE)
+        self.assertEqual(tactile.type_name, TACTILE_ROW44_SAMPLE_TYPE)
         self.assertEqual(tactile.strategy, "previous")
         self.assertFalse(tactile.required)
 

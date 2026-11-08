@@ -147,7 +147,7 @@ def test_v5_negotiation_retains_process_and_detail_capabilities(idle_backend, mo
         return plan_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
     idle_backend._poll()
-    assert calls == [6, 5]
+    assert calls == [7, 6, 5]
     assert idle_backend.supports_capture_plan
     assert idle_backend.supports_device_control and idle_backend.supports_details
     idle_backend.submit("capture.start", planned_start_params(), "planned")
@@ -346,14 +346,14 @@ def test_v1_fallback_never_grants_control_even_if_server_advertises_record(idle_
         return readonly
     monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
     idle_backend._poll()
-    assert calls == [6, 5, 4, 3, 2, 1]
+    assert calls == [7, 6, 5, 4, 3, 2, 1]
     assert not idle_backend.snapshot()["capabilities"]["record"]
     assert not idle_backend.snapshot()["management"]["enabled"]
     idle_backend.submit("batch.create", {"label": "batch"}, "readonly")
     assert idle_backend.latest_operation["code"] == "READ_ONLY_PROTOCOL"
     assert idle_backend._commands.empty()
     idle_backend._poll()
-    assert calls == [6, 5, 4, 3, 2, 1, 1]
+    assert calls == [7, 6, 5, 4, 3, 2, 1, 1]
 
 
 def test_disconnected_management_keeps_history_but_not_live_controller_or_active_trial(idle_backend):
@@ -462,7 +462,7 @@ def test_v3_to_v2_fallback_preserves_recording_but_rejects_new_features(idle_bac
         return control_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", fetch)
     idle_backend._poll()
-    assert calls == [6, 5, 4, 3, 2]
+    assert calls == [7, 6, 5, 4, 3, 2]
     assert not idle_backend.supports_details
     assert idle_backend.snapshot()["capabilities"]["record"]
     identifier = idle_backend.request_details("trial")
@@ -478,7 +478,7 @@ def test_v3_to_v2_fallback_preserves_recording_but_rejects_new_features(idle_bac
     idle_backend.submit("capture.stop", {"trial_id": "trial", "expected_controller_instance_id": "c", "expected_session_id": "s"}, "stop")
     assert idle_backend._commands.get_nowait()["version"] == 2
     idle_backend._poll()
-    assert calls == [6, 5, 4, 3, 2, 2]
+    assert calls == [7, 6, 5, 4, 3, 2, 2]
 
 
 def test_details_cache_is_selected_only_detached_and_does_not_overwrite_operation(detailed_backend, monkeypatch):
@@ -658,7 +658,7 @@ def test_v4_fallback_and_v3_downgrade_keep_details(idle_backend, monkeypatch):
         return process_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", current)
     idle_backend._poll()
-    assert calls == [6, 5, 4]
+    assert calls == [7, 6, 5, 4]
     assert idle_backend.supports_device_control and idle_backend.supports_details
     def older(path, timeout=.6, *, version=1):
         calls.append(version)
@@ -667,12 +667,12 @@ def test_v4_fallback_and_v3_downgrade_keep_details(idle_backend, monkeypatch):
         return control_snapshot()
     monkeypatch.setattr(ipc_client, "fetch_snapshot", older)
     idle_backend._poll()
-    assert calls == [6, 5, 4, 4, 3]
+    assert calls == [7, 6, 5, 4, 4, 3]
     assert not idle_backend.supports_device_control and idle_backend.supports_details
     idle_backend.request_details("trial")
     assert idle_backend._pending_details[0]["version"] == 3
     idle_backend._poll()
-    assert calls == [6, 5, 4, 4, 3, 3]
+    assert calls == [7, 6, 5, 4, 4, 3, 3]
     idle_backend._next_v2_probe = 0
     monkeypatch.setattr(ipc_client, "fetch_snapshot", current)
     idle_backend._poll()

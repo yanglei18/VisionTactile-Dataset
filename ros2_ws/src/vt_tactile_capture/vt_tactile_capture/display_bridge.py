@@ -7,7 +7,7 @@ from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from vt_tactile_msgs.msg import TactileState
+from vt_tactile_msgs.msg import TactileGridState
 
 from .display_transport import LocalTactileSender, default_socket_path
 from .lifecycle import shutdown_ros
@@ -37,7 +37,7 @@ class TactileDisplayBridge(Node):
                 default_socket_path(self.config["hand"], self.config["topic"].rsplit("/", 1)[0]))
             self.sender = sender_factory(self.config["socket_path"])
             self.subscription = self.create_subscription(
-                TactileState, self.config["topic"], self.on_state,
+                TactileGridState, self.config["topic"], self.on_state,
                 QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                            durability=DurabilityPolicy.VOLATILE),
             )

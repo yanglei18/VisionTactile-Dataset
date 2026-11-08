@@ -1,5 +1,6 @@
 """Profiles resolve argv only; none of these tests launches sensor processes."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -76,12 +77,18 @@ def test_camera_profile_supplies_config_to_read_only_usb_guard():
     assert "config_path:=/project/cameras.yaml" in spec.argv
 
 
-def test_glove_gui_requires_runtime_assets_but_bridge_only_does_not():
+def test_managed_glove_requires_runtime_assets_even_for_legacy_headless_profile():
     with pytest.raises(ValueError):
         parse_profiles([profile(preset="glove", parameters=dict(hand="left"))])
-    spec, = build_specs(parse_profiles([profile(preset="glove", parameters=dict(hand="left", launch_gui="false"))]))
+    with pytest.raises(ValueError):
+        parse_profiles([profile(preset="glove", parameters=dict(hand="left", launch_gui="false"))])
+    spec, = build_specs(parse_profiles([profile(preset="glove", parameters=dict(
+        hand="left", launch_gui="false", glove_python="/runtime/bin/python",
+        resources="/runtime/left", port="/dev/serial/by-id/left"))]))
     assert spec.topics == ("/gloves/left/state",)
-    assert "launch_gui:=false" in spec.argv
+    assert "hand_service.launch.py" in spec.argv
+    assert not any(arg.startswith("launch_gui:=") for arg in spec.argv)
+    assert len([r for r in spec.resources if r.startswith("socket:")]) == 2
 
 
 def test_duplicate_ids_and_shared_serial_aliases(tmp_path):
@@ -139,3 +146,26 @@ def test_python_path_fields_are_not_general_environment_overrides():
     parameters = dict(hand="right", port="/dev/test", pyvut_source="/approved/source")
     with pytest.raises(ValueError):
         parse_profiles([profile(parameters=parameters)])
+
+
+@pytest.mark.parametrize("preset", ["glove", "tactile"])
+def test_duplicate_hand_profiles_are_rejected_before_selecting_endpoints(preset):
+    with pytest.raises(ValueError, match="exactly one profile"):
+        parse_profiles([profile(id=identity, preset=preset, enabled=False, parameters=dict(hand="left"))
+                        for identity in ("left_a", "left_b")])
+
+
+def test_empty_socket_fields_reserve_the_actual_default_endpoints():
+    from vt_capture_core.hand_paths import default_hand_control_socket
+    from vt_glove_bridge.transport import default_socket_path
+    from vt_tactile_capture.display_transport import default_workbench_socket
+    specifications = build_specs(parse_profiles([
+        profile(id="left_motion", preset="glove", enabled=False,
+                parameters=dict(hand="left", control_socket="", socket_path="")),
+        profile(id="left_touch", preset="tactile", enabled=False,
+                parameters=dict(hand="left", display_socket="")),
+    ]))
+    for spec, paths in zip(specifications, ((default_hand_control_socket("left"), default_socket_path("left")),
+                                          (default_workbench_socket("left"),))):
+        for path in paths:
+            assert "socket:" + str(Path(path).resolve()) in spec.resources

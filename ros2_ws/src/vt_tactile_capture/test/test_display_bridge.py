@@ -15,7 +15,7 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from vt_tactile_msgs.msg import TactileState
+from vt_tactile_msgs.msg import TactileGridState
 
 from vt_tactile_capture.display_bridge import TactileDisplayBridge
 from vt_tactile_capture.display_transport import LocalTactileReceiver
@@ -106,7 +106,7 @@ def test_live_parameters_are_startup_only(context):
         node.destroy_node()
 
 
-@pytest.mark.parametrize("schema,side", [(1, 80), (2, 20)])
+@pytest.mark.parametrize("schema,side", [(3, 20)])
 def test_actual_synthetic_ros_subscription_to_local_ipc(context, schema, side):
     topic = "/synthetic_tactile_display_" + uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix="vtt-ros-") as directory:
@@ -116,18 +116,18 @@ def test_actual_synthetic_ros_subscription_to_local_ipc(context, schema, side):
             Parameter("socket_path", value=path), Parameter("topic", value=topic),
         ])
         publisher_node = Node("synthetic_tactile_display_source", context=context)
-        publisher = publisher_node.create_publisher(TactileState, topic, QoSProfile(
+        publisher = publisher_node.create_publisher(TactileGridState, topic, QoSProfile(
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE))
         executor = SingleThreadedExecutor(context=context)
         executor.add_node(node)
         executor.add_node(publisher_node)
-        message = TactileState(schema_version=schema, rows=side, cols=side, stream_epoch=1, hand="right", session_id="synthetic",
+        message = TactileGridState(schema_version=schema, rows=side, cols=side, layout_id="row20_col20_v3", stream_epoch=1, hand="right", session_id="synthetic",
             source_sequence=42, host_realtime_ns=1_700_000_000_123_456_789, host_monotonic_ns=123_456_789_123,
             snapshot_monotonic_ns=123_456_799_123, max_age_ns=100_000_000, connected=True, time_valid=True,
             clock_domain="CLOCK_MONOTONIC", timing_source="host_receive", unit="adc_counts", reason="synthetic",
             adc=[12000] * (side * side), valid_mask=[True] * (side * side), updated_mask=[True] * (side * side),
-            block_monotonic_ns=[123_456_789_123] * (side * 8),
-            block_realtime_ns=[1_700_000_000_123_456_789] * (side * 8))
+            row_monotonic_ns=[123_456_789_123] * side,
+            row_realtime_ns=[1_700_000_000_123_456_789] * side)
         message.adc[0] = 0
         message.adc[2] = 65535
         message.valid_mask[1] = False
@@ -146,13 +146,13 @@ def test_actual_synthetic_ros_subscription_to_local_ipc(context, schema, side):
                     break
             assert decoded is not None
             assert decoded.source_sequence == 42
-            assert (decoded.schema_version, decoded.rows, decoded.cols) == (2, 20, 20)
+            assert (decoded.schema_version, decoded.rows, decoded.cols) == (3, 20, 20)
             for field in ("adc", "valid_mask", "updated_mask"):
                 values = getattr(message, field)
                 expected = [values[row * side + col] for row in range(20) for col in range(20)]
                 assert getattr(decoded, field).tolist() == expected
-            assert decoded.block_monotonic_ns.tolist() == list(message.block_monotonic_ns)[:160]
-            assert decoded.block_realtime_ns.tolist() == list(message.block_realtime_ns)[:160]
+            assert decoded.row_monotonic_ns.tolist() == list(message.row_monotonic_ns)[:20]
+            assert decoded.row_realtime_ns.tolist() == list(message.row_realtime_ns)[:20]
             assert decoded.host_monotonic_ns == message.host_monotonic_ns
             assert decoded.host_realtime_ns == message.host_realtime_ns
             assert decoded.snapshot_monotonic_ns == message.snapshot_monotonic_ns

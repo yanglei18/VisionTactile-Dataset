@@ -81,6 +81,32 @@ def test_geometry_and_camera_api_remains_calibration_compatible(view):
     np.testing.assert_array_equal(view.mesh_data.vertexes(), accepted)
 
 
+def test_left_renderer_uses_proper_rotation_and_rejects_other_hand_geometry(view):
+    from vt_fsglove12.guided_calibration import model_motion_axes
+
+    geometry = neutral_geometry()
+    # A geometric test fixture only, never a replacement for MANO_LEFT assets.
+    geometry["vertices_m"] = np.asarray(geometry["vertices_m"]) * [-1, 1, 1]
+    geometry["joints_m"][:, 0] *= -1
+    geometry["faces"] = np.asarray(geometry["faces"])[:, ::-1]
+    geometry["provenance"] = {"hand": "left"}
+    axes = model_motion_axes(geometry["joints_m"], hand="left")
+    left = HandView(geometry, axes)
+    try:
+        assert left.hand == "left" and np.linalg.det(left.basis) == pytest.approx(1.)
+        np.testing.assert_allclose(left.mesh_data.vertexes(), geometry["vertices_m"], atol=1e-8)
+        accepted = left.mesh_data.vertexes().copy()
+        with pytest.raises(ValueError, match="configured hand"):
+            left.set_geometry(neutral_geometry())
+        np.testing.assert_array_equal(left.mesh_data.vertexes(), accepted)
+        with pytest.raises(ValueError, match="same hand"):
+            HandView(geometry, {**axes, "hand": "right"})
+        with pytest.raises(ValueError, match="palm normal"):
+            HandView(geometry, {**axes, "palm_up_axis": [0., 0., -1.]})
+    finally:
+        left.close()
+
+
 def test_joint_toggle_does_not_restore_hidden_hand(view):
     view.set_show_joints(False)
     assert view.mesh.visible() and not view.joints.visible()

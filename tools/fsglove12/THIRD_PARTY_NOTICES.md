@@ -164,3 +164,9 @@ paper reproduction. Legacy sparse calibration and constrained fitting remain
 new experimental adapter code. Official numerical functions retain their
 external upstream origin; the surrounding sparse completion, recording, UI,
 and integration logic are not upstream-validated algorithms.
+
+The standalone left-hand display uses the project's directed installation-frame
+adapter (`vt_fsglove12.installation_frame`) with the pinned FSGlove core and
+MANO_LEFT. Left-hand profiles record `left_directed_horizontal_frame_v1`.
+The adapter preserves horizontal axis direction under changes of hand
+orientation and leaves the upstream anatomical FK and MANO composer intact.

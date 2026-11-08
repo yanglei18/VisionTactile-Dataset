@@ -17,7 +17,7 @@ def test_right_glove_tactile_profile_preserves_camera_settings():
     profile = yaml.safe_load(path.read_text())
     expected = [
         {"topic": "/gloves/right/state", "type": "vt_glove_msgs/msg/GloveState"},
-        {"topic": "/gloves/right/tactile/samples", "type": "vt_tactile_msgs/msg/TactileSampleArray"},
+        {"topic": "/gloves/right/tactile/samples", "type": "vt_tactile_msgs/msg/TactileRow44Array"},
     ]
     assert profile["recording"].pop("additional_streams") == expected
     original["recording"].pop("additional_streams")

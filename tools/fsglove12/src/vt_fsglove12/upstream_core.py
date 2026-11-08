@@ -2,8 +2,9 @@
 
 This module contains no replacement FK or calibration optimizer. It compiles
 unaltered AST nodes from a separately obtained, trusted FSGlove checkout. Its
-four source files must match the recorded upstream commit byte for byte. Only
-dependency wiring and MANO asset-path arguments differ from upstream execution.
+four source files must match the recorded upstream commit byte for byte.
+Left-hand calibration selects a subclass with a directed installation frame;
+the right hand keeps the original class and both use the original FK.
 
 Importing this adapter does not import torch, deserialize MANO assets, install
 dependencies, change the working directory, or start any hardware/GUI service.
@@ -98,12 +99,20 @@ def inspect_upstream_sources(checkout: str | Path) -> dict[str, Any]:
             )
         sources[key] = {"path": str(path), "relative_path": relative, "sha256": actual}
     try:
+        owner = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"], check=True,
+            capture_output=True, text=True, timeout=5,
+        )
+        if Path(owner.stdout.strip()).resolve() != root:
+            # A packaged source directory can be inside the application's Git
+            # tree. That parent's HEAD is not the FSGlove source revision.
+            raise ValueError("Packaged source has no independent Git root")
         result = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
             capture_output=True, text=True, timeout=5,
         )
         git_commit = result.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         git_commit = None
     return {
         "upstream_project": "davidliyutong/fsglove",
@@ -126,6 +135,33 @@ def inspect_upstream_sources(checkout: str | Path) -> dict[str, Any]:
         ],
         "redistribution_note": "External checkout is executed locally; no FSGlove source or MANO assets are bundled.",
     }
+
+
+def upstream_provenance_matches(saved, current):
+    """Accept an old packaged-source parent HEAD only after exact content checks.
+
+    The current core has already verified pinned file hashes and original ASTs.
+    Paths, hashes, symbols, model root and numerical dependency versions must
+    still agree exactly. Actual upstream Git checkouts retain their HEAD check.
+    """
+    if saved == current:
+        return True
+    if not isinstance(saved, dict) or not isinstance(current, dict) or current.get("checkout_head") is not None:
+        return False
+    old_head = saved.get("checkout_head")
+    if (not isinstance(old_head, str) or len(old_head) != 40
+            or any(char not in "0123456789abcdef" for char in old_head)):
+        return False
+    if current.get("source_validation") != "exact_pinned_file_sha256" or current.get("numerical_ast_modified") is not False:
+        return False
+    sources = current.get("sources")
+    if not isinstance(sources, dict) or set(sources) != set(_PINNED_SOURCES):
+        return False
+    if any(not isinstance(sources[key], dict) or sources[key].get("sha256") != expected
+           for key, (_, expected) in _PINNED_SOURCES.items()):
+        return False
+    previous = {**saved, "checkout_head": None}
+    return previous == current
 
 
 def _compile_selected(key: str, names: tuple[str, ...], provenance: dict[str, Any], namespace: dict[str, Any]) -> ModuleType:
@@ -214,8 +250,12 @@ class UpstreamCore:
             if not np.allclose(np.linalg.norm(array, axis=1), 1, atol=1e-5, rtol=0):
                 raise ValueError(f"{name} must contain unit xyzw quaternions")
             poses[name] = array.copy()
+        calibrator_type = self.calibration.Raw2MANOCalibrator
+        if side == "left":
+            from .installation_frame import left_calibrator_type
+            calibrator_type = left_calibrator_type(calibrator_type)
         with self.seeded(seed):
-            return self.calibration.Raw2MANOCalibrator(self.calibration.CalibrationQuatSet(**poses), side=side)
+            return calibrator_type(self.calibration.CalibrationQuatSet(**poses), side=side)
 
     def optimize_shape(self, joints, finger_category, hand_category: str = "right", *, seed: int = 0, **kwargs):
         """Call the official pinch-contact beta optimizer, without replacing it."""

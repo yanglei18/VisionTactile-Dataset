@@ -2,7 +2,7 @@
 
 NumPy and pure layout parsing only: no ROS, Qt, serial, pose solver, model loading
 or pressure inference. Left-hand binding requires an explicitly selected layout.
-The 20x20 addresses are physically valid, NOT 400 verified skin coordinates.
+The 20x20 wire addresses are valid, NOT 400 verified skin coordinates.
 Bindings and color supports never follow world-space nearest neighbours after
 the hand moves, so bringing two fingers together cannot exchange their colors.
 """
@@ -95,6 +95,32 @@ def _closest_triangle(point, triangles):
     return face, barycentric, float(np.sqrt(distances2[face, method]))
 
 
+class TactileSurfaceProjection:
+    """Fixed sensor-to-vertex weights shared by both tactile display palettes."""
+
+    def __init__(self, addresses, valid, vertex_weights):
+        addresses = np.asarray(addresses, dtype=np.int64)
+        self._raw_indices = addresses[:, 0] * 20 + addresses[:, 1]
+        self._valid = _readonly(valid, bool)
+        weights = np.asarray(vertex_weights, dtype=float)
+        self._vertices, self._addresses = np.nonzero(weights)
+        self._weights = weights[self._vertices, self._addresses]
+        self.coverage = _readonly(weights.sum(axis=1) > 1e-15)
+
+    def vertex_means(self, values, mask):
+        """Interpolate flat board readings, renormalizing over present sensors."""
+        values = values[self._raw_indices]
+        usable = mask[self._raw_indices] & self._valid & np.isfinite(values)
+        supported = usable[self._addresses]
+        vertices = self._vertices[supported]
+        weights = self._weights[supported]
+        count = len(self.coverage)
+        total = np.bincount(vertices, weights=weights, minlength=count)
+        sums = np.bincount(vertices, weights=weights * values[self._addresses[supported]], minlength=count)
+        present = total > 1e-15
+        return np.divide(sums, total, out=np.zeros(count), where=present), present
+
+
 class TactileSurfaceBinding:
     """Fixed face/barycentric candidates in the caller's neutral model basis.
 
@@ -126,6 +152,9 @@ class TactileSurfaceBinding:
             raise ValueError("faces must be integer (F, 3) indices within vertices")
         if abs(np.dot(up, forward)) > .1 or abs(np.dot(up, thumbward)) > .1 or abs(np.dot(forward, thumbward)) > .1:
             raise ValueError("model_axes must be approximately perpendicular")
+        expected_up = (1 if hand == "right" else -1) * np.cross(forward, thumbward)
+        if model_axes.get("hand", hand) != hand or np.dot(up, expected_up) < .99:
+            raise ValueError(f"model_axes must belong to the {hand} hand")
         provenance = neutral_geometry.get("provenance", {})
         if not isinstance(provenance, dict) or provenance.get("hand", "right") != hand:
             raise ValueError(f"neutral geometry must belong to the {hand} hand; cannot cross-bind hands")
@@ -140,19 +169,17 @@ class TactileSurfaceBinding:
         self.addresses = _readonly([(r, c) for r in range(20) for c in range(20)], np.int64)
         anchors = {(point.row, point.col) for point in self.layout.points if point.verified_anchor}
         self.verified_anchor = _readonly([tuple(address) in anchors for address in self.addresses], bool)
-        self._raw_indices = _readonly(self.addresses[:, 0] * 20 + self.addresses[:, 1])
         regions = np.full(400, -1, dtype=np.int64)
         along_fractions = np.full(400, np.nan)
         across_fractions = np.full(400, np.nan)
-        for grid in self.layout.regions:
-            rows, cols = self.addresses.T
-            selected = ((rows >= grid.rows[0]) & (rows < grid.rows[1])
-                        & (cols >= grid.cols[0]) & (cols < grid.cols[1]))
-            regions[selected] = _NAMES.index(grid.region)
-            along = (rows[selected] - grid.rows[0] + .5) / (grid.rows[1] - grid.rows[0])
-            across = (cols[selected] - grid.cols[0] + .5) / (grid.cols[1] - grid.cols[0])
-            along_fractions[selected] = along if grid.row_direction == 1 else 1 - along
-            across_fractions[selected] = across if grid.col_direction == 1 else 1 - across
+        # The shared layout resolves wire addresses into anatomy once. Reusing
+        # its local coordinates keeps the 2D view, finger masks and 3D surface
+        # consistent when the board's row/column directions change.
+        for point in self.layout.points:
+            index = point.row * 20 + point.col
+            regions[index] = _NAMES.index(point.region)
+            along_fractions[index] = point.along_fraction
+            across_fractions[index] = point.across_fraction
         self.regions = _readonly(regions)
         self.region_names = tuple(_NAMES[region] if region >= 0 else "unmapped" for region in regions)
 
@@ -244,8 +271,7 @@ class TactileSurfaceBinding:
         for corner in range(3):
             vertex_weights[self._faces[face_ids[indices], corner], indices] += barycentric[indices, corner]
         self.vertex_weights = _readonly(vertex_weights)
-        self._support_vertices, self._support_addresses = np.nonzero(vertex_weights)
-        self._support_weights = vertex_weights[self._support_vertices, self._support_addresses]
+        self.projection = TactileSurfaceProjection(self.addresses, self.valid, self.vertex_weights)
 
     def positions(self, current_vertices):
         vertices = _array(current_vertices, (self._vertex_count, 3), "current_vertices")
@@ -272,16 +298,8 @@ class TactileSurfaceBinding:
         colors = _array(base_colors, (self._vertex_count, 4), "base_colors")
         if np.any((colors < 0) | (colors > 1)):
             raise ValueError("base_colors must be within 0..1")
-        values = values.ravel()[self._raw_indices]
-        usable = mask.ravel()[self._raw_indices] & self.valid & np.isfinite(values)
-        supported = usable[self._support_addresses]
-        vertices = self._support_vertices[supported]
-        indices = self._support_addresses[supported]
-        weights = self._support_weights[supported]
-        total = np.bincount(vertices, weights=weights, minlength=self._vertex_count)
-        sums = np.bincount(vertices, weights=weights * values[indices], minlength=self._vertex_count)
-        means = np.divide(sums, total, out=np.zeros(self._vertex_count), where=total > 1e-15)
-        active = (total > 1e-15) & (np.abs(means) > deadband)
+        means, present = self.projection.vertex_means(values.ravel(), mask.ravel())
+        active = present & (np.abs(means) > deadband)
         strength = np.clip((np.abs(means[active]) - deadband) / (limit - deadband), 0., 1.)
         blend = (.9 * np.sqrt(strength))[:, None]
         targets = np.where((means[active] > 0)[:, None], [1., .30, .055], [.055, .40, 1.])
@@ -289,16 +307,19 @@ class TactileSurfaceBinding:
         return colors.astype(np.float32)
 
     def metadata(self):
+        from vt_tactile_capture.grid import SCHEMA_VERSION
+
         return {
             "schema_version": 1, "status": "candidate", "hand": self.hand,
-            "rows": 20, "cols": 20, "tactile_state_schema_version": 2,
+            "rows": 20, "cols": 20, "tactile_state_schema_version": SCHEMA_VERSION,
             "topology_id": self.topology_id, "neutral_geometry_id": self.neutral_geometry_id,
             "address_count": len(self.addresses), "bound_count": int(self.valid.sum()),
             "unbound_count": int((~self.valid).sum()), "observed_anchor_count": int(self.verified_anchor.sum()),
             "verified_skin_coordinates": False, "unit": "ADC difference, not force or pressure",
             "source": dict(self.layout.source), "layout_name": self.layout.name,
             "layout_note": self.layout.note,
+            "anatomical_axes": dict(self.layout.anatomical_axes),
             "region_counts": {name: int(np.count_nonzero(self.valid & (self.regions == region)))
                               for region, name in enumerate(_NAMES)},
-            "note": "400 physically valid addresses; skin locations remain inferred, not individually calibrated. Fixed neutral face/barycentric binding. The display uses the compact 20x20 state, not the full wire address space.",
+            "note": "400 wire addresses; skin locations remain inferred, not individually calibrated. Fixed neutral face/barycentric binding. The display uses the native 20x20 row-packet state.",
         }

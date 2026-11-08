@@ -99,7 +99,7 @@ def test_millisecond_reads_use_precise_clocks_and_still_detect_real_faults(
     final = worker._clock()
     assert final == (*clocks, not reason)
     assert worker._pending_clock_fault == reason
-    worker._emit(connected=True, reason="ok", blocks=(Block(0, 0, 0, (0,) * 10),), clocks=final)
+    worker._emit(connected=True, reason="ok", blocks=(Block(0, (0,) * 20),), clocks=final)
     sample = worker.get_nowait()
     assert sample.time_valid == (not reason)
     assert sample.reason == (reason or "ok")

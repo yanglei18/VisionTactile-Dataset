@@ -71,19 +71,19 @@ def card(window, backend, hand="right"):
 @pytest.fixture
 def workbench(qapp, tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
-        pytest.fail("Workbench action tests must not spawn any process or access hardware")
+        pytest.fail("Hand preview must not spawn or open hardware")
     monkeypatch.setattr(subprocess, "Popen", forbidden)
-    focuses = []
-    def focus(value, hand):
-        focuses.append((deepcopy(value), hand))
-        return True, "synthetic focus request; no actual desktop operation"
-    monkeypatch.setattr(module, "focus_owned_calibration", focus)
     backend = Backend(tmp_path)
+    backend.value["hand_sessions"] = {
+        hand: dict(hand=hand, group_id=group(backend, hand)["id"], resources="",
+                   control_socket="", tactile_socket="", service_instance_id="", detail="Managed hand")
+        for hand in ("right", "left")}
+    backend.operation_result = lambda request: backend.latest_operation
     window = MainWindow(backend)
     window.show()
     window.refresh()
     qapp.processEvents()
-    yield window, backend, focuses
+    yield window, backend
     window.close()
     window.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -91,183 +91,91 @@ def workbench(qapp, tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("hand", ["right", "left"])
-def test_stopped_card_action_uses_device_controls_and_current_instance(workbench, hand):
-    window, backend, focuses = workbench
-    target = group(backend, hand)
+def test_calibration_opens_embedded_panel_without_starting_hardware(workbench, hand):
+    window, backend = workbench
+    pages = window.pages.count()
     card(window, backend, hand).glove_controls.calibration_button.click()
-    assert backend.commands == [("device.start", dict(group_id=target["id"], expected_manager_instance_id="manager-test"))]
-    assert window.device_controls.selected_id == target["id"]
-    assert window.device_controls.pending_request == "test-device-0"
-    assert not focuses
-    assert "已请求" in window.statusBar().currentMessage()
+    pane = window.hand_panes[hand]
+    assert window.preview_stack.currentWidget() is pane
+    assert pane._calibration_visible
+    assert window.pages.count() == pages
+    assert not pane.isWindow()
+    assert not backend.commands
+    assert "设备配置" in pane.notice.text()
 
 
-@pytest.mark.parametrize("state", ["STARTING", "RUNNING", "DEGRADED"])
-def test_running_group_focuses_existing_window_without_duplicate_start(workbench, state):
-    window, backend, focuses = workbench
-    group(backend).update(state=state, owned=True, pid=1234, can_start=False)
-    window.refresh()
-    window.open_glove_calibration("right")
-    window.open_glove_calibration("right")
-    assert backend.commands == []
-    assert len(focuses) == 2 and all(hand == "right" and g["pid"] == 1234 for g, hand in focuses)
-    assert "synthetic focus" in window.statusBar().currentMessage()
-
-
-def test_focus_unavailable_never_falls_back_to_new_acquisition(workbench, monkeypatch):
-    window, backend, _ = workbench
-    group(backend).update(state="DEGRADED", owned=True, pid=1234, can_start=False)
-    monkeypatch.setattr(module, "focus_owned_calibration", lambda *_: (False, "请用 Alt+Tab 切换现有窗口"))
-    window.open_glove_calibration("right")
-    assert backend.commands == []
-    assert "Alt+Tab" in window.statusBar().currentMessage()
-
-
-def test_pending_device_operation_blocks_duplicate_and_other_hand(workbench):
-    window, backend, focuses = workbench
-    window.open_glove_calibration("right")
-    first = window.device_controls.pending_request
-    window.open_glove_calibration("right")
-    window.open_glove_calibration("left")
-    assert len(backend.commands) == 1 and window.device_controls.pending_request == first
-    assert not focuses
-    assert "已请求打开" not in window.statusBar().currentMessage()
-
-
-def test_preexisting_pending_does_not_retarget_or_submit(workbench):
-    window, backend, focuses = workbench
-    controls = window.device_controls
-    controls.pending_request = "different-device-operation"
-    controls.pending_instance_id = backend.value["instance_id"]
-    controls._submitted_at = time.monotonic()
-    window.open_glove_calibration("right")
-    assert backend.commands == [] and not focuses
-    assert controls.pending_request == "different-device-operation"
-    assert "已请求打开" not in window.statusBar().currentMessage()
-
-
-@pytest.mark.parametrize("case", ["readonly", "disabled", "external", "unknown", "unowned_pid", "manager_disabled"])
-def test_non_actionable_states_never_start_or_focus(workbench, case):
-    window, backend, focuses = workbench
-    target = group(backend)
-    if case == "readonly":
-        backend.value["capabilities"]["device_control"] = False
-        backend.supports_device_control = False
-    elif case == "manager_disabled":
-        backend.value["process_control"]["enabled"] = False
-    elif case == "unowned_pid":
-        target.update(state="RUNNING", owned=False, pid=999, can_start=True)
-    else:
-        target.update(state={"disabled": "DISABLED", "external": "EXTERNAL", "unknown": "UNKNOWN"}[case], can_start=True)
-    window.refresh()
-    assert not card(window, backend).glove_controls.calibration_button.isEnabled()
-    window.open_glove_calibration("right")  # Direct menu call must have the same guards.
-    assert backend.commands == [] and not focuses
-
-
-@pytest.mark.parametrize("language", ["zh_CN", "en"])
-def test_blocked_glove_start_shows_serial_diagnostic_in_menu_and_card(workbench, language):
-    window, backend, focuses = workbench
-    path = "/dev/serial/by-id/用户设备-{right}"
-    detail = f"串口 {path} 不存在；请检查 USB 连接、设备枚举和配置端口。"
-    expected = detail if language == "zh_CN" else (
-        f"Serial port {path} does not exist; check the USB connection, detected devices and configured port.")
-    group(backend).update(state="FAILED", can_start=False, detail=detail)
-    previous = i18n.language()
-    try:
-        i18n.set_language(language, persist=False)
-        window.refresh()
-        target = card(window, backend)
-        assert not target.glove_controls.calibration_button.isEnabled()
-        assert target.glove_note.toolTip().splitlines()[0] == expected
-        window.open_glove_calibration("right")
-        assert window.statusBar().currentMessage() == expected
-        assert backend.commands == [] and not focuses
-        assert group(backend)["detail"] == detail
-    finally:
-        i18n.set_language(previous, persist=False)
-
-
-def test_disconnected_backend_property_blocks_cached_true_start_flags(workbench):
-    window, backend, focuses = workbench
-    backend.supports_device_control = False  # Cached snapshot still contains old true flags.
-    window.open_glove_calibration("right")
-    assert backend.commands == [] and not focuses
-    assert "已请求打开" not in window.statusBar().currentMessage()
-
-
-@pytest.mark.parametrize("configuration", [None, [], [dict(id="different", parameters=dict(hand="right", launch_gui="true"))],
-    [dict(id="glove_right", parameters=dict(hand="left", launch_gui="true"))]])
-def test_missing_or_wrong_hand_profile_does_not_launch(workbench, configuration):
-    window, backend, focuses = workbench
-    if configuration is None:
-        del backend.runtime
-    else:
-        backend.runtime.configuration["process_groups"] = configuration
-    window.open_glove_calibration("right")
-    assert backend.commands == [] and not focuses
-
-
-@pytest.mark.parametrize("launch_gui", ["false", False, "invalid"])
-def test_bridge_only_or_invalid_gui_profile_never_starts_second_gui(workbench, launch_gui):
-    window, backend, focuses = workbench
-    profile = next(p for p in backend.runtime.configuration["process_groups"] if p["id"] == group(backend)["id"])
-    profile["parameters"]["launch_gui"] = launch_gui
-    window.open_glove_calibration("right")
-    assert backend.commands == [] and not focuses
-    assert "启用标定窗口" in window.statusBar().currentMessage()
-
-
-@pytest.mark.parametrize("state,device_changes,label_part,hint_part", [
-    ("STOPPED", {}, "未启动", "进程已停止"),
-    ("DISABLED", {}, "未启用", "未启用"),
-    ("DEGRADED", {}, "已启动", "尚无姿态数据"),
-    ("RUNNING", dict(status="online", age_s=.02, receive_hz=30., valid_hz=0., preview=dict(valid=False)), "姿态待就绪", "当前姿态尚未有效"),
-    ("DEGRADED", dict(status="stale", age_s=5.), "姿态断流", "消息已陈旧"),
-])
-def test_device_card_hint_reflects_process_and_observed_data(workbench, state, device_changes, label_part, hint_part):
-    window, backend, _ = workbench
-    active = state in {"RUNNING", "DEGRADED"}
-    group(backend).update(state=state, owned=active, pid=1234 if active else None, can_start=state == "STOPPED")
-    stream(backend).update(device_changes)
-    window.refresh()
+def test_hand_selection_and_expand_share_one_panel(workbench):
+    window, backend = workbench
     target = card(window, backend)
-    assert label_part in target.state.text()
-    assert hint_part in target.glove_note.text()
-    assert target.glove_note.toolTip().startswith(target.glove_note.text())
+    window._select(target.identifier)
+    first = window.hand_panes["right"]
+    target.open_detail()
+    window.open_glove_calibration("right")
+    assert window.hand_panes["right"] is first
+    assert target.glove_dialog is None
+    assert backend.commands == []
 
 
-def test_enlarged_glove_view_forwards_same_hand_action_without_new_process(workbench, qapp):
-    window, backend, focuses = workbench
-    target = card(window, backend, "left")
-    target.open_glove_detail()
-    qapp.processEvents()
-    dialog = target.glove_dialog
-    assert dialog is not None
-    dialog.controls.calibration_button.click()
-    assert backend.commands == [("device.start", dict(group_id=group(backend, "left")["id"], expected_manager_instance_id="manager-test"))]
-    assert not focuses
-    dialog.close()
+def test_explicit_start_uses_manager_profile_and_instance(workbench):
+    window, backend = workbench
+    window.open_glove_calibration("left")
+    pane = window.hand_panes["left"]
+    pane._toggle_device("imu")
+    assert backend.commands == [("device.start", dict(group_id=group(backend, "left")["id"],
+                                                        expected_manager_instance_id="manager-test"))]
+    with pytest.raises(RuntimeError):
+        pane._toggle_device("imu")
+    assert len(backend.commands) == 1
 
 
-def test_tools_menu_routes_each_hand_through_same_guarded_method(workbench):
-    window, backend, focuses = workbench
+def test_recording_guard_and_independent_hand_lifecycle(workbench):
+    window, backend = workbench
+    window.open_glove_calibration("left")
+    window.open_glove_calibration("right")
+    group(backend, "right").update(can_start=False, can_stop=False)
+    window.refresh()
+    with pytest.raises(RuntimeError):
+        window.hand_panes["right"]._toggle_device("imu")
+    window.hand_panes["left"]._toggle_device("imu")
+    assert backend.commands[0][1]["group_id"] == group(backend, "left")["id"]
+
+
+def test_switching_to_camera_restores_existing_preview(workbench):
+    window, backend = workbench
+    window.open_glove_calibration("left")
+    camera = next(d for d in backend.value["devices"] if d["kind"] == "camera")
+    window._select(camera["id"])
+    assert window.preview_stack.currentWidget() is window.capture_stage
+    assert window.capture_stage._device["id"] == camera["id"]
+    assert not backend.commands
+
+
+def test_close_detaches_both_hands_without_device_stop(workbench):
+    window, backend = workbench
+    for hand in ("left", "right"):
+        window.open_glove_calibration(hand)
+    window.close()
+    assert all(pane._closed for pane in window.hand_panes.values())
+    assert backend.closed and not backend.commands
+
+
+def test_tools_menu_routes_to_embedded_hand_panel(workbench):
+    window, backend = workbench
     tools = DesktopTools(window, backend, backend.runtime)
     tools.left_glove_action.trigger()
-    assert backend.commands[0][1]["group_id"] == group(backend, "left")["id"]
-    assert not focuses
+    assert window.preview_stack.currentWidget() is window.hand_panes["left"]
     tools.right_glove_action.trigger()
-    assert len(backend.commands) == 1  # Still pending: no independent launcher bypass.
+    assert window.preview_stack.currentWidget() is window.hand_panes["right"]
+    assert not backend.commands
 
 
-def test_demo_method_never_spawns_or_focuses(qapp, monkeypatch):
+def test_demo_does_not_create_remote_hand_clients(qapp, monkeypatch):
     def forbidden(*args, **kwargs):
-        pytest.fail("Demo must not launch or focus hardware tooling")
+        pytest.fail("Demo must not launch hardware tooling")
     monkeypatch.setattr(subprocess, "Popen", forbidden)
-    monkeypatch.setattr(module, "focus_owned_calibration", forbidden)
     window = MainWindow(DemoBackend())
     try:
         window.open_glove_calibration("right")
-        assert "演示模式" in window.statusBar().currentMessage()
+        assert window.hand_panes == {}
     finally:
         window.close()

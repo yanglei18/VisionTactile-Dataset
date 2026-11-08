@@ -8,7 +8,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
-from vt_tactile_msgs.msg import TactileSampleArray, TactileState
+from vt_tactile_msgs.msg import TactileRow44Array, TactileGridState
 
 from .assembler import Assembler
 from .lifecycle import shutdown_ros
@@ -36,11 +36,11 @@ class TactileReplayNode(Node):
         self._last_clock_ns = None
         self.rejected_samples = 0
         self.state_publisher = self.create_publisher(
-            TactileState, "state", QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
+            TactileGridState, "state", QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                                              durability=DurabilityPolicy.VOLATILE))
         self.heatmap_publisher = self.create_publisher(Image, "heatmap", 1) if self.get_parameter("publish_heatmap").value else None
         self.sample_subscription = self.create_subscription(
-            TactileSampleArray, "samples", self.on_samples,
+            TactileRow44Array, "samples", self.on_samples,
             QoSProfile(depth=30, reliability=ReliabilityPolicy.RELIABLE,
                        durability=DurabilityPolicy.VOLATILE))
         # ROS-time timer intentionally pauses with the bag clock. The viewer's
@@ -51,10 +51,10 @@ class TactileReplayNode(Node):
 
     def on_samples(self, message):
         stamp_ns = message.header.stamp.sec * 1_000_000_000 + message.header.stamp.nanosec
-        if (message.schema_version != 1 or message.hand != self.hand
+        if (message.schema_version != 2 or message.hand != self.hand
                 or stamp_ns != message.host_realtime_ns
                 or message.clock_domain != "CLOCK_MONOTONIC" or message.timing_source != "host_receive"
-                or any(block.row >= 80 or block.column_group >= 8 or len(block.adc) != 10
+                or any(block.row >= 20 or len(block.adc) != 20
                        for block in message.blocks)):
             self.rejected_samples += 1
             self.assembler = Assembler(hand=self.hand)
@@ -73,8 +73,7 @@ class TactileReplayNode(Node):
         # Python int. Normalize at the wire boundary for the pure core validator.
         values = {field.name: getattr(message, field.name) for field in fields(Batch)
                   if field.name != "blocks"}
-        values["blocks"] = tuple(Block(row=int(block.row), column_group=int(block.column_group),
-                                       status_raw=int(block.status_raw), adc=tuple(map(int, block.adc)))
+        values["blocks"] = tuple(Block(row=int(block.row), adc=tuple(map(int, block.adc)))
                                  for block in message.blocks)
         self.assembler.apply(Batch(**values))
         self._last_batch = message

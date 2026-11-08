@@ -1,10 +1,10 @@
 """Bounded, display-only local tactile IPC; no ROS, serial, Qt, or pose imports.
 
-Wire v2 is an eight-byte prefix, a bounded UTF-8 JSON header, then fixed-size
+Wire v3 is an eight-byte prefix, a bounded UTF-8 JSON header, then fixed-size
 little-endian ADC/clock arrays and packed validity/update masks. No pickle is
 used. Datagram delivery is best effort; this is never an archival data channel.
 The binary format adds no claim of a hardware checksum or synchronous scan.
-Legacy wire v1 states are decoded and explicitly cropped to the 20x20 area.
+Only native row44 / schema-3 states are accepted.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from .grid import BLOCK_COUNT, CELL_COUNT, COLS, ROWS, SCHEMA_VERSION, normalize_state
+from .grid import CELL_COUNT, COLS, ROWS, SCHEMA_VERSION, normalize_state
 
 
 MAX_PACKET_BYTES = 32_768
@@ -31,14 +31,19 @@ MAX_HEADER_BYTES = 4096
 MAX_DRAIN_PACKETS = 64
 _PREFIX = struct.Struct("!4sHH")
 _MAGIC = b"VTTD"
-_VERSION = 2
+_VERSION = 3
 _MASK_BYTES = CELL_COUNT // 8
-_BODY_BYTES = CELL_COUNT * 2 + _MASK_BYTES * 2 + BLOCK_COUNT * 8 * 2
+_BODY_BYTES = CELL_COUNT * 2 + _MASK_BYTES * 2 + ROWS * 8 * 2
 _UINT64_MAX = (1 << 64) - 1
 _INTEGER_FIELDS = (
     "source_sequence", "host_realtime_ns", "host_monotonic_ns",
     "snapshot_monotonic_ns", "max_age_ns", "producer_dropped_total",
 )
+
+
+def default_workbench_socket(hand: str = "right") -> str:
+    """Isolate the embedded workbench receiver from the FSGlove overlay."""
+    return default_socket_path(hand, f"/workbench/gloves/{hand}/tactile")
 
 
 def default_socket_path(hand: str = "right", namespace: str | None = None) -> str:
@@ -84,7 +89,7 @@ def _header(values: dict, *, wire_version: int = _VERSION) -> dict:
             "cols": _uint(values["cols"], "cols", 65535),
             "stream_epoch": _uint(values["stream_epoch"], "stream_epoch", (1 << 32) - 1),
         }
-        expected = (SCHEMA_VERSION, ROWS, COLS) if wire_version == 2 else (1, 80, 80)
+        expected = (SCHEMA_VERSION, ROWS, COLS)
         if (result["schema_version"], result["rows"], result["cols"]) != expected:
             raise ValueError("unsupported tactile schema or grid shape")
         for name in _INTEGER_FIELDS:
@@ -147,9 +152,9 @@ def encode_state(message) -> bytes:
         adc = _integer_array(message.adc, CELL_COUNT, "<u2", "adc")
         valid = _mask(message.valid_mask, "valid_mask")
         updated = _mask(getattr(message, "updated_mask", np.zeros(CELL_COUNT, dtype=bool)), "updated_mask")
-        mono = _integer_array(message.block_monotonic_ns, BLOCK_COUNT, "<u8", "block_monotonic_ns")
-        real = _integer_array(getattr(message, "block_realtime_ns", np.zeros(BLOCK_COUNT, dtype=np.uint64)),
-                              BLOCK_COUNT, "<u8", "block_realtime_ns")
+        mono = _integer_array(message.row_monotonic_ns, ROWS, "<u8", "row_monotonic_ns")
+        real = _integer_array(getattr(message, "row_realtime_ns", np.zeros(ROWS, dtype=np.uint64)),
+                              ROWS, "<u8", "row_realtime_ns")
     except (AttributeError, KeyError) as exc:
         raise ValueError("incomplete tactile display state") from exc
     return (_PREFIX.pack(_MAGIC, _VERSION, len(header)) + header + adc.tobytes()
@@ -168,10 +173,10 @@ def decode_state(payload: bytes) -> SimpleNamespace:
     if not _PREFIX.size <= len(payload) <= MAX_PACKET_BYTES:
         raise ValueError("invalid display datagram size")
     magic, version, header_size = _PREFIX.unpack_from(payload)
-    if magic != _MAGIC or version not in (1, _VERSION) or not 0 < header_size <= MAX_HEADER_BYTES:
+    if magic != _MAGIC or version != _VERSION or not 0 < header_size <= MAX_HEADER_BYTES:
         raise ValueError("unsupported display wire format or header size")
     body_start = _PREFIX.size + header_size
-    cells, blocks = (CELL_COUNT, BLOCK_COUNT) if version == _VERSION else (6400, 640)
+    cells, blocks = CELL_COUNT, ROWS
     mask_bytes = cells // 8
     body_bytes = cells * 2 + mask_bytes * 2 + blocks * 8 * 2
     if len(payload) != body_start + body_bytes:
@@ -197,7 +202,7 @@ def decode_state(payload: bytes) -> SimpleNamespace:
     stamp_ns = metadata["host_realtime_ns"]
     result = normalize_state(SimpleNamespace(
         **metadata, adc=adc, valid_mask=valid, updated_mask=updated,
-        block_monotonic_ns=mono, block_realtime_ns=real,
+        row_monotonic_ns=mono, row_realtime_ns=real,
         header=SimpleNamespace(frame_id=metadata["frame_id"], stamp=SimpleNamespace(
             sec=stamp_ns // 1_000_000_000, nanosec=stamp_ns % 1_000_000_000)),
     ))

@@ -27,6 +27,7 @@ import warnings
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from .config import PARENTS
 from .functional_quality import (FUNCTIONAL_REFERENCE_P95_MAX_DEG,
                                  functional_fit_acceptance)
 
@@ -37,6 +38,19 @@ FINGER_SLOTS = {"index": (1, 2), "middle": (4, 5), "ring": (10, 11),
                 "little": (7, 8), "thumb": (15,)}
 _MCP = {1, 4, 7, 10}
 _ANCHORS = ("session_id", "upstream_state_sha256", "config_sha256", "rest_sha256")
+
+
+def functional_dependencies(config, profile):
+    """A local angle exists only for two segments accepted by this mounting fit."""
+    nodes = profile.get("nodes", {})
+    accepted = {slot: node for node, slot in config["node_to_slot"].items()
+                if node in nodes and nodes[node].get("slot") == slot
+                and type(nodes[node].get("epoch")) is int and nodes[node]["epoch"] >= 0}
+    if 0 not in accepted:
+        return {}
+    return {str(slot): [accepted[PARENTS[slot]], accepted[slot]]
+            for slots in FINGER_SLOTS.values() for slot in slots
+            if slot in accepted and PARENTS[slot] in accepted}
 
 
 class FunctionalDependencyError(RuntimeError):
@@ -106,6 +120,8 @@ def _checked_binding(binding):
 
 def _dependencies(binding, slot):
     values = binding["dependency_nodes_by_slot"].get(str(slot))
+    if values is None:
+        raise ValueError(f"关节 {slot} 缺少已通过基础标定的相邻传感器，请补采提示的掌姿。")
     if not isinstance(values, (list, tuple)) or len(values) != 2 or len(set(values)) != 2:
         raise ValueError(f"关节 {slot} 必须有两个不同的父/子依赖节点，不能借用缺测 CMC")
     if any(not isinstance(node, str) or type(binding["nodes_epochs"].get(node)) is not int

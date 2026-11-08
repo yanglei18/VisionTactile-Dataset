@@ -17,7 +17,7 @@ def stream_identity(topic: str, type_name: str, *, expected_hand: str | None = N
         hand, suffix = match.groups()
         if suffix == "state" and type_name == "vt_glove_msgs/msg/GloveState":
             canonical_hand, canonical_frame = hand, f"glove_{hand}_reference"
-        elif suffix == "tactile/samples" and type_name == "vt_tactile_msgs/msg/TactileSampleArray":
+        elif suffix == "tactile/samples" and type_name in {"vt_tactile_msgs/msg/TactileSampleArray", "vt_tactile_msgs/msg/TactileRow44Array"}:
             canonical_hand, canonical_frame = hand, f"{hand}_tactile"
     if expected_hand is not None and expected_hand not in {"left", "right"}:
         raise ValueError("expected_hand must be left or right")

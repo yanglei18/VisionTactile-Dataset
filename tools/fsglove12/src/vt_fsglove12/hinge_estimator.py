@@ -194,6 +194,8 @@ class FunctionalHingeEstimator:
                 if data.get("epoch") != binding["nodes_epochs"][node]:
                     raise _Unavailable("filter_epoch_changed")
                 if data.get("orientation_valid") is False:
+                    if data.get("continuity") == "awaiting_backlog":
+                        raise _Unavailable("waiting_for_backlog", hard=False)
                     raise _Unavailable("input_orientation_invalid")
                 age, index = data.get("age_s"), data.get("sample_index")
                 if not _finite(age) or not 0 <= age <= self.settings["max_age_s"]:

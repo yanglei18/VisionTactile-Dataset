@@ -167,6 +167,7 @@ def test_export_writes_quality_and_provenance_even_for_all_invalid(tmp_path, pop
     else:
         assert report["valid_cell_age_ns"]["p95_ns"] is None
         assert "No valid tactile" in report["warnings"][0]
+        assert manifest["source_type"] is None and manifest["source_schema_version"] is None
 
 
 def test_quality_accumulation_has_fixed_memory_and_excludes_expired_ages():

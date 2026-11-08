@@ -3,7 +3,7 @@
 from dataclasses import fields
 
 from sensor_msgs.msg import Image
-from vt_tactile_msgs.msg import TactileBlock, TactileSampleArray, TactileState
+from vt_tactile_msgs.msg import TactileRow44, TactileRow44Array, TactileGridState
 
 from .grid import CELL_COUNT, normalize_state
 
@@ -13,20 +13,19 @@ def set_stamp(header, realtime_ns: int, frame_id: str) -> None:
     header.frame_id = frame_id
 
 
-def sample_message(batch, frame_id: str) -> TactileSampleArray:
-    result = TactileSampleArray()
+def sample_message(batch, frame_id: str) -> TactileRow44Array:
+    result = TactileRow44Array()
     for field in fields(batch):
         if field.name != "blocks":
             setattr(result, field.name, getattr(batch, field.name))
-    result.blocks = [TactileBlock(row=block.row, column_group=block.column_group,
-                                 status_raw=block.status_raw, adc=list(block.adc))
+    result.blocks = [TactileRow44(row=block.row, adc=list(block.adc))
                      for block in batch.blocks]
     set_stamp(result.header, batch.host_realtime_ns, frame_id)
     return result
 
 
-def state_message(snapshot, frame_id: str) -> TactileState:
-    result = TactileState()
+def state_message(snapshot, frame_id: str) -> TactileGridState:
+    result = TactileGridState()
     for field in fields(snapshot):
         value = getattr(snapshot, field.name)
         setattr(result, field.name, list(value) if isinstance(value, tuple) else value)
@@ -51,12 +50,8 @@ def _preview_lut():
 _PREVIEW_LUT = _preview_lut()
 
 
-def heatmap_message(state: TactileState) -> Image:
-    """20x20 ADC preview, including for legacy inputs; no force units.
-
-    Use the same migration boundary as the viewers. An old state must not
-    produce an 80x80 image after the other display paths have moved to 20x20.
-    """
+def heatmap_message(state: TactileGridState) -> Image:
+    """Native 20x20 ADC preview over the unsigned 16-bit scale; no force units."""
     state = normalize_state(state)
     if len(state.adc) != CELL_COUNT or len(state.valid_mask) != CELL_COUNT:
         raise ValueError("Heatmap requires 400 ADC values and validity flags")
@@ -67,7 +62,7 @@ def heatmap_message(state: TactileState) -> Image:
     result.is_bigendian = 0
     result.step = state.cols * 3
     result.data = b"".join(
-        _PREVIEW_LUT[max(0, min(255, (int(adc) - 20000) * 255 // 4000))]
+        _PREVIEW_LUT[max(0, min(255, int(adc) * 255 // 65535))]
         if valid else b"\0\0\0"
         for adc, valid in zip(state.adc, state.valid_mask)
     )

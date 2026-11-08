@@ -145,3 +145,76 @@ def test_default_reset_threshold_and_explicit_legacy_policy():
     fusion.update([sample(1, 1.), sample(1, 1.164)])
     assert fusion.snapshot(1.164)["nodes"]["1"]["epoch"] == 1
     assert fusion.gap_diagnostics["1"]["short_gaps"] == 0
+
+
+@pytest.mark.parametrize("restore_backlog", [False, True])
+def test_local_gap_with_continuous_peer_needs_recovering_samples_not_just_fresh_arrivals(tmp_path, restore_backlog):
+    config = {"sample_rate_hz": 100., "output_rate_hz": 100., "stale_after_s": .15}
+    samples = []
+    live = OnlineFusion(config)
+    # Node 4 and its peer had the same cadence. Silence only affects node 4.
+    for i in range(150):
+        stamp = 1. + i / 100.
+        batch = [sample(11, stamp)]
+        if i < 50 or i >= 100:
+            batch.append(sample(4, stamp))
+        if restore_backlog and i in (101, 102):
+            # Buffered local USB delivery across two reads: integrate all original
+            # samples; a burst of peer evidence alone must never invalidate it.
+            batch.extend(sample(4, stamp) for _ in range(25))
+        samples.extend(batch)
+        live.update(batch)
+        if i == 100:
+            first = live.snapshot(stamp)
+            assert first["nodes"]["4"].get("orientation_valid", True) is False
+            assert first["nodes"]["4"]["epoch"] == 0
+            assert first["nodes"]["11"].get("orientation_valid", True)
+            assert first["nodes"]["11"]["epoch"] == 0
+        if i == 149:
+            final = live.snapshot(stamp)
+    assert final["nodes"]["4"]["epoch"] == (0 if restore_backlog else 1)
+    assert final["nodes"]["4"].get("orientation_valid", True)
+    assert final["nodes"]["11"]["epoch"] == 0
+    assert final["nodes"]["4"]["sample_index"] == (150 if restore_backlog else 100)
+    if restore_backlog:
+        np.testing.assert_allclose(final["nodes"]["4"]["quat_xyzw"],
+                                   final["nodes"]["11"]["quat_xyzw"], atol=1e-13)
+    assert final["gap_diagnostics"]["4"]["filter_resets"] == (0 if restore_backlog else 1)
+    raw = tmp_path / "raw.csv"
+    recorder = RawRecorder(raw).open()
+    recorder.write(samples)
+    recorder.close()
+    destination = tmp_path / "orientations.jsonl"
+    replay_raw(raw, config, destination)
+    frames = list(iter_orientation_frames(destination))
+    first_replayed = next(f for f in frames if f["timestamp_s"] == 2.)
+    assert first_replayed["nodes"]["4"].get("orientation_valid", True) is False
+    assert frames[-1]["nodes"]["4"]["epoch"] == final["nodes"]["4"]["epoch"]
+    assert frames[-1]["gap_diagnostics"] == final["gap_diagnostics"]
+
+
+@pytest.mark.parametrize("burst_times", [(1.22,), (1.04, 1.25)])
+def test_isolated_peer_bursts_inside_an_otherwise_silent_interval_preserve_reference(burst_times):
+    fusion = OnlineFusion({"stale_after_s": .15})
+    fusion.update([sample(4, 1.), sample(11, 1.)])
+    # USB drains one bank in a single read, followed by the delayed other bank.
+    for stamp in burst_times:
+        fusion.update(sample(11, stamp) for _ in range(30 // len(burst_times)))
+    fusion.update(sample(4, 1.30) for _ in range(30))
+    node = fusion.snapshot(1.30)["nodes"]["4"]
+    assert node["epoch"] == 0 and node.get("orientation_valid", True)
+    assert fusion.gap_diagnostics["4"]["last_action"] == "filter_preserved"
+
+
+def test_clock_rollback_clears_pending_backlog_and_pre_rollback_peer_evidence():
+    fusion = OnlineFusion({"sample_rate_hz": 100., "stale_after_s": .15})
+    fusion.update([sample(4, 2.), sample(11, 2.)])
+    for i in range(1, 31):
+        fusion.update([sample(11, 2. + i / 100.)])
+    fusion.update([sample(4, 2.31)])
+    assert fusion.snapshot(2.31)["nodes"]["4"]["orientation_valid"] is False
+    fusion.update([sample(4, 1.)])
+    assert fusion.snapshot(1.)["nodes"]["4"].get("orientation_valid", True)
+    fusion.update([sample(4, 1.20)])
+    assert fusion.snapshot(1.20)["nodes"]["4"]["epoch"] == 1
+    assert fusion.gap_diagnostics["4"]["last_action"] == "filter_preserved"

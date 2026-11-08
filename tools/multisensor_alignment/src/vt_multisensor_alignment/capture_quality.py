@@ -28,7 +28,7 @@ from .camera_calibration import CALIBRATION_TYPES, CalibrationQualityAccumulator
 from .config import AlignmentConfig
 from .image_header import image_header_stamp_ns
 from .model import MessageRef
-from .tactile_adapter import TACTILE_SAMPLE_TYPE, TactileContinuity
+from .tactile_adapter import TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE, TACTILE_SAMPLE_TYPES, TactileContinuity
 
 
 GLOVE_TYPE = "vt_glove_msgs/msg/GloveState"
@@ -36,8 +36,10 @@ TRACKER_TYPE = "vt_tracker_msgs/msg/TrackerSample"
 CAMERA_TYPE = "vt_camera_msgs/msg/CameraFrameTiming"
 IMAGE_TYPE = "sensor_msgs/msg/Image"
 TACTILE_STATE_TYPE = "vt_tactile_msgs/msg/TactileState"
+TACTILE_GRID_TYPE = "vt_tactile_msgs/msg/TactileGridState"
+TACTILE_STATE_TYPES = {TACTILE_STATE_TYPE, TACTILE_GRID_TYPE}
 INSPECTED_TYPES = frozenset({
-    GLOVE_TYPE, TRACKER_TYPE, CAMERA_TYPE, TACTILE_SAMPLE_TYPE, TACTILE_STATE_TYPE,
+    GLOVE_TYPE, TRACKER_TYPE, CAMERA_TYPE, *TACTILE_SAMPLE_TYPES, *TACTILE_STATE_TYPES,
 })
 _BLOCKS = 160
 _CELLS = 400
@@ -272,11 +274,13 @@ class TopicQualityAccumulator:
         self.counters: dict[str, _Counter] = {}
         self.context: object = None
         self.previous_clocks: tuple[int, int] | None = None
-        self.continuity = TactileContinuity()
+        self.continuity = TactileContinuity(source_type=self.type_name if self.type_name in TACTILE_SAMPLE_TYPES else TACTILE_SAMPLE_TYPE)
         self.raw_blocks = self.usable_roi_blocks = self.outside_roi_blocks = 0
         self.empty_batches = self.unusable_batches = 0
-        self.roi_seen = [False] * _BLOCKS
-        self.block_timing = [IntervalAccumulator() for _ in range(_BLOCKS)]
+        self._row44 = self.type_name == TACTILE_ROW44_SAMPLE_TYPE
+        self._blocks = 20 if self._row44 else _BLOCKS
+        self.roi_seen = [False] * self._blocks
+        self.block_timing = [IntervalAccumulator() for _ in range(self._blocks)]
         self.cycle_seen: set[int] = set()
         self.coverage_cycles = 0
         self.cycle_timing = IntervalAccumulator()
@@ -307,7 +311,7 @@ class TopicQualityAccumulator:
         self.source_monotonic.reset_boundary()
         self.source_realtime.reset_boundary()
         self.sequence.reset_boundary()
-        self.continuity = TactileContinuity()
+        self.continuity = TactileContinuity(source_type=self.type_name if self.type_name in TACTILE_SAMPLE_TYPES else TACTILE_SAMPLE_TYPE)
         self._break_coverage()
 
     def _break_coverage(self) -> None:
@@ -371,7 +375,7 @@ class TopicQualityAccumulator:
             self.source_monotonic.reset_boundary()
             self.source_realtime.reset_boundary()
 
-        sequence_field = ("sequence" if self.type_name == TACTILE_SAMPLE_TYPE
+        sequence_field = ("sequence" if self.type_name in TACTILE_SAMPLE_TYPES
                           else "frame_index" if self.type_name == GLOVE_TYPE else None)
         if sequence_field is not None:
             self.sequence.add(_integer(getattr(message, sequence_field), sequence_field))
@@ -382,7 +386,7 @@ class TopicQualityAccumulator:
                 # These are session-cumulative, not epoch-cumulative counters.
                 counter.add(_integer(getattr(message, name), name), context[0])
 
-        if self.type_name == TACTILE_SAMPLE_TYPE:
+        if self.type_name in TACTILE_SAMPLE_TYPES:
             reference = MessageRef(self.topic, self.messages - 1, receipt_ns, realtime)
             event = self.continuity.decode(message, reference, header_stamp_ns=_stamp(message))
             self.raw_blocks += len(event.blocks)
@@ -396,21 +400,24 @@ class TopicQualityAccumulator:
             for block in event.blocks:
                 if block.row >= 20:
                     continue
-                index = block.row * 8 + block.column_group
+                index = block.row if self._row44 else block.row * 8 + block.column_group
                 self.usable_roi_blocks += 1
                 self.roi_seen[index] = True
                 self.block_timing[index].add(monotonic)
                 self.cycle_seen.add(index)
-                if len(self.cycle_seen) == _BLOCKS:
+                if len(self.cycle_seen) == self._blocks:
                     self.coverage_cycles += 1
                     self.cycle_timing.add(monotonic)
                     self.cycle_seen.clear()
-        elif self.type_name == TACTILE_STATE_TYPE:
+        elif self.type_name in TACTILE_STATE_TYPES:
             schema = _integer(message.schema_version, "schema_version")
             rows, cols = int(message.rows), int(message.cols)
-            if (schema, rows, cols) not in {(1, 80, 80), (2, 20, 20)}:
+            row44_state = self.type_name == TACTILE_GRID_TYPE
+            schemas = {(3, 20, 20)} if row44_state else {(1, 80, 80), (2, 20, 20)}
+            clocks = message.row_monotonic_ns if row44_state else message.block_monotonic_ns
+            if (schema, rows, cols) not in schemas:
                 raise ValueError("unsupported tactile state grid")
-            if len(message.valid_mask) != rows * cols or len(message.block_monotonic_ns) != rows * 8:
+            if len(message.valid_mask) != rows * cols or len(clocks) != rows * (1 if row44_state else 8):
                 raise ValueError("tactile state mask/clock length mismatch")
             valid = [bool(message.valid_mask[row * cols + col])
                      for row in range(20) for col in range(20)]
@@ -420,7 +427,7 @@ class TopicQualityAccumulator:
                 for col in range(20):
                     if not valid[row * 20 + col]:
                         continue
-                    block_time = _integer(message.block_monotonic_ns[row * 8 + col % 8], "block clock")
+                    block_time = _integer(clocks[row if row44_state else row * 8 + col % 8], "block clock")
                     age = snapshot - block_time
                     if block_time == 0 or age < 0:
                         self.negative_age_cells += 1
@@ -446,10 +453,10 @@ class TopicQualityAccumulator:
             "latency_basis": "bag timestamp minus host receive clock; meaningful only with the same realtime clock; not hardware latency",
             "cumulative_counters": {name: value.document() for name, value in self.counters.items()},
         }
-        if self.type_name in {GLOVE_TYPE, TACTILE_SAMPLE_TYPE}:
+        if self.type_name in {GLOVE_TYPE, *TACTILE_SAMPLE_TYPES}:
             result["software_sequence"] = self.sequence.document()
-        if self.type_name == TACTILE_SAMPLE_TYPE:
-            cells_seen = sum((3 if index % 8 < 4 else 2)
+        if self.type_name in TACTILE_SAMPLE_TYPES:
+            cells_seen = sum((20 if self._row44 else 3 if index % 8 < 4 else 2)
                              for index, seen in enumerate(self.roi_seen) if seen)
             result["tactile"] = {
                 "rows": 20, "cols": 20, "physical_cells": _CELLS,
@@ -463,14 +470,14 @@ class TopicQualityAccumulator:
                 "coverage_basis": "union of valid physical addresses across the recording; not simultaneous freshness",
                 "complete_observed_coverage_cycles": self.coverage_cycles,
                 "coverage_cycle_timing": self.cycle_timing.document(),
-                "cycle_basis": "all 160 physical stride-8 blocks observed since previous completion without continuity barriers; NOT hardware-synchronized scans",
+                "cycle_basis": ("all 20 native rows" if self._row44 else "all 160 physical stride-8 blocks") + " observed since previous completion without continuity barriers; NOT hardware-synchronized scans",
                 "per_physical_block": [
-                    {"row": i // 8, "column_group": i % 8, "cell_count": 3 if i % 8 < 4 else 2,
+                    {"row": i if self._row44 else i // 8, "column_group": None if self._row44 else i % 8, "cell_count": 20 if self._row44 else 3 if i % 8 < 4 else 2,
                      **timing.document()}
                     for i, timing in enumerate(self.block_timing)
                 ],
             }
-        elif self.type_name == TACTILE_STATE_TYPE:
+        elif self.type_name in TACTILE_STATE_TYPES:
             result["tactile"] = {
                 "rows": 20, "cols": 20, "physical_cells": _CELLS,
                 "valid_cells_per_snapshot": self.valid_cells.document(),

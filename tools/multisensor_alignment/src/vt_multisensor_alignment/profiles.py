@@ -17,7 +17,7 @@ import yaml
 
 from .config import load_config
 from .glove_adapter import GLOVE_STATE_TYPE
-from .tactile_adapter import TACTILE_SAMPLE_TYPE
+from .tactile_adapter import TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE, TACTILE_SAMPLE_TYPES
 
 
 def parse_hands(value: str) -> tuple[str, ...]:
@@ -33,8 +33,11 @@ def parse_hands(value: str) -> tuple[str, ...]:
 
 def selected_streams(*, pose_hands: Sequence[str] = (), tactile_hands: Sequence[str] = (),
                      require_tactile: bool = False,
+                     tactile_type: str = TACTILE_ROW44_SAMPLE_TYPE,
                      reference_node_ids: Mapping[str, int] | None = None) -> list[dict[str, object]]:
     """A pure selector, reusable without ROS or filesystem writes."""
+    if tactile_type not in TACTILE_SAMPLE_TYPES:
+        raise ValueError("unsupported tactile message type")
     selections = {}
     for name, values in (("pose", pose_hands), ("tactile", tactile_hands)):
         if isinstance(values, (str, bytes)):
@@ -58,7 +61,7 @@ def selected_streams(*, pose_hands: Sequence[str] = (), tactile_hands: Sequence[
             stream = {
                 "name": f"{hand}_{'glove' if pose else 'tactile'}",
                 "topic": f"/gloves/{hand}/{'state' if pose else 'tactile/samples'}",
-                "type": GLOVE_STATE_TYPE if pose else TACTILE_SAMPLE_TYPE,
+                "type": GLOVE_STATE_TYPE if pose else tactile_type,
                 "time_source": "field", "timestamp_field": "host_realtime_ns",
                 "strategy": "nearest" if pose else "previous",
                 "max_delta_ms": 20.0 if pose else 100.0,

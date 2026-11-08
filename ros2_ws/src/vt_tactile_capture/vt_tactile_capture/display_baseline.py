@@ -15,7 +15,8 @@ from zipfile import BadZipFile, ZipFile
 
 import numpy as np
 
-from .grid import CELL_COUNT, SCHEMA_VERSION, SHAPE, normalize_state
+from .grid import CELL_COUNT, LAYOUT_ID, SCHEMA_VERSION, SHAPE, normalize_state
+from .protocol import PROTOCOL_ID
 
 
 COLLECTION_NS = 3_000_000_000
@@ -203,6 +204,11 @@ class DisplayBaseline:
             metadata = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
             if not isinstance(metadata, dict):
                 raise ValueError("Reference sidecar must be a JSON object")
+            if (metadata.get("protocol") != PROTOCOL_ID
+                    or metadata.get("layout_id") != LAYOUT_ID
+                    or type(metadata.get("state_schema_version")) is not int
+                    or metadata["state_schema_version"] != SCHEMA_VERSION):
+                raise ValueError("Reference protocol/layout must identify the current row44 schema")
             if (self.expected_hand is not None
                     and metadata.get("hand", self.expected_hand) != self.expected_hand):
                 raise ValueError("Reference hand does not match the current stream")
@@ -220,9 +226,9 @@ class DisplayBaseline:
                 reference_shape = None
                 for name, dtype in (("adc", np.dtype("uint16")), ("valid_mask", np.dtype("bool"))):
                     shape, _fortran_order, stored_dtype = _array_header(archive, name)
-                    if shape not in ((count, *SHAPE), (count, 80, 80)) or stored_dtype != dtype:
+                    if shape != (count, *SHAPE) or stored_dtype != dtype:
                         raise ValueError(f"Reference {name} must have shape (frames,20,20) "
-                                         f"or legacy (frames,80,80) and dtype {dtype}")
+                                         f"and dtype {dtype}")
                     if reference_shape is not None and shape != reference_shape:
                         raise ValueError("Reference ADC and validity shapes must match")
                     reference_shape = shape
@@ -239,8 +245,6 @@ class DisplayBaseline:
         self.samples_count = count
         self._source = str(path.resolve())
         self.status = "Loaded same-session ADC reference; signed ADC delta only, not pressure."
-        if reference_shape[1:] == (80, 80):
-            self.status += " Legacy 80x80 reference cropped to physical rows/columns 0..19."
 
     def subtract(self, values) -> np.ndarray:
         """Signed subtraction, retaining missing cells and negative responses."""
@@ -253,7 +257,10 @@ class DisplayBaseline:
 
     def metadata(self) -> dict:
         return {
-            "schema_version": 2,
+            "schema_version": 3,
+            "protocol": PROTOCOL_ID,
+            "layout_id": LAYOUT_ID,
+            "state_schema_version": SCHEMA_VERSION,
             "rows": SHAPE[0], "cols": SHAPE[1],
             "hand": self.expected_hand,
             "source": self._source,

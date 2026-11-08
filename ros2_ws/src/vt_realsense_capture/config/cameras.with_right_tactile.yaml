@@ -32,4 +32,4 @@ recording:
   max_cache_size_bytes: 1073741824
   additional_streams:
     - topic: /gloves/right/tactile/samples
-      type: vt_tactile_msgs/msg/TactileSampleArray
+      type: vt_tactile_msgs/msg/TactileRow44Array

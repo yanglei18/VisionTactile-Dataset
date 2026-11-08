@@ -45,9 +45,11 @@ FIELDS = {
                  ("bundle_path", tr('PyVUT 追踪器启动包'), "file"), ("role_map_path", tr('PyVUT 角色映射'), "file"),
                  ("pyvut_source", tr('扩展 PyVUT 源码目录'), "directory"),
                  ("pyvut_site_packages", tr('PyVUT 依赖目录'), "directory")),
-    "glove": (("glove_python", tr('手套 Python 环境'), "file"), ("fsglove_source", tr('官方 FSGlove 源码'), "directory"),
-              ("mano_assets", tr('MANO 资源目录'), "directory"), ("port", tr('IMU 串口'), "serial"),
-              ("config", tr('手套配置（可选）'), "file"), ("output_rate_hz", tr('姿态输出上限 Hz'), "rate")),
+    "glove": (("glove_python", tr('手部服务 Python 环境'), "file"),
+              ("resources", tr('本手运行资源包'), "directory"),
+              ("fsglove_source", tr('官方 FSGlove 源码（无资源包时）'), "directory"),
+              ("mano_assets", tr('MANO 资源目录（无资源包时）'), "directory"), ("port", tr('IMU 串口'), "serial"),
+              ("config", tr('手套配置（无资源包时必填）'), "file"), ("output_rate_hz", tr('姿态输出上限 Hz'), "rate")),
     "tactile": (("port", tr('触觉串口'), "serial"), ("config", tr('触觉配置（可选）'), "file")),
 }
 BUSY_STATES = {"starting", "applying", "saving", "restarting", "stopping"}
@@ -66,10 +68,7 @@ def runtime_busy(runtime):
 
 
 def _required_parameters(group):
-    required = required_parameters(group["preset"], group.get("parameters", {}))
-    if group["preset"] == "glove" and group.get("parameters", {}).get("launch_gui", "true") == "true":
-        required.update({"glove_python", "fsglove_source", "mano_assets", "port"})
-    return required
+    return required_parameters(group["preset"], group.get("parameters", {}))
 
 
 class WorkstationSettingsDialog(QDialog):
@@ -106,7 +105,7 @@ class WorkstationSettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 18, 22, 18)
         layout.setSpacing(10)
-        layout.addWidget(_label(tr('只启用本次需要的模块。保存将交给后台异步应用；设备仍需在设备页显式启动，标定保持独立。')))
+        layout.addWidget(_label(tr('只启用本次需要的模块。保存将交给后台异步应用；设备仍需显式启动，标定在工作台内完成。')))
         layout.addWidget(_label(tr('串口列表仅枚举名称，不会连接。左右手 IMU 与触觉必须选择各自端口；停用模块不会清空其配置。')))
         self.tabs = QTabWidget()
         for title, identifiers in ((tr('相机'), ("cameras",)), (tr('追踪器'), ("trackers",)),
@@ -162,7 +161,7 @@ class WorkstationSettingsDialog(QDialog):
             if index is None:
                 parameters = {"hand": hand} if hand else {}
                 if preset == "glove":
-                    parameters.update(launch_gui="true")
+                    parameters.update(launch_gui="false", resources="")
                 profiles.append(dict(id=identifier, label=title, preset=preset, enabled=False,
                                      parameters=parameters))
                 index = len(profiles) - 1
@@ -233,6 +232,15 @@ class WorkstationSettingsDialog(QDialog):
         enabled.toggled.connect(form_widget.setEnabled)
         form_widget.setEnabled(enabled.isChecked())
         layout.addWidget(form_widget)
+        if group["preset"] == "glove":
+            resources = self.fields[(identifier, "resources")]
+            def resource_mode():
+                bundled = bool(resources.text().strip())
+                for key in ("fsglove_source", "mano_assets", "config"):
+                    self.fields[(identifier, key)].setEnabled(not bundled)
+            resources.textChanged.connect(resource_mode)
+            resource_mode()
+            layout.addWidget(_label(tr('推荐选择本手运行资源包，其中包含已校验的模型、配置、动作示范与触觉布局。后台无窗口运行，标定与展示位于预览页。IMU 和触觉仍可分别启停。')))
         if identifier == "trackers":
             backend = self.fields[(identifier, "backend")]
             def change_backend():
@@ -404,6 +412,8 @@ class WorkstationSettingsDialog(QDialog):
                 parameters[key] = self._value(self.fields[(identifier, key)])
             if hand:
                 parameters["hand"] = hand
+            if preset == "glove":
+                parameters["launch_gui"] = "false"
         return result
 
     def _validate_required(self, configuration):

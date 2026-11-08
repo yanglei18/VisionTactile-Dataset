@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 import json
 
-from .validation import CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, MAX_MESSAGE_BYTES, PROTOCOL_VERSION, ProtocolError, validate_message
+from .validation import CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, MAX_MESSAGE_BYTES, PROTOCOL_VERSION, ProtocolError, validate_message
 
 
 def _pairs(pairs):
@@ -67,4 +67,4 @@ def decode_message(payload: bytes | str) -> dict:
         raise ProtocolError(f"cannot decode protocol message: {error}") from error
 
 
-__all__ = ["PROTOCOL_VERSION", "CONTROL_PROTOCOL_VERSION", "DETAIL_PROTOCOL_VERSION", "DEVICE_PROTOCOL_VERSION", "PLAN_PROTOCOL_VERSION", "CALIBRATION_PROTOCOL_VERSION", "MAX_MESSAGE_BYTES", "ProtocolError", "encode_message", "decode_message"]
+__all__ = ["PROTOCOL_VERSION", "CONTROL_PROTOCOL_VERSION", "DETAIL_PROTOCOL_VERSION", "DEVICE_PROTOCOL_VERSION", "PLAN_PROTOCOL_VERSION", "CALIBRATION_PROTOCOL_VERSION", "HAND_PROTOCOL_VERSION", "MAX_MESSAGE_BYTES", "ProtocolError", "encode_message", "decode_message"]

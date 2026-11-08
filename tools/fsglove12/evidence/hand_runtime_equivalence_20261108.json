@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "method": "Refit original mounting captures and solve every captured frame; replay fixed raw prefix",
+  "identical": true,
+  "raw_frame_limit": 1000,
+  "baseline": {
+    "right": {
+      "hand": "right",
+      "frames": 353,
+      "available": 349,
+      "fusion_frames": 1000,
+      "fusion_sha256": "3541b0712688bcf3bf6aeb589b2139ff3d25514eafb59e959abf87c6dcec3512",
+      "pose_sha256": "0688eee2ea11fc6515a3406bc8a38b2a0b80b231863ba45c02579a37c4e8bbe8",
+      "raw_sha256": "60ee512b03aa9cfe18e2b86d2ee323786faf3eadf38b77a3d55a585b55d367b5",
+      "config_sha256": "92f04898e153b12ce06edbcf69896672eafc9b436e1099b68246ba9bbbd91353",
+      "rest_sha256": "cf4269b50a5f799ca66f4c724a8eb4abd3ce08cf740b05262f5363662fdd0ea2",
+      "capture_sha256": [
+        "2492094e521cad9a5696aef9cc9378d4493f4cb0cf0404eafb7908284ce9cf39",
+        "487b8f1666a8ea7499d60c7c731d14647dc5cae93acd8b033be7ea630fc8619c",
+        "4bfa01f4b09fa9e3d90804b8719dba997b01be4e121a3993f81be380d4c4851c"
+      ]
+    },
+    "left": {
+      "hand": "left",
+      "frames": 349,
+      "available": 347,
+      "fusion_frames": 1000,
+      "fusion_sha256": "49e0f83fc4a674c5b04a5c363de057b86cc2a41cef90e5cfa17c36b033e0b312",
+      "pose_sha256": "83a9459f65585e2b777da51a867c522867abc01bf59239db5831176e606732b6",
+      "raw_sha256": "951608288e9c460a80c1f47741129bd6522da17aeccdc2cc300bd811a9da0c4f",
+      "config_sha256": "416dc2b1b25fb7ff7c750185563a54ccc615a1f1e9d04735cff5d88849682ef6",
+      "rest_sha256": "260f2704ef1b2e76335bd68fbf1f32485e21ea6a120d1565684e20b004155dac",
+      "capture_sha256": [
+        "873db671c0fc554b83679c1054faf62444b24cc609e224bb6c5c55779933d1f3",
+        "95b259604117eaacd156749e2554da73407fe7e6fc982b243b494fad396b7162",
+        "ad9adb00258caeadff60fdc2139c62d294e93d9a9c428ca4e069ecc6e22bca01"
+      ]
+    }
+  },
+  "candidate": {
+    "right": {
+      "hand": "right",
+      "frames": 353,
+      "available": 349,
+      "fusion_frames": 1000,
+      "fusion_sha256": "3541b0712688bcf3bf6aeb589b2139ff3d25514eafb59e959abf87c6dcec3512",
+      "pose_sha256": "0688eee2ea11fc6515a3406bc8a38b2a0b80b231863ba45c02579a37c4e8bbe8",
+      "raw_sha256": "60ee512b03aa9cfe18e2b86d2ee323786faf3eadf38b77a3d55a585b55d367b5",
+      "config_sha256": "92f04898e153b12ce06edbcf69896672eafc9b436e1099b68246ba9bbbd91353",
+      "rest_sha256": "cf4269b50a5f799ca66f4c724a8eb4abd3ce08cf740b05262f5363662fdd0ea2",
+      "capture_sha256": [
+        "2492094e521cad9a5696aef9cc9378d4493f4cb0cf0404eafb7908284ce9cf39",
+        "487b8f1666a8ea7499d60c7c731d14647dc5cae93acd8b033be7ea630fc8619c",
+        "4bfa01f4b09fa9e3d90804b8719dba997b01be4e121a3993f81be380d4c4851c"
+      ]
+    },
+    "left": {
+      "hand": "left",
+      "frames": 349,
+      "available": 347,
+      "fusion_frames": 1000,
+      "fusion_sha256": "49e0f83fc4a674c5b04a5c363de057b86cc2a41cef90e5cfa17c36b033e0b312",
+      "pose_sha256": "83a9459f65585e2b777da51a867c522867abc01bf59239db5831176e606732b6",
+      "raw_sha256": "951608288e9c460a80c1f47741129bd6522da17aeccdc2cc300bd811a9da0c4f",
+      "config_sha256": "416dc2b1b25fb7ff7c750185563a54ccc615a1f1e9d04735cff5d88849682ef6",
+      "rest_sha256": "260f2704ef1b2e76335bd68fbf1f32485e21ea6a120d1565684e20b004155dac",
+      "capture_sha256": [
+        "873db671c0fc554b83679c1054faf62444b24cc609e224bb6c5c55779933d1f3",
+        "95b259604117eaacd156749e2554da73407fe7e6fc982b243b494fad396b7162",
+        "ad9adb00258caeadff60fdc2139c62d294e93d9a9c428ca4e069ecc6e22bca01"
+      ]
+    }
+  },
+  "baseline_commit": "eaafec6",
+  "candidate_description": "integrate-hand-runtime-workbench; same numerical pipeline plus managed service",
+  "archived_profile_acceptance": {
+    "right": {
+      "profile_original_sha256": "1ee15dfdaabf48b93650571bc59bfa011bfa9f1fed8ef29349fa9b38043af913",
+      "profile_unchanged": true,
+      "frames": 353,
+      "available": 349,
+      "fusion_frames": 1000,
+      "fusion_sha256": "3541b0712688bcf3bf6aeb589b2139ff3d25514eafb59e959abf87c6dcec3512",
+      "pose_sha256": "618a2c17692d0357d7f89533742e6df487618987ae7632f62a12d1a87c04dcb0"
+    },
+    "left": {
+      "profile_original_sha256": "96feb4d0684112b10583ce60b9fa07741540e78484e865713f328c569d0a26d9",
+      "profile_unchanged": true,
+      "frames": 349,
+      "available": 347,
+      "fusion_frames": 1000,
+      "fusion_sha256": "49e0f83fc4a674c5b04a5c363de057b86cc2a41cef90e5cfa17c36b033e0b312",
+      "pose_sha256": "8886461c2f8933928f59285cf5dc4dcbaeb1bf72041694cdf43989e9d4a521c0"
+    },
+    "method": "Read original version 2 profiles unchanged, using the original hand-specific dependency environment; accept only verified packaged-source parent-HEAD correction"
+  },
+  "core_tests": {
+    "passed": 2223,
+    "skipped": 16,
+    "real_models": [
+      "left",
+      "right"
+    ],
+    "hardware_accessed": false
+  }
+}

@@ -8,6 +8,8 @@ test. It exercises neither serial hardware nor GUI rendering/scheduling.
 import json
 import os
 import io
+from importlib.resources import files
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -59,7 +61,7 @@ class ContinuousVirtualRig:
         # sensor -> bone -> neutral MANO -> physical world, with +Z up.
         return self.model_to_world * Rotation.from_matrix(global_matrices[self.slots]) * self.mounts.inv()
 
-    def feed(self, root, angles):
+    def feed(self, root, angles, *, omit_nodes=()):
         sensors = self.sensor_rotations(root, angles)
         # This is the body-frame increment consumed by q_next=q*Exp(gyro*dt).
         gyro = (self.previous_sensors.inv() * sensors).as_rotvec() / self.period
@@ -73,7 +75,7 @@ class ContinuousVirtualRig:
         stamp = 100. + self.samples_per_node * self.period
         batch = [RawSample(int(node), tuple(int(value) for value in values), stamp,
                            1700000000. + stamp, self.samples_per_node % 256)
-                 for node, values in zip(self.nodes, raw)]
+                 for node, values in zip(self.nodes, raw) if node not in omit_nodes]
         self.fusion.update(batch)
         self.previous_sensors = sensors
         self.root, self.angles = root, angles.copy()
@@ -372,3 +374,105 @@ def test_official_known_anatomical_axes_and_common_root_do_not_swap(record_prope
         "reversed_calibration_bend_output_deg": wrong_angles[[1, 14]].tolist(),
         "hardware_or_gui_tested": False,
     }))
+
+
+@pytest.mark.skipif(not os.environ.get("FSGLOVE12_UPSTREAM_CHECKOUT"),
+                    reason="requires the original FSGlove core and right-hand MANO assets")
+@pytest.mark.parametrize("hand,preset,index_proximal", [
+    ("right", "right_new_imu.json", "4"),
+    ("left", "left_from_right_initial.json", "8"),
+])
+def test_three_minute_display_tracks_motion_and_contains_local_loss(hand, preset, index_proximal, record_property):
+    """Timed raw samples from the deployed right-hand layout; no physical ground truth."""
+    from vt_fsglove12.display_pose import DisplayPoseCache
+    from vt_fsglove12.joint_quality import joint_quality_state
+    from vt_fsglove12.upstream_backend import OfficialFSGloveBackend, STEP_KEYS
+
+    if not (Path(os.environ["FSGLOVE12_MANO_ASSETS"]) / "models" / f"MANO_{hand.upper()}.pkl").is_file():
+        pytest.skip(f"Licensed {hand}-hand MANO model not supplied")
+    mesh = ManoBackend(os.environ["FSGLOVE12_MANO_ASSETS"], hand=hand)
+    rest = mesh.export_rest()
+    axes = model_motion_axes(mesh.render(np.zeros((16, 3)))["joints_m"], hand=hand)
+    config = load_config(files("vt_fsglove12") / "configs" / preset)
+    backend = OfficialFSGloveBackend(config, rest, checkout=os.environ["FSGLOVE12_UPSTREAM_CHECKOUT"],
+                                     mano_assets_root=mesh.assets_root)
+    backend.core.torch.set_num_threads(1)
+    rig = ContinuousVirtualRig(config, rest, axes)
+    straight = np.zeros((16, 3))
+    identity = Rotation.identity()
+    captures = {key: [] for key in STEP_KEYS}
+    for key, degrees in zip(STEP_KEYS, [0., -40., 40.]):
+        root = Rotation.from_rotvec(np.asarray(axes["pitch_axis"]) * np.deg2rad(degrees))
+        rig.advance(root, straight, 1.)
+        rig.advance(root, straight, 2., capture=captures[key])
+    session = f"{hand}-three-minute-regression"
+    profile = backend.fit_calibration(captures, session_id=session)
+    assert not profile["rejected_nodes"]
+    bent = straight.copy()
+    bent[[1, 2, 4, 5, 7, 8, 10, 11, 14, 15], 2] = np.deg2rad([10, 45, 14, 34, 8, 25, 8, 29, 7, 16])
+    rig.advance(identity, bent, 1.)
+    rig.advance(identity, bent, 3.)
+    cache = DisplayPoseCache()
+
+    def solve():
+        stamp = 100. + rig.samples_per_node * rig.period
+        frame = rig.fusion.snapshot(stamp)
+        pose = backend.solve(dict(frame, session_id=session), profile)
+        assert pose["pose_available"] and pose["solver_success"]
+        display = cache.update(pose, context=session, now=stamp)
+        return pose, display
+
+    def metrics(pose):
+        root = Rotation.from_quat(pose["root_quat_xyzw"])
+        local = Rotation.from_rotvec(pose["mano_pose_rotvec"][1:])
+        joints = np.asarray(mesh.render_mano(pose["mano_pose_rotvec"])["joints_m"])
+        tips = root.inv().apply(joints[[4, 8, 12, 16, 20]] - joints[0])
+        return root, local, tips
+
+    start, _ = solve()
+    root0, local0, tips0 = metrics(start)
+    maxima = np.zeros(3)
+    rate = round(config["sample_rate_hz"])
+    for i in range(1, 180 * rate + 1):
+        rig.feed(identity, bent)
+        if i % (rate // 4) == 0:
+            pose, display = solve()
+            assert not pose["calibration_rejections"] and all(joint_quality_state(pose)[0])
+            assert not display["held_slots"] and not display["unknown_slots"]
+            root, local, tips = metrics(pose)
+            maxima = np.maximum(maxima, [np.rad2deg((root0.inv() * root).magnitude()),
+                                         np.rad2deg((local0.inv() * local).magnitude()).max(),
+                                         1000 * np.linalg.norm(tips - tips0, axis=1).max()])
+    assert np.all(maxima < [2., 3., 5.]), maxima
+
+    # A frozen display would pass the hold. Require a real 20° yaw after it.
+    vertical = rig.model_to_world.inv().apply([0., 0., 1.])
+    for i in range(1, 4 * rate + 1):
+        rig.feed(Rotation.from_rotvec(vertical * np.deg2rad(5. * i / rate)), bent)
+    moved, shown = solve()
+    angle = np.rad2deg((root.inv() * Rotation.from_quat(moved["root_quat_xyzw"])).magnitude())
+    assert 18. < angle < 22., angle
+    rig.advance(rig.root, straight, 1.)
+    released, _ = solve()
+    pip = Rotation.from_rotvec(moved["mano_pose_rotvec"][2])
+    extended = Rotation.from_rotvec(released["mano_pose_rotvec"][2])
+    release_angle = np.rad2deg((pip.inv() * extended).magnitude())
+    assert release_angle > 20., release_angle
+    rig.advance(rig.root, bent, 1.)
+    _, shown = solve()
+
+    # Lose only the index proximal during a subsequent rigid turn. After
+    # normal delivery resumes, the old profile may not certify this joint.
+    for i in range(1, rate // 2 + 1):
+        rig.feed(Rotation.from_rotvec(vertical * np.deg2rad(20. + 90. * i / rate)), bent, omit_nodes={index_proximal})
+    for _ in range(rate):
+        rig.feed(rig.root, bent)
+    incomplete, held = solve()
+    assert incomplete["calibration_rejections"] == {index_proximal: "filter_epoch_changed_recalibration_required"}
+    assert set(held["held_slots"]) == {1, 2, 3}
+    np.testing.assert_array_equal(np.asarray(held["mano_pose_rotvec"])[1:4],
+                                  np.asarray(shown["mano_pose_rotvec"])[1:4])
+    record_property("three_minute_display", json.dumps(dict(
+        hand=hand, simulated_seconds=180, raw_hz=rate, checks_per_second=4, root_max_deg=maxima[0],
+        local_max_deg=maxima[1], palm_relative_tip_max_mm=maxima[2],
+        measured_turn_deg=angle, measured_index_release_deg=release_angle)))

@@ -42,11 +42,18 @@ def build_specs(profiles):
                 resources += ("serial:" + p["port"],)
             if preset == "tactile":
                 # The workbench is the viewer; do not launch an unrelated Qt interpreter.
-                p.update(namespace=f"/gloves/{hand}/tactile", gui="false")
+                from vt_tactile_capture.display_transport import default_workbench_socket
+                p.update(namespace=f"/gloves/{hand}/tactile", gui="false", display_bridge="true")
+                p["display_socket"] = p.get("display_socket") or str(default_workbench_socket(hand))
+                resources += ("socket:" + str(Path(p["display_socket"]).resolve()),)
             else:
-                p.setdefault("launch_gui", "true")
-                if p.get("socket_path"):
-                    resources += ("socket:" + str(Path(p["socket_path"]).resolve()),)
+                from vt_capture_core.hand_paths import default_hand_control_socket
+                from vt_glove_bridge.transport import default_socket_path
+                p.pop("launch_gui", None)  # Legacy recipe; the managed producer is headless.
+                p["control_socket"] = p.get("control_socket") or str(default_hand_control_socket(hand))
+                p["socket_path"] = p.get("socket_path") or default_socket_path(hand)
+                resources += tuple("socket:" + str(Path(p[key]).resolve())
+                                   for key in ("control_socket", "socket_path"))
         argv = ("ros2", "launch", package, launch) + tuple(f"{key}:={value}" for key, value in sorted(p.items()) if value)
         if any(python_paths):
             python_path = os.pathsep.join(path for path in (*python_paths, os.environ.get("PYTHONPATH", "")) if path)

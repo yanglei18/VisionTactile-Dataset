@@ -11,19 +11,30 @@ import math
 from pathlib import Path
 
 
+DEFAULT_RIGHT_LAYOUT = Path(__file__).with_name("layouts") / "right_glove_candidate.json"
+
+
 @dataclass(frozen=True, slots=True)
 class LayoutPoint:
+    """One native sensor address and its anatomical display coordinates.
+
+    Fractions are region-local cell centers after applying the region directions.
+    They are shared by 3D bindings; consumers must not infer anatomy from row/col.
+    """
+
     row: int
     col: int
     x: float
     y: float
     region: str
     verified_anchor: bool
+    along_fraction: float
+    across_fraction: float
 
 
 @dataclass(frozen=True, slots=True)
 class LayoutRegion:
-    """Raw addresses plus explicit directions for candidate surface projection.
+    """Anatomical coordinate bounds and directions for surface projection.
 
     Increasing normalized row runs wrist-to-tip; increasing normalized column
     runs toward the thumb. Directions affect display binding only, never ADC.
@@ -49,6 +60,7 @@ class HandLayout:
     note: str
     regions: tuple[LayoutRegion, ...] = ()
     source: tuple[tuple[str, str], ...] = ()
+    anatomical_axes: tuple[tuple[str, str], ...] = (("row", "+row"), ("col", "+col"))
 
     @property
     def covered_indices(self) -> tuple[int, ...]:
@@ -59,7 +71,7 @@ class HandLayout:
 _REGIONS = frozenset({"palm", "thumb", "index", "middle", "ring", "little"})
 _TOP_KEYS = frozenset({
     "schema_version", "name", "hand", "status", "raw_rows", "raw_cols",
-    "regions", "anchors", "outline", "labels", "note", "source",
+    "regions", "anchors", "outline", "labels", "note", "source", "anatomical_axes",
 })
 _GRID_KEYS = frozenset({"region", "rows", "cols", "origin", "row_step", "col_step"})
 
@@ -121,24 +133,49 @@ def _unique_object(pairs):
     return result
 
 
+def _axes(value):
+    """Validate a signed permutation from native to anatomical grid axes."""
+    _keys(value, {"row", "col"}, "anatomical_axes")
+    allowed = {"+row", "-row", "+col", "-col"}
+    for axis in ("row", "col"):
+        if not isinstance(value[axis], str) or value[axis] not in allowed:
+            raise ValueError(f"anatomical_axes.{axis}: expected +row, -row, +col or -col")
+    if value["row"][1:] == value["col"][1:]:
+        raise ValueError("anatomical_axes: row and col must use different native axes")
+    return tuple((axis, value[axis]) for axis in ("row", "col"))
+
+
+def _raw_address(row, col, anatomical_axes):
+    """Invert the signed permutation while leaving wire measurements untouched."""
+    native = [0, 0]
+    for coordinate, (_, axis) in zip((row, col), anatomical_axes):
+        index = 0 if axis[1:] == "row" else 1
+        native[index] = coordinate if axis[0] == "+" else 19 - coordinate
+    return tuple(native)
+
+
 def load_layout(path: str | Path | None = None, *, expected_hand: str | None = None) -> HandLayout:
     """Load an explicit per-hand candidate schematic, failing on mistakes.
 
-    The default packaged layout has 400 candidate positions but only nine
-    observed anchor pixels across seven anatomical areas. Only raw rows and
-    columns 0..19 are physically valid. Coordinates are schematic units, with positive Y toward
-    fingertips and the right palm facing the viewer (thumb at the left).
+    Regions and anchors use anatomical grid coordinates. The signed native axes
+    define their relation to wire addresses; returned points retain native row
+    and column indices. Only addresses 0..19 are physically valid. Schematic
+    coordinates have positive Y toward fingertips, with the right palm facing
+    the viewer (thumb at the left). Candidate geometry is not full calibration.
     """
     if expected_hand not in (None, "left", "right"):
         raise ValueError("expected_hand must be left or right")
     if path is None and expected_hand == "left":
         raise ValueError("Left-hand surface display requires an explicit left layout; use the raw matrix without one")
-    location = Path(path) if path is not None else Path(__file__).with_name("layouts") / "right_glove_candidate.json"
+    location = Path(path) if path is not None else DEFAULT_RIGHT_LAYOUT
     with location.open(encoding="utf-8") as stream:
         config = json.load(stream, parse_constant=_reject_constant, object_pairs_hook=_unique_object)
-    _keys(config, _TOP_KEYS, "layout")
-    if _integer(config["schema_version"], "schema_version") != 1:
-        raise ValueError("schema_version: only version 1 is supported")
+    if not isinstance(config, dict):
+        raise ValueError("layout must be an object")
+    version = _integer(config.get("schema_version"), "schema_version")
+    if version not in (1, 2):
+        raise ValueError("schema_version: supported versions are 1 and 2")
+    _keys(config, _TOP_KEYS if version == 2 else _TOP_KEYS - {"anatomical_axes"}, "layout")
     if config["hand"] not in ("left", "right"):
         raise ValueError("hand must be left or right")
     if expected_hand is not None and config["hand"] != expected_hand:
@@ -154,6 +191,7 @@ def load_layout(path: str | Path | None = None, *, expected_hand: str | None = N
     raw_cols = _integer(config["raw_cols"], "raw_cols")
     if (raw_rows, raw_cols) != (20, 20):
         raise ValueError("raw_rows/raw_cols: must match the physical 20 x 20 grid")
+    anatomical_axes = _axes(config.get("anatomical_axes", {"row": "+row", "col": "+col"}))
     regions = config["regions"]
     if not isinstance(regions, list) or not regions:
         raise ValueError("regions: expected a nonempty list")
@@ -187,20 +225,25 @@ def load_layout(path: str | Path | None = None, *, expected_hand: str | None = N
             for col in cols:
                 address = (row, col)
                 if address in positions:
-                    raise ValueError(f"{where}: duplicate raw address {address}")
+                    address_space = "raw" if version == 1 else "anatomical"
+                    raise ValueError(f"{where}: duplicate {address_space} address {address}")
                 x = _number(origin[0] + (row - rows.start) * dr[0] + (col - cols.start) * dc[0], where)
                 y = _number(origin[1] + (row - rows.start) * dr[1] + (col - cols.start) * dc[1], where)
                 xy = (round(x, 12), round(y, 12))
                 if xy in seen_xy:
                     raise ValueError(f"{where}: duplicate schematic position {xy}")
                 seen_xy.add(xy)
-                positions[address] = (x, y, region)
+                along = (row - rows.start + .5) / len(rows)
+                across = (col - cols.start + .5) / len(cols)
+                positions[address] = (x, y, region,
+                                      along if directions[0] == 1 else 1 - along,
+                                      across if directions[1] == 1 else 1 - across)
     if not isinstance(config["anchors"], list):
         raise ValueError("anchors: expected a list")
     anchors = set()
     for index, address in enumerate(config["anchors"]):
         if not isinstance(address, list) or len(address) != 2:
-            raise ValueError(f"anchors[{index}]: expected [row, col]")
+            raise ValueError(f"anchors[{index}]: expected anatomical [row, col]")
         address = tuple(_integer(item, f"anchors[{index}]") for item in address)
         if address not in positions or address in anchors:
             raise ValueError(f"anchors[{index}]: unmapped or duplicate address {address}")
@@ -217,10 +260,14 @@ def load_layout(path: str | Path | None = None, *, expected_hand: str | None = N
         if not isinstance(item, list) or len(item) != 3:
             raise ValueError(f"labels[{index}]: expected [text, x, y]")
         labels.append((_text(item[0], "label"), _number(item[1], "label.x"), _number(item[2], "label.y")))
-    points = tuple(LayoutPoint(row, col, *positions[(row, col)], (row, col) in anchors)
-                   for row, col in sorted(positions))
+    points = tuple(sorted((
+        LayoutPoint(*_raw_address(row, col, anatomical_axes), x, y, region,
+                    (row, col) in anchors, along, across)
+        for (row, col), (x, y, region, along, across) in positions.items()
+    ), key=lambda point: (point.row, point.col)))
     return HandLayout(name, config["hand"], "candidate", raw_rows, raw_cols, points,
-                      outline, tuple(labels), note, tuple(layout_regions), tuple(config["source"].items()))
+                      outline, tuple(labels), note, tuple(layout_regions),
+                      tuple(config["source"].items()), anatomical_axes)
 
 
 def unmapped_layout(hand: str) -> HandLayout:

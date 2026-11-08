@@ -11,6 +11,7 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>vt_tactile_capture</exec_depend>
+  <exec_depend>vt_capture_core</exec_depend>
   <test_depend>python3-pytest</test_depend>
   <export><build_type>ament_python</build_type></export>
 </package>

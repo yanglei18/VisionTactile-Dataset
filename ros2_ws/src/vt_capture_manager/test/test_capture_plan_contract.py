@@ -18,7 +18,7 @@ def test_resolved_plan_matches_recorder_contract_for_every_hand_combination(enab
     recipe = Recipe("Contract", pose_hands=pose, tactile_hands=tactile)
     additional_types = {
         **{f"/gloves/{hand}/state": "vt_glove_msgs/msg/GloveState" for hand in pose},
-        **{f"/gloves/{hand}/tactile/samples": "vt_tactile_msgs/msg/TactileSampleArray" for hand in tactile},
+        **{f"/gloves/{hand}/tactile/samples": "vt_tactile_msgs/msg/TactileRow44Array" for hand in tactile},
     }
     recorder_topics = expected_topics(CAMERA_IDS, tuple(additional_types))
     plan = resolve_capture_plan(recipe)

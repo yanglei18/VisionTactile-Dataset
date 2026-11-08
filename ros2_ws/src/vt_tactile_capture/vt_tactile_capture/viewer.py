@@ -16,10 +16,11 @@ import signal
 import sys
 import time
 
-from .grid import COLS, ROWS, SCHEMA_VERSION, normalize_state
+from .grid import COLS, LAYOUT_ID, ROWS, SCHEMA_VERSION, normalize_state
+from .protocol import PROTOCOL_ID
 
 
-YMIN, YMAX = 20000, 24000
+YMIN, YMAX = 0, 65535
 
 
 def normalize_range(start: int, end: int, limit: int = ROWS) -> tuple[int, int]:
@@ -38,8 +39,8 @@ class ViewerModel:
         self._monotonic_ns = monotonic_ns
         self.stale_timeout_ns = int(stale_timeout_sec * 1e9)
         self.data = [math.nan] * (ROWS * COLS)
-        self.display_block_realtime_ns = [0] * (ROWS * 8)
-        self.display_block_monotonic_ns = [0] * (ROWS * 8)
+        self.display_row_realtime_ns = [0] * ROWS
+        self.display_row_monotonic_ns = [0] * ROWS
         self.message = None
         self.arrival_ns = None
         self.identity = None
@@ -49,8 +50,8 @@ class ViewerModel:
     def clear_display(self) -> None:
         """Clear this view only; never command capture hardware or reset a stream."""
         self.data = [math.nan] * (ROWS * COLS)
-        self.display_block_realtime_ns = [0] * (ROWS * 8)
-        self.display_block_monotonic_ns = [0] * (ROWS * 8)
+        self.display_row_realtime_ns = [0] * ROWS
+        self.display_row_monotonic_ns = [0] * ROWS
         self.message = None
         self.arrival_ns = None
         self.identity = None
@@ -67,8 +68,8 @@ class ViewerModel:
                 or (self.expected_hand is not None and message.hand != self.expected_hand)
                 or len(message.adc) != count or len(message.valid_mask) != count
                 or len(message.updated_mask) != count
-                or len(message.block_realtime_ns) != ROWS * 8
-                or len(message.block_monotonic_ns) != ROWS * 8):
+                or len(message.row_realtime_ns) != ROWS
+                or len(message.row_monotonic_ns) != ROWS):
             self.rejected += 1
             return False
         identity = (message.session_id, message.stream_epoch)
@@ -78,17 +79,17 @@ class ViewerModel:
         # displayed grid never mixes measurements across acquisition epochs.
         if self.identity != identity and has_valid:
             self.data = [math.nan] * count
-            self.display_block_realtime_ns = [0] * (ROWS * 8)
-            self.display_block_monotonic_ns = [0] * (ROWS * 8)
+            self.display_row_realtime_ns = [0] * ROWS
+            self.display_row_monotonic_ns = [0] * ROWS
         # Keep the last measured image on disconnection or stale masks. Health
         # labels describe usability; an empty status update is not zero-touch.
         for index, valid in enumerate(message.valid_mask):
             if valid:
                 self.data[index] = float(message.adc[index])
                 row, column = divmod(index, COLS)
-                block_index = row * 8 + column % 8
-                self.display_block_realtime_ns[block_index] = int(message.block_realtime_ns[block_index])
-                self.display_block_monotonic_ns[block_index] = int(message.block_monotonic_ns[block_index])
+                block_index = row
+                self.display_row_realtime_ns[block_index] = int(message.row_realtime_ns[block_index])
+                self.display_row_monotonic_ns[block_index] = int(message.row_monotonic_ns[block_index])
         if has_valid:
             self.identity = identity
         self.message = message
@@ -136,6 +137,9 @@ class ViewerModel:
         message = self.message
         metadata = {
             "schema_version": SCHEMA_VERSION,
+            "protocol": PROTOCOL_ID,
+            "layout_id": LAYOUT_ID,
+            "state_schema_version": SCHEMA_VERSION,
             "csv_semantics": "displayed rolling ADC history, not a synchronous scan or archival sample stream",
             "unit": "adc_counts", "rows": ROWS, "cols": COLS,
             "hand": message.hand if message else self.expected_hand,
@@ -151,8 +155,8 @@ class ViewerModel:
             "time_valid": message.time_valid if message else False,
             "reason": message.reason if message else "no_state",
             "current_valid_mask": [bool(value) for value in message.valid_mask] if message else [False] * (ROWS * COLS),
-            "display_block_realtime_ns": self.display_block_realtime_ns,
-            "display_block_monotonic_ns": self.display_block_monotonic_ns,
+            "display_row_realtime_ns": self.display_row_realtime_ns,
+            "display_row_monotonic_ns": self.display_row_monotonic_ns,
         }
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(metadata, handle, indent=2)
@@ -162,7 +166,7 @@ def create_viewer_node(model: ViewerModel, **kwargs):
     """Build a lightweight ROS subscriber; importing this module needs no ROS."""
     from rclpy.node import Node
     from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-    from vt_tactile_msgs.msg import TactileState
+    from vt_tactile_msgs.msg import TactileGridState
 
     class TactileViewerNode(Node):
         def __init__(self):
@@ -176,7 +180,7 @@ def create_viewer_node(model: ViewerModel, **kwargs):
                 raise ValueError("hand must be left or right")
             model.expected_hand = hand
             self.state_subscription = self.create_subscription(
-                TactileState, "state", model.observe,
+                TactileGridState, "state", model.observe,
                 QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                            durability=DurabilityPolicy.VOLATILE),
             )

@@ -1,19 +1,20 @@
 # 触觉 ROS 2 采集、手形热力图与录包
 
-本包将原 `Glove.py` 的 STM32 触觉协议接入 ROS 2 Jazzy。
-采集节点独占指定的触觉串口，界面只订阅 ROS；**不会打开 IMU 串口、运行手势
-求解器或改变手势标定**。关闭热力图不影响后台采集。
+本包将新版 STM32 **44 字节整行触觉协议**接入 ROS 2 Jazzy。
+采集节点独占指定的触觉串口，界面只订阅 ROS；不会打开 IMU 串口、运行手势
+求解器或改变手势标定。关闭热力图不影响后台采集。
 
-当前测量是 **ADC 计数**，不是 N、Pa 或 kPa。已确认有效区域为原始行、列
-**0–19，即 20×20、400 个触觉值**；其余协议地址不是有效触觉区域。
-ROS `state`、二维热图、三维手表面叠加、显示参考及离线导出统一使用这个矩阵。
-矩阵是逐块更新的滚动快照，不是同时采样的完整扫描帧。逐点空间位置、真实
-扫描速度、接触方向以及压力转换曲线仍须另行验证。
+串口原始数据是 **ADC 计数**，不是 N、Pa 或 kPa。每包提供一行的 20 个值，
+原生矩阵为 **20×20、400 个地址**。ROS `state`、二维热图、三维手表面叠加、
+显示参考及离线导出使用同一行列顺序。矩阵按行更新，每行保留实际主机接收时间，
+是滚动快照，不是同时采样的完整扫描帧。逐点空间位置、真实扫描速度、受压响应
+方向以及压力转换曲线仍须实机确认。
 
-串口仍按原始 80×80 寻址协议解析，`samples` 保留原始数据包，保证旧 bag
-兼容和传输追溯。**`samples` 是包批次，不是 80×80 的有效整掌矩阵。**
-独立旧入口 `Glove.py` 的显示和 CSV 也已统一为 20×20；使用 ROS 时不要同时
-启动它，它会自行占用串口。
+实时采集使用新版协议：原始 `TactileRow44Array` schema 2、显示 `TactileGridState` schema 3。
+旧 26 字节 `TactileSampleArray`/`TactileState` 消息定义保持不变，供档案及离线工具读取；
+旧参考不会自动变成新板的参考。历史原始 bag 由离线触觉适配器按实际类型重建，
+保留其 160 个 block 时钟，不伪装成 20 个同步行时钟。`samples` 保存真实行包及故障事件，不能将其消息频率
+当作完整矩阵扫描率。独立示例或其他串口工具与 ROS 节点不能同时占用同一端口。
 
 ## 可选：在手势标定界面的三维手上显示
 
@@ -50,6 +51,18 @@ colcon build --packages-select vt_tactile_msgs vt_tactile_capture
 source install/setup.bash
 ```
 
+本轮在 `vt_tactile_msgs` 新增独立消息类型：`TactileRow44` 只有行号和 20 个 ADC，
+`TactileRow44Array` 保存原始批次，`TactileGridState` 使用 20 项逐行时钟。
+旧三个消息类型的字段不变。升级源码后必须重新编译上述两个包，并在
+新终端 source 新的 `install/setup.bash`；发布者、订阅者和回放环境使用同一版本。
+已经运行的进程不会热加载新消息，须正常关闭后重启。旧消息生成文件不能与新代码混用。
+本包源码迁移不代表 Windows 安装包已重建；已有 `.exe` 仍包含构建时的代码。
+
+综合工作台使用 `tactile.launch.py display_bridge:=true display_socket:=... gui:=false`。
+`vt_tactile_capture.display_transport.default_workbench_socket(hand)` 给出每手独立的私有路径，
+与原 FSGlove 叠加窗口隔离。ROS 节点是唯一串口读取者；工作台 `ManagedTactileSource`
+只接收完整状态、维护共享显示参考和发送管理请求。关闭视图不停止采集。
+
 也可用 `rosdep install --from-paths src/vt_tactile_msgs src/vt_tactile_capture
 --ignore-src -r -y` 安装包声明的依赖。
 
@@ -77,7 +90,7 @@ cd "$VT_REPO"
 使用确认过的 `/dev/serial/by-path/...`。也支持显式 `/dev/ttyACM*`，但重新插拔后
 编号可能改变。**不能仅凭 STM32/USB 产品名区分触觉板与 IMU 板。**
 
-启动前只关闭占用该触觉端口的旧 `Glove.py`/串口工具，保留手势程序。
+启动前只关闭占用该触觉端口的示例程序或串口工具，保留手势程序。
 新节点检查端口占用并请求独占；不会杀掉旧进程或抢占端口。
 没有权限时将用户加入 `dialout` 并重新登录，不要对设备设置全局可写权限。
 若 `id "$USER"` 已包含 `dialout`，但当前终端的 `id` 不包含，说明旧会话尚未
@@ -104,7 +117,7 @@ YAML 文件设置；默认 YAML 的 `hand` 是 `right`、`port` 为空。命令�
 都未设置串口时不猜测设备、不连接任何串口。非空命令行值优先于 YAML。
 默认命名空间为 `/gloves/right/tactile`，`hand:=left` 时同时指定
 `namespace:=/gloves/left/tactile`，防止左右手混入同一 Topic。
-缺省手形布局仍适用于本次确认的**右手**；左手默认原始矩阵，无显式左布局时不展示解剖手形。
+缺省手形布局是既有**右手候选映射**，新版板卡的位置对应关系仍需核对；左手默认原始矩阵，无显式左布局时不展示解剖手形。
 支持加载手别匹配的独立 `hand_layout_path`；内置 `left_glove_unverified_candidate.json` 是无实测锚点的
 候选模板，不能冒充左手物理映射已验证。左手或其他硬件先使用
 `initial_view:=matrix` 查看原始矩阵，不套用右手位置关系。
@@ -112,12 +125,12 @@ YAML 文件设置；默认 YAML 的 `hand` 是 `right`、`port` 为空。命令�
 设备与速率设置位于 [config/right_tactile.yaml](config/right_tactile.yaml)。可复制
 此文件到数据目录，使用 `config:=/绝对路径/自定义.yaml` 加载，不必改源代码。
 `max_cell_age_ms` 默认 100 ms（区域有效期），`stale_timeout_sec` 默认 2 秒
-（无完整子包时报告状态），`state_rate_hz` 默认 30（显示快照率）。它们分别控制
+（无有效行包时报告状态），`state_rate_hz` 默认 30（显示快照率）。它们分别控制
 不同环节；参数为启动时配置，不通过动态改参中途切换采集语义。
 
 默认 `read_batch_bytes=1024`、`read_timeout_sec=0.002`：每次真实串口 `read()`
 以至少 1024 字节为目标（已有积压时最多读取 4096 字节），收到目标数量即返回，
-否则约 2 ms 超时后返回已有字节。这样降低许多小 ROS 消息的开销，而不丢弃子包、
+否则约 2 ms 超时后返回已有字节。这样降低许多小 ROS 消息的开销，而不按显示频率丢弃行包、
 不为凑频率限流，也不合并已带时间戳的批次。短读和跨读的半包仍由解析器保留处理。
 `read_batch_bytes` 必须是 1..4096 的整数，`read_timeout_sec` 必须为正有限数；
 二者也是启动时参数。默认采集队列 512 批、samples QoS depth 128 只提供拥塞缓冲，
@@ -137,7 +150,8 @@ GUI 默认打开手形页，另一个页签显示 **20×20 有效区域 ADC 矩�
 
 内置布局位于
 [right_glove_candidate.json](vt_tactile_capture/layouts/right_glove_candidate.json)。
-它结合手套照片和 2026-10-05 的交互按压结果，将原始行列映射到右手示意图：
+它来源于手套照片和 2026-10-05 的历史交互按压结果，将行列映射到右手示意图。
+这些锚点描述既有布局的依据，不能替代对新版板卡布线的重新核对：
 
 | 部位 | 候选原始行列范围（含端点） | 实测锚点 `(row, col)` |
 | --- | --- | --- |
@@ -149,11 +163,11 @@ GUI 默认打开手形页，另一个页签显示 **20×20 有效区域 ADC 矩�
 | 手掌 | 行 0–7、列 0–19 | 掌心 `(4, 9)`、`(4, 10)`；掌根 `(0, 9)`、`(0, 10)` |
 
 定位圈默认隐藏，需要检查映射时勾选“显示定位圈”。青色描边表示
-**7 个区域的 9 个实测锚点**，不是正在接触的热点，也不是额外的触觉信号。
+**7 个区域的 9 个历史实测锚点**，不是正在接触的热点，也不是额外的触觉信号。
 图中共 **400 个有效地址的候选空间位置，不代表逐点空间映射全部验证完毕**；
-每个区域的完整边界、物理尺寸、逐点对应关系仍待验证。原始行或列编号 ≥20
-的数据仍保留在 `samples` 录包，但不进入状态矩阵、有效率统计和显示参考。
-裁剪不重排有效区行列，不修改有效 ADC 数值，也不改变串口协议与原始录包。
+每个区域的完整边界、物理尺寸、逐点对应关系仍待验证。新版协议仅接受 0–19 的
+行号，一包的 20 个值依次对应列 0–19；越界行号拒绝解析。矩阵无需从更大地址空间
+裁剪，界面的显示范围设置不改变原始 ADC、协议内容或录包。
 
 ### 3.2 采集不受压参考，显示接触变化
 
@@ -168,22 +182,19 @@ GUI 默认打开手形页，另一个页签显示 **20×20 有效区域 ADC 矩�
 参考时由用户明确点击。断连重连或采集重启导致 `session_id`/`stream_epoch`
 变化后，应重新采集参考，不沿用上一段数据掩盖变化。
 
-也可以通过界面或启动参数加载参考 `.npz`，同时需要**同名 `.json` 元数据**。
-当前支持本工具采集流程保存的参考数据，不是任意 NumPy 文件；载入参考必须
-与当前流的 `session_id` 和 `stream_epoch` 一致，否则不能作为该流的有效参考。
-本轮实验的可选示例是：
+也可以通过界面或启动参数加载按当前契约生成的参考 `.npz`，同时需要
+**同名 `.json` 元数据**。界面按钮采集的是内存参考，不会自动保存 NPZ 归档；
+文件加载接口面向自行归档的采集数据，不支持任意 NumPy 文件。
 
-```text
-$HOME/visiontactile-data/tactile_mapping_20261005_02/baseline.npz
-$HOME/visiontactile-data/tactile_mapping_20261005_02/baseline.json
-```
+归档中的 `adc` 必须为 uint16、`valid_mask` 必须为 bool，尺寸均为
+`(frames, 20, 20)`。JSON 必须声明 `protocol="vt_tactile_row44_v1"`、
+`layout_id="row20_col20_v3"`、`state_schema_version=3`；
+`session_epoch_frame_counts` 只能包含当前 `session_id:stream_epoch` 一个键，
+其值等于归档帧数。会话、连接代次及手别必须与当前流一致。旧参考即使同为
+20×20 也不接受，不裁剪旧尺寸、不为旧文件重写协议标识。
+这些文件不是新电脑运行软件的必备文件，新会话可直接通过按钮采集不受压参考。
 
-同一采集会话的旧 80×80 参考可加载，工具会显式裁剪到 `[0:20, 0:20]`；
-新采集的内存参考同样为 20×20。兼容尺寸不意味着可以跨会话复用参考。
-这些是本机本轮实验文件，**不是其他电脑运行软件的必备文件**。新采集会话直接
-使用按钮采集自己的不受压参考，不要复制旧参考强行复用。
-
-原始 ADC 默认色限为 **20000..24000**。ΔADC 视图提供三种显示范围：
+原始 ADC 默认色限为 **0..65535**。ΔADC 视图提供三种显示范围：
 
 | 选项 | 色限 | 用途 |
 | --- | --- | --- |
@@ -230,7 +241,7 @@ source "$VT_REPO/ros2_ws/install/setup.bash"
 
 ```text
 -p initial_view:=matrix
--p baseline_path:=$HOME/visiontactile-data/tactile_mapping_20261005_02/baseline.npz
+-p baseline_path:=/绝对路径/当前会话参考/baseline.npz
 -p hand_layout_path:=/绝对路径/候选布局.json
 ```
 
@@ -254,75 +265,100 @@ PNG 导出当前页画面；CSV 始终按原始行列顺序导出 **20×20 有�
 
 | Topic 后缀 | 类型 | 默认录制 |
 | --- | --- | --- |
-| `samples` | `vt_tactile_msgs/msg/TactileSampleArray` | 是，原始解码数值及故障事件 |
-| `state` | `vt_tactile_msgs/msg/TactileState` | 否，20×20 派生滚动快照 |
+| `samples` | `vt_tactile_msgs/msg/TactileRow44Array` | 是，原始解码数值及故障事件 |
+| `state` | `vt_tactile_msgs/msg/TactileGridState` | 否，20×20 派生滚动快照 |
 | `heatmap` | `sensor_msgs/msg/Image`，可选 20×20 RGB 预览 | 否 |
 | `diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | 否 |
 
 `publish_heatmap:=true` 可启用通用图像预览；其颜色只用于显示，不可反推压力。
 使用质量字段时以 `.msg` 定义为准：
-[TactileSampleArray](../vt_tactile_msgs/msg/TactileSampleArray.msg)、
-[TactileState](../vt_tactile_msgs/msg/TactileState.msg)。
+[TactileRow44Array](../vt_tactile_msgs/msg/TactileRow44Array.msg)、
+[TactileGridState](../vt_tactile_msgs/msg/TactileGridState.msg)。
 
-`state.schema_version=2`、`rows=cols=20`、
-`layout_id=row20_col_group_stride8_v2`。`adc`、`valid_mask`、`updated_mask` 各有
-400 项，行优先索引为 `row*20+col`；`block_*` 各有 160 项。
-新 GUI 与三维桥接也接受旧 `schema_version=1, rows=cols=80` 状态并裁剪；
-旧版 GUI 不识别新状态，需要关闭并用新版重新启动。只重编译不会替换运行中
-进程的内存代码。升级前保存手势标定结果；无需重新进行 IMU 求解器开发或配置。
-状态发布仍默认 **30 Hz**；缩小矩阵降低传输和显示开销，不改变固件扫描速率。
+`samples.schema_version=2`，每个 `blocks` 元素是一行：`row` 为 0–19，
+`adc` 为依列号递增排列的 20 个 uint16 值；没有列组或状态字节。
+`state.schema_version=3`、`rows=cols=20`、`layout_id=row20_col20_v3`。
+`adc`、`valid_mask`、`updated_mask` 各有 400 项，行优先索引为 `row*20+col`；
+`row_realtime_ns` 与 `row_monotonic_ns` 各有 20 项，索引就是行号。
+状态发布默认 **30 Hz**，这是显示快照配置，不改变固件扫描速率。
 
-### 旧订阅程序适配
+### 订阅程序接口
 
 仓库内的二维窗口、ROS→三维显示桥接、手套三维叠加、RGB 热图转换和离线
-重建均已同步；不需要用户逐个修改。独立脚本应读取消息尺寸，不能继续使用
-`reshape(80, 80)`、`row*80+col` 或固定 6400 项计数。已 source 新 workspace
-的 Python 订阅回调可以复用同一个兼容入口：
+重建使用新版契约。独立订阅程序应校验 schema、布局及消息尺寸。可复用下述
+校验入口；它只接受当前格式，不转换旧数据，也不修改传入消息：
 
 ```python
 import numpy as np
 from vt_tactile_capture.grid import normalize_state
 
 def on_state(message):
-    state = normalize_state(message)  # 新版直接使用；旧版按行列裁取 [:20, :20]
+    state = normalize_state(message)  # schema 3 / 20x20 / row20_col20_v3
     shape = (state.rows, state.cols)
     adc = np.asarray(state.adc, dtype=np.uint16).reshape(shape)
     valid = np.asarray(state.valid_mask, dtype=bool).reshape(shape)
     if not state.connected or not state.time_valid:
         valid = np.zeros(shape, dtype=bool)
-    # 使用 adc 和 valid；ADC=0 可能是真实测量，不能用非零值代替有效掩码。
-    # 保留 state.header.stamp 与逐块时钟，不以此回调的执行时间替换采集时间。
+    # ADC=0 可以是真实测量；使用 valid 判断有效性，不以非零值替代掩码。
+    # 每行时效需结合 row_monotonic_ns、max_age_ns 和本机时钟检查。
+    # 保留 header.stamp 与逐行时钟，不以订阅回调时间替换采集时间。
 ```
 
-不要简单截取 `message.adc[:400]`：旧矩阵每行的步长为 80，正确的转换是
-先还原旧行列，再裁取 `[0:20, 0:20]`。兼容入口不修改输入消息；接收新格式后
-无需再对其重复裁剪。`samples` 订阅端仍按原协议解码，不应把每包 10 个 ADC
-擅自改成其他数量。
+### 44 字节整行协议
 
-### 协议保持不变
-
-每个 26 字节包：
+本轮定义来自用户提供的 Python 解析示例
+[`20by20.py`](https://tmp.link/f/6ae2b81fa2d53)，不是 IMU 厂商文档或 STM32
+固件规范。下载原文件为 16,394 字节，SHA-256 为
+`380f4dbe8a3addeea2027e8ff38f7a241ce7386b16306d7e2be818aedaa0de5d`。
 
 ```text
-A5 5A | row_hi row_lo | unknown_byte4 | column_group | 10 × uint16 big-endian ADC
+偏移 0..1    A5 5A
+偏移 2..3    行号：uint16，大端，0..19
+偏移 4..43   列 0..19：20 × uint16，大端 ADC
 ```
 
-- `row` 为 0..79；`column_group` 为 0..7。
-- 第 k 个值写到 `(row, column_group + 8*k)`，k=0..9。
-- `state` 仅提取 `row<20` 且 `column_group+8*k<20` 的值，每个有效子包
-  贡献 2 或 3 个触点；不会把一个 10 值原始子包误当作 10 个有效相邻触点。
-- `unknown_byte4` 原样保存在 `status_raw`，不臆测为 CRC 或硬件序号。
-- 当前没有已确认的校验和，软件只能做帧头、长度、地址检查和重同步；无法发现
-  所有看起来仍合法的传输损坏，也不能从主机计数推断固件端全部丢样。
-- 零 ADC 是合法数值，缺失由 mask/时间表示，不用零值代表无接触。
+- 每包固定 44 字节；第 k 个 ADC 写入 `(row, k)`，k=0..19。
+- ADC 数值范围为 0..65535。零是合法数据；缺失或过期由 mask 与时间表示。
+- 参考程序设置串口为 115200，没有发送启动命令。USB CDC 的该设置不能据此
+  推算实际传输速率或硬件扫描频率。
+- 帧内没有帧尾、校验和、固件序号或硬件时间戳。软件只能校验结构和时序边界，
+  无法发现所有仍具有合法结构的载荷损坏，也不能精确推断固件端全部丢样。
+
+`Parser` 用于已知格式的纯增量解码，处理拆包、粘包及滑动重同步；实际串口
+接收使用 `StreamParser`。它需要至少 **8 个连续完整行包、至少 2 个不同行号**
+才能确认格式；锁定后，每包还需下一包的 4 字节帧头/行号作为边界前瞻。
+一旦帧边界失配，立即解除锁定并重新确认，不把未知输入当作有效触觉。
+这不要求凑齐 20 行才发布。最后一个尚无后继边界证据的包保留等待，断流重置时
+丢弃，不能为了补齐计数直接判定有效。
+
+确认与前瞻期间保留原始读取批次及时间。同一次读取的完整包中若有包尚待边界
+确认，该读取中已确认的包也暂存，以免将一次读取拆成多个同时间戳批次。
+包获准输出的时间可能晚于其读取时间，但记录的始终是该包最后字节所在
+`read()` 的完成时间，不回填为确认时刻。串口类型探测与持续接收共用新版
+帧结构校验；打开串口成功不等于协议已确认。
+
+### 可选的电阻换算
+
+`vt_tactile_capture.conversion.adc_to_resistance(adc)` 提供独立派生值，沿用
+参考程序设置：ADC 满码 65535、参考电压 3.3 V、偏置 0.9 V、固定电阻 20 kΩ。
+
+```text
+V = ADC × 3.3 / 65535
+R = 0.9 × 20000 / (V − 0.9) Ω
+```
+
+`V <= 0.9` 时返回 `None`，表示该公式无法计算正有限电阻；原始 ADC 仍有效，
+不会因此被清零或作为坏包。上述常数是示例采用的电路假设，仍需与实物电路
+核对；换算结果不是力或压力，未建立 N、Pa 或 kPa 标定。
+示例的 `0..24000 Ω` 只是显示色阶，不是传感器量程，也不作为解析或有效性门槛。
 
 ### 时间与连续性
 
-`samples` 的每个消息对应一次读完成时解析出的子包集合。所有子包共享这次主机
-接收时间；包顺序保留，但不宣称它们在硬件上同时采样。
-批量读取最多引入约 `read_timeout_sec` 的主机等待（另有操作系统调度延迟）；
-这是主机接收语义，不是硬件采样时间或同步精度。时间戳始终在该次真实 read
-返回后立即取得，不回填或篡改为批次开头时刻。
+`samples` 的每个消息包含在同一次实际读取中完成、且通过流边界确认的行包。
+同一消息中的包共享原始主机接收时间；包顺序保留，不宣称硬件同时采样。
+`read_timeout_sec` 约束单次串口读取等待；协议确认、后继包前瞻和操作系统调度
+还会影响数据可用延迟。时间戳在真实 `read()` 返回后立即取得，并随暂存数据保留，
+不改写为协议确认、ROS 发布或界面刷新时刻。
 
 - `header.stamp == host_realtime_ns`：主机读完成时刻，不是 ROS 发布时间。
 - `host_monotonic_ns` 的域为 `CLOCK_MONOTONIC`；`timing_source=host_receive`。
@@ -331,10 +367,10 @@ A5 5A | row_hi row_lo | unknown_byte4 | column_group | 10 × uint16 big-endian A
 - `producer_dropped_total` 统计有界队列丢弃的批次数，包括空状态事件。相关缺口
   可能重复反映同一丢失，不应把各种计数简单相加。
 - 无数据/断连事件的 `blocks` 为空，不是全零触觉帧。
-- `state` 保留最后一次贡献有效区域数据的输入时刻；外围无效地址包不会刷新
-  此时间，`snapshot_monotonic_ns` 只用于计算年龄。
-  `valid_mask` 表示当前可用，`updated_mask` 表示本次快照消费的新更新。
-- `state.block_*` 按 `row*8+column_group` 索引，共 160 项；零表示尚未观测。
+- `state` 保留最后一次有效行包的原始接收时间，`snapshot_monotonic_ns` 只用于
+  计算年龄。`valid_mask` 表示当前可用，`updated_mask` 表示本次快照消费的新更新。
+- `state.row_*` 各有 20 项，按行号索引；零表示该行尚未观测。一行的 20 个触点
+  共享该行实际接收时间；真实包计数只增加 1，不拆成虚构的旧分组包。
 
 同机跨模态使用 host realtime 对齐。相机 `CLOCK_MONOTONIC_RAW` 与手套/触觉
 `CLOCK_MONOTONIC` 不能直接相减。USB 缓冲、固件扫描延迟仍存在，这不是硬件同步。
@@ -345,7 +381,7 @@ A5 5A | row_hi row_lo | unknown_byte4 | column_group | 10 × uint16 big-endian A
 更不会为了凑 120 Hz 重复发送旧测量。
 
 低频 `diagnostics` 提供 `batch_rate_hz`、`packet_rate_hz`（上个诊断窗口内的主机
-发布批次/解码子包速率；批次包含空状态事件）、`valid_cell_count`（最大 400）、
+发布批次/解码行包速率；批次包含空状态事件）、`valid_cell_count`（最大 400）、
 `cell_count=400`、`rows=cols=20` 和
 `source_age_ns`（最后贡献数据到当前主机单调时钟的年龄，未观测为 -1）。这些
 是调试主机吞吐与陈旧阈值的指标，**不是硬件扫描率或每触点更新率**；选择
@@ -387,7 +423,7 @@ ros2 launch vt_realsense_capture triple_realsense.launch.py \
 
 联合 Recorder 默认保持 best-effort / volatile；相机和 Tracker 的 depth 为 30，
 按配置声明的类型为触觉 `TactileSampleArray` 使用 depth 512、手势 `GloveState`
-使用 depth 256。触觉约 500 批/秒时，512 批在均匀流下约对应 1 秒的订阅历史容量，
+使用 depth 256。队列容量以消息批次计数，能容纳的时间取决于实际批次率，
 不是时延目标或零丢包保证。可通过相机采集配置的 `recording.qos_overrides` 按
 明确 Topic 覆盖 depth / reliability；最终参数保存在会话的 `qos_overrides.yaml`。
 不要使用 `-a` 把额外预览 Topic 随意录入严格
@@ -397,6 +433,12 @@ ros2 launch vt_realsense_capture triple_realsense.launch.py \
 汇总消息数、频率依据、时间间断及触觉覆盖情况，不改变原 bag，也不拦截下一次采集。
 
 ## 6. 回放与离线重建
+
+档案及离线 `export-tactile` 同时识别旧 `TactileSampleArray` schema 1 与新
+`TactileRow44Array` schema 2；来源类型、原始行/块时钟和包索引随导出保留。
+某些历史原型曾把 44 字节结构写在旧 `TactileSampleArray` 类型名下：这种 schema 2
+记录会在解码数组前明确拒绝，不能通过猜测 ADC 个数自动兼容；需有独立来源证据的迁移流程。
+原 bag、历史录制计划和历史配置不改写。以下 ROS 重建节点面向新命名的 row44 类型。
 
 主录制流是 `samples`，因此回放时需要一个**只订阅 samples、不打开串口**的
 重建节点，把它转换为 `state` 后再交给同一热力图。不能把实时采集节点接到
@@ -409,7 +451,7 @@ ros2 launch vt_tactile_capture replay.launch.py \
   gui_python:="$VT_REPO/.venv-tactile/bin/python"
 ```
 
-另一终端播放之前录制的 bag：
+另一终端播放使用当前 schema 2 消息录制的 bag：
 
 ```bash
 ros2 bag play "$HOME/visiontactile-data/tactile_test_01" --clock
@@ -444,8 +486,8 @@ vt-multisensor-align export-tactile \
 
 - `timestamp_ns`：相机参考时刻，host realtime；
 - `adc[20,20]`、`valid_mask[20,20]`、`age_ns[20,20]`；
-- `block_realtime_ns[20,8]`、`block_monotonic_ns[20,8]`；
-- `block_message_sequence[20,8]`、`block_packet_index[20,8]`，追溯源消息和包。
+- `row_realtime_ns[20]`、`row_monotonic_ns[20]`；
+- `row_message_sequence[20]`、`row_packet_index[20]`，追溯各行的源消息和真实行包。
 
 每个区域只用目标时刻及以前收到的数据，超过最大年龄则无效，不做触觉线性
 插值。缺失区域 `age_ns=-1`；过期区域保留其年龄，导出 ADC 占位值为零，**必须
@@ -467,7 +509,7 @@ with np.load("frames/000000000.npz", allow_pickle=False) as frame:
 
 ## 7. 验证范围与真机验收
 
-软件测试应覆盖协议逐字节分片/粘包/错位重同步、stride-8 地址映射、零 ADC、
+软件测试应覆盖逐字节分片/粘包/错位重同步、连续帧确认与失锁恢复、整行地址映射、零 ADC、
 时间戳保留、队列溢出、独占串口、断连重连隔离、区域过期、GUI 无串口订阅、
 DDS 发布以及 MCAP 数值回放。软件通过不代表真实触点/扫描率或压力精度通过。
 
@@ -499,5 +541,7 @@ PYTHONPATH="$VT_REPO/tools/multisensor_alignment/src:$PYTHONPATH" PYTEST_DISABLE
 E2E 测试只创建自己的 `/dev/pts` 虚拟串口并使用隔离 DDS domain，验证串口→
 ROS→MCAP→离线 NPZ；不打开 `/dev/ttyACM*`、`/dev/ttyUSB*` 或传感器。
 未设置 `VT_TACTILE_E2E=1` 时跳过该端到端测试。GUI 测试采用 offscreen，
-不会关闭或重启用户现有窗口。`test_legacy_parity.py` 直接提取旧 `Glove.py` 的
-数值解析方法作对照，不执行其 GUI 构造和自动串口连接。
+不会关闭或重启用户现有窗口。`test_reference_parity.py` 按用户提供的新版字段定义
+构造数据，核对解析数值与矩阵位置；不导入或执行下载示例的 GUI 和自动串口入口。
+历史采样的离线结构检查与持续串口验收分别记录；离线字节文件没有完整接收时钟，
+不能仅凭其包数宣称达到某个扫描频率。

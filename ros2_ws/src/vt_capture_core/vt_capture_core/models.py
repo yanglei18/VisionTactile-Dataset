@@ -1,11 +1,11 @@
-"""Shared DTOs. Older schemas stay unchanged; v6 adds guided calibration."""
+"""Shared DTOs. Older schemas stay unchanged; v7 adds managed hand sessions."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
 from .validation import (
-    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, PROTOCOL_VERSION, validate_capabilities, validate_device, validate_event,
+    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, PROTOCOL_VERSION, validate_capabilities, validate_device, validate_event,
     validate_controller, validate_management, validate_message, validate_operation,
     validate_process_control, validate_process_group, validate_recording, validate_resources, validate_snapshot,
 )
@@ -345,3 +345,35 @@ class CalibrationControlRequest(PlanControlRequest):
 class CalibrationControlResponse(PlanControlResponse):
     snapshot: CalibrationControlSnapshot
     version: int = CALIBRATION_PROTOCOL_VERSION
+
+
+@dataclass(frozen=True)
+class HandCapabilities(CalibrationCapabilities):
+    hand_control: bool = False
+
+    def to_dict(self):
+        value = asdict(self)
+        validate_capabilities(value, version=HAND_PROTOCOL_VERSION)
+        return value
+
+
+@dataclass(frozen=True)
+class HandControlSnapshot(CalibrationControlSnapshot):
+    capabilities: HandCapabilities = field(default_factory=HandCapabilities)
+    hand_sessions: dict = field(default_factory=dict)
+
+    def to_dict(self):
+        value = asdict(self)
+        validate_snapshot(value, version=HAND_PROTOCOL_VERSION)
+        return value
+
+
+@dataclass(frozen=True)
+class HandControlRequest(CalibrationControlRequest):
+    version: int = HAND_PROTOCOL_VERSION
+
+
+@dataclass(frozen=True)
+class HandControlResponse(CalibrationControlResponse):
+    snapshot: HandControlSnapshot
+    version: int = HAND_PROTOCOL_VERSION

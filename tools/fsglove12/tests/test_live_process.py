@@ -98,6 +98,24 @@ class RevisionRuntime(Runtime):
         return 0  # Idle state never changes; command acknowledgement is separate.
 
 
+class RejectedRuntime(RevisionRuntime):
+    def submit(self, name, **args):
+        return False
+
+
+def test_child_queue_rejection_is_public_and_does_not_claim_execution(controller):
+    value = controller(runtime_factory=RejectedRuntime).start()
+    wait_for(lambda: value.latest_snapshot()["runtime"].get("backend_loaded"))
+    assert value.submit("cancel_capture")
+    snapshot = wait_for(lambda: (s if (s := value.latest_snapshot())["runtime"].get(
+        "command_rejected_count") == 1 else None))
+    runtime = snapshot["runtime"]
+    assert runtime["last_rejected_command_name"] == "cancel_capture"
+    assert "cancel_capture" in runtime["last_rejected_command_error"]
+    assert runtime["command_completed_generation"] == 0
+    assert runtime["last_command_name"] is None
+
+
 class InputRevisionRuntime(RevisionRuntime):
     """Input keeps updating independently of frozen/slow pose publication."""
     def latest_input_snapshot(self):
@@ -301,8 +319,11 @@ def test_official_five_finger_and_switch_commands_never_enable_legacy_reference(
 
 def test_whole_hand_command_is_official_only_and_has_no_arguments(controller):
     legacy = controller()
+    assert not legacy.submit("capture_heading_reference")
     assert not legacy.submit("capture_functional_hand")
     official = controller(upstream_checkout="EXPLICIT_MOCK_NOT_STARTED")
+    assert official.submit("capture_heading_reference")
+    assert not official.submit("capture_heading_reference", step="neutral")
     assert not official.submit("capture_functional_hand", finger="thumb")
     assert official.submit("capture_functional_hand")
     assert official.submit("cancel_capture")
@@ -627,3 +648,16 @@ def test_display_survives_missing_root_algorithm_omission_and_late_render_is_not
     controller._clear_calibration()
     cleared = controller.latest_snapshot()
     assert cleared["display_pose"] is None and cleared["display_geometry"] is None
+
+
+def test_explicit_calibration_only_policy_reaches_spawn_child(controller, tmp_path):
+    value = controller(record_streams=False).start()
+    snapshot = wait_for(lambda: (s if (s := value.latest_snapshot())["runtime"].get("backend_loaded") else None))
+    assert snapshot["runtime"]["factory_kwargs"] == ["record_streams"]
+    assert not snapshot["runtime"]["connected"] and not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false"])
+def test_process_recording_policy_requires_boolean(controller, value):
+    with pytest.raises(ValueError, match="record_streams"):
+        controller(record_streams=value)

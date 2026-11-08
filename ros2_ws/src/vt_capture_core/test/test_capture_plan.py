@@ -24,7 +24,7 @@ def test_base_plan_describes_exact_recorder_contract():
     assert plan.record_topics() == plan.recipe.record_topics()
     assert len(plan.streams) == 21
     assert plan.schema_version == "unified-dataset-v2"
-    assert plan.version == 2
+    assert plan.version == 3
     assert plan.streams[0] == PlannedStream(
         "/d405_1/color/image_raw", "sensor_msgs/msg/Image", "camera:d405_1", False
     )
@@ -48,7 +48,7 @@ def test_only_selected_optional_devices_belong_to_plan(enabled):
             f"/gloves/{hand}/state", "vt_glove_msgs/msg/GloveState", f"glove:{hand}", False
         )
         tactile_stream = PlannedStream(
-            f"/gloves/{hand}/tactile/samples", "vt_tactile_msgs/msg/TactileSampleArray",
+            f"/gloves/{hand}/tactile/samples", "vt_tactile_msgs/msg/TactileRow44Array",
             f"tactile:{hand}", False,
         )
         assert (pose_stream in plan.streams) == (hand in pose)
@@ -97,7 +97,7 @@ def test_plan_cannot_weaken_existing_recording_contract(recipe):
 
 @pytest.mark.parametrize("mutation", [
     lambda value: value.update(version=True),
-    lambda value: value.update(version=3),
+    lambda value: value.update(version=4),
     lambda value: value.update(schema_version="another-dataset"),
     lambda value: value.update(extra=True),
     lambda value: value.pop("fingerprint"),
@@ -322,6 +322,32 @@ def test_legacy_frozen_plans_preserve_camera_bundle_and_original_fingerprints(
     assert plan.schema_version == "unified-dataset-v1"
     assert len(plan.streams) == 16
     assert plan.to_dict() == document
+
+
+@pytest.mark.parametrize("version,fingerprint", [
+    (1, "d4b52c0070ca38710c05f41a433f253e3d4b69553d3591846618648aadb22d1c"),
+    (2, "6eaf1d66f39df8e94c41ad63444b45dbe6cf3da772384291f77c3d9e1d8a7369"),
+])
+def test_historical_tactile_plan_keeps_legacy_type_and_original_fingerprint(version, fingerprint):
+    # Fingerprints captured from the unmodified v2 implementation, including
+    # tactile streams. The current default must not reinterpret saved plans.
+    current = resolve_capture_plan(Recipe("Historical tactile", tactile_hands=("left", "right"),
+                                          version=version))
+    document = current.to_dict()
+    document["version"] = version
+    for stream in document["streams"]:
+        stream["required"] = version == 1
+        if stream["device_id"].startswith("tactile:"):
+            stream["type_name"] = "vt_tactile_msgs/msg/TactileSampleArray"
+    _refingerprint(document)
+    assert document["fingerprint"] == fingerprint
+    assert validate_capture_plan(document).to_dict() == document
+    assert current.fingerprint != fingerprint
+    assert all(type_name == "vt_tactile_msgs/msg/TactileRow44Array"
+               for topic, type_name in current.topic_types.items() if topic.endswith("/tactile/samples"))
+    document["streams"][-1]["type_name"] = "vt_tactile_msgs/msg/TactileRow44Array"
+    with pytest.raises(CapturePlanError, match="resolved recipe"):
+        validate_capture_plan(_refingerprint(document))
 
 
 @pytest.mark.parametrize("version", [1, 2])

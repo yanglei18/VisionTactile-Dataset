@@ -35,6 +35,7 @@ def _label(text, name="", wrap=False):
 class DeviceCard(QFrame):
     selected = Signal(str)
     calibration_requested = Signal(str)
+    hand_preview_requested = Signal(str)
 
     def __init__(self, device, parent=None, *, compact=False, embedded_replay=False):
         super().__init__(parent)
@@ -215,6 +216,9 @@ class DeviceCard(QFrame):
                 self.glove_dialog.update_preview(self.preview, device)
 
     def open_detail(self):
+        if self._device.get("managed_hand") and not self.embedded_replay:
+            self.hand_preview_requested.emit(self._device.get("side", ""))
+            return
         if self.embedded_replay:
             self.selected.emit(self.identifier)
             return

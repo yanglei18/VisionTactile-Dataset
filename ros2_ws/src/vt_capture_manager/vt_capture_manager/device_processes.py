@@ -175,7 +175,7 @@ class ProcessSupervisor:
     RECEIPT_LIMIT = 256
 
     def __init__(self, specs, *, instance_id, state_dir, observe, allowed, event,
-                 poll_interval_s=.1, interrupt_timeout_s=3., terminate_timeout_s=2., kill_timeout_s=1.):
+                 poll_interval_s=.1, interrupt_timeout_s=3., terminate_timeout_s=2., kill_timeout_s=1., readiness=None):
         specs = tuple(specs)
         if len(specs) > 32 or any(not isinstance(spec, ProcessSpec) for spec in specs) or len({s.id for s in specs}) != len(specs):
             raise ValueError("device specs must have unique ids")
@@ -186,6 +186,7 @@ class ProcessSupervisor:
             raise ValueError("invalid device supervisor timing bounds")
         self.instance_id = instance_id
         self._observe, self._allowed, self._event = observe, allowed, event
+        self._readiness = readiness
         self._camera_start_problem = CameraStartGuard()
         self._poll_interval = poll_interval_s
         self._timeouts = (interrupt_timeout_s, terminate_timeout_s, kill_timeout_s)
@@ -314,6 +315,10 @@ class ProcessSupervisor:
 
     def _refresh(self, observations):
         for group in self._groups.values():
+            service_ready = self._readiness(group.spec) if self._readiness is not None else None
+            ready = (service_ready if service_ready is not None else
+                     observations is not None and all(observations[t]["publishers"] > 0
+                         and observations[t]["fresh"] for t in group.spec.topics))
             if group.process is not None:
                 code = group.process.poll()
                 if group.identity is not None:
@@ -330,9 +335,11 @@ class ProcessSupervisor:
                         group.state, group.detail = "STOPPING", "Waiting for the owned process group to exit."
                     elif code is not None:
                         group.state, group.detail = "FAILED", f"Launcher exited with code {code}; owned descendants remain. Explicit STOP is available."
-                    elif observations is not None and all(observations[t]["publishers"] > 0 and observations[t]["fresh"] for t in group.spec.topics):
+                    elif ready:
                         group.ready_once = True
-                        group.state, group.detail = "RUNNING", "Owned process is alive and all expected topics are fresh."
+                        group.state = "RUNNING"
+                        group.detail = ("Hand service is ready; sensor freshness and calibrated pose are reported separately."
+                                        if service_ready is not None else "Owned process is alive and all expected topics are fresh.")
                     elif not group.ready_once and time.monotonic() - group.started_at < group.spec.startup_timeout_s:
                         group.state, group.detail = "STARTING", "Process launched; waiting for fresh expected topics."
                     else:

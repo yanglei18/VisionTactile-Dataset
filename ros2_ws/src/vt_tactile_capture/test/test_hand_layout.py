@@ -206,3 +206,66 @@ def test_surface_address_directions_are_explicit_and_do_not_change_raw_indices(t
         config["regions"][0]["row_direction"] = invalid
         with pytest.raises(ValueError):
             load_modified(tmp_path, config)
+
+
+def test_left_thumb_and_tip_edges_follow_reported_axis_exchange():
+    path = Path(module.__file__).parent / "layouts" / "left_glove_from_right_initial.json"
+    layout = load_layout(path, expected_hand="left")
+    points = {(point.row, point.col): point for point in layout.points}
+    assert layout.covered_indices == tuple(range(400))
+    assert not any(point.verified_anchor for point in layout.points)
+    # Middle of the three different edges; the shared thumb/tip corner would
+    # not expose an accidental transpose or a single reversed direction.
+    tip, thumb, wrist = points[0, 10], points[10, 19], points[19, 10]
+    assert tip.region == "middle" and tip.along_fraction > .9
+    assert thumb.region == "thumb" and thumb.across_fraction > .8
+    assert wrist.region == "palm" and wrist.along_fraction < .1
+    assert all(points[row, col].region == "palm"
+               for row in range(12, 20) for col in range(20))
+    for start, finger in zip(range(0, 20, 4), ("little", "ring", "middle", "index", "thumb")):
+        assert all(points[row, col].region == finger
+                   for row in range(12) for col in range(start, start + 4))
+        assert points[0, start].along_fraction > points[11, start].along_fraction
+
+
+@pytest.mark.parametrize("axes,anatomical_coordinate", [
+    ({"row": "+row", "col": "+col"}, lambda r, c: (r, c)),
+    ({"row": "+col", "col": "+row"}, lambda r, c: (c, r)),
+    ({"row": "+col", "col": "-row"}, lambda r, c: (c, 19 - r)),
+    ({"row": "-col", "col": "+row"}, lambda r, c: (19 - c, r)),
+    ({"row": "-row", "col": "+col"}, lambda r, c: (19 - r, c)),
+    ({"row": "+row", "col": "-col"}, lambda r, c: (r, 19 - c)),
+    ({"row": "-row", "col": "-col"}, lambda r, c: (19 - r, 19 - c)),
+    ({"row": "-col", "col": "-row"}, lambda r, c: (19 - c, 19 - r)),
+], ids=("identity", "transpose", "clockwise", "counterclockwise",
+        "reverse-rows", "reverse-cols", "half-turn", "anti-transpose"))
+def test_signed_axis_permutations_preserve_raw_addresses_and_anatomical_geometry(
+        tmp_path, axes, anatomical_coordinate):
+    config = original_config()
+    anatomical = {(p.row, p.col): p for p in load_modified(tmp_path, config).points}
+    config.update(schema_version=2, anatomical_axes=axes)
+    layout = load_modified(tmp_path, config)
+    assert layout.covered_indices == tuple(range(400))
+    assert dict(layout.anatomical_axes) == axes
+    assert len({(p.x, p.y) for p in layout.points}) == 400
+    for point in layout.points:
+        expected = anatomical[anatomical_coordinate(point.row, point.col)]
+        assert (point.x, point.y, point.region) == (expected.x, expected.y, expected.region)
+        assert point.along_fraction == expected.along_fraction
+        assert point.across_fraction == expected.across_fraction
+
+
+@pytest.mark.parametrize("axes", [
+    None, [], {}, {"row": "+row"}, {"col": "+col"},
+    {"row": "+row", "col": "+col", "extra": "+row"},
+    {"row": "+row", "col": "+row"}, {"row": "+row", "col": "-row"},
+    {"row": "-col", "col": "+col"}, {"row": "-col", "col": "-col"},
+    {"row": "row", "col": "+col"}, {"row": "+ROW", "col": "+col"},
+    {"row": True, "col": "+col"}, {"row": "+row", "col": ["+col"]},
+    {"row": "+row", "col": None},
+])
+def test_invalid_anatomical_axis_config_rejected(tmp_path, axes):
+    config = original_config()
+    config.update(schema_version=2, anatomical_axes=axes)
+    with pytest.raises(ValueError, match="anatomical_axes"):
+        load_modified(tmp_path, config)

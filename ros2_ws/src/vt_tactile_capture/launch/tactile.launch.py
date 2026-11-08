@@ -43,6 +43,20 @@ def _viewer_node(context):
     )]
 
 
+def _display_bridge_node(context):
+    parameters = {"socket_path": ParameterValue(LaunchConfiguration("display_socket"), value_type=str),
+                  "use_sim_time": False}
+    hand = LaunchConfiguration("hand").perform(context).strip()
+    if hand:
+        parameters["hand"] = hand
+    return [Node(
+        package="vt_tactile_capture", executable="vt_tactile_display_bridge",
+        name="tactile_display_bridge", namespace=LaunchConfiguration("namespace"),
+        condition=IfCondition(LaunchConfiguration("display_bridge")), output="screen",
+        parameters=[LaunchConfiguration("config"), parameters],
+    )]
+
+
 def generate_launch_description():
     config = get_package_share_directory("vt_tactile_capture") + "/config/right_tactile.yaml"
     return LaunchDescription([
@@ -62,7 +76,12 @@ def generate_launch_description():
         DeclareLaunchArgument("initial_view", default_value="hand",
                               description="Viewer initial tab: hand or matrix. Does not change acquisition."),
         DeclareLaunchArgument("publish_heatmap", default_value="false"),
+        DeclareLaunchArgument("display_bridge", default_value="false",
+                              description="Read-only full-state IPC for an embedded hand view; no additional serial reader."),
+        DeclareLaunchArgument("display_socket", default_value="",
+                              description="Private GUI socket; empty derives it from hand and namespace."),
         LogInfo(msg="Tactile acquisition uses the explicit port in config or port:=...; neither set = disconnected, never guessed."),
         OpaqueFunction(function=_capture_node),
         OpaqueFunction(function=_viewer_node),
+        OpaqueFunction(function=_display_bridge_node),
     ])

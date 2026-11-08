@@ -136,6 +136,35 @@ class Clock:
         self.value += seconds
 
 
+def test_bound_command_revalidates_profile_at_execution(tmp_path, monkeypatch):
+    config = load_config()
+    rest = dict(parents=list(PARENTS), rest_global_xyzw=[[0., 0., 0., 1.]] * 16)
+    controller = LiveController(config, rest, {}, output_root=tmp_path, solver_factory=Solver)
+    calls = []
+    monkeypatch.setattr(controller, "_command", lambda name, args: calls.append(name))
+    assert controller.submit_bound("clear_calibration", {}, expected_session_id=None, expected_profile_version=None)
+    controller._profile = {"profile_version": 1}
+    try:
+        controller.start()
+        wait_for(lambda: controller.latest_snapshot()["runtime"]["command_completed_generation"] == 1)
+        assert not calls
+        assert "标定版本已经变化" in controller.latest_snapshot()["runtime"]["last_command_error"]
+    finally:
+        controller.stop()
+        controller.join(2.)
+
+
+def test_input_activity_is_atomic_with_its_completion_counter(harness):
+    controller = harness.controller
+    with controller._state_lock:
+        controller._snapshot["calibration"]["active"] = {"kind": "mounting"}
+        controller._snapshot["runtime"]["command_completed_generation"] = 17
+    snapshot = controller.latest_input_snapshot()
+    activity = snapshot["runtime"]["calibration_activity"]
+    assert activity["busy"] and activity["command_completed_generation"] == 17
+    assert snapshot["runtime"]["command_completed_generation"] == 17
+
+
 class Source:
     def __init__(self, port):
         self.port, self.batches = port, queue.Queue(maxsize=64)
@@ -248,7 +277,7 @@ def test_tick_timestamps_locked_state_without_hiding_future_or_stale_samples(
 
 
 @pytest.fixture
-def harness(tmp_path):
+def harness(tmp_path, request):
     clock, sources, fit_calls = Clock(), [], []
     config = load_config()
     config["input_health"] = {"enabled": False}  # FakeFusion tests do not model acquisition health.
@@ -284,7 +313,7 @@ def harness(tmp_path):
 
     controller = LiveController(config, rest, {}, output_root=tmp_path, source_factory=source_factory,
                                 clock=clock, fusion_factory=Fusion, solver_factory=lambda *_: solver,
-                                calibration_fn=fit)
+                                calibration_fn=fit, record_streams=getattr(request, "param", True))
     state = SimpleNamespace(controller=controller, clock=clock, sources=sources, solver=solver,
                             fits=fit_calls, controls=controls, output=tmp_path)
 
@@ -304,14 +333,14 @@ def harness(tmp_path):
         clock.advance(delta)
         wait_for(lambda: controller.latest_snapshot()["runtime"]["published_monotonic_s"] >= clock())
 
-    def capture(step):
+    def capture(step, *, nodes=(3, 12)):
         assert controller.submit("capture", step=step)
         wait_for(lambda: controller.latest_snapshot()["calibration"]["active"] is not None)
         assert controller.latest_snapshot()["calibration"]["active"]["phase"] == "preparing"
         clock.advance(3.)
-        pump()  # Enter collection and establish sample_index baseline.
+        pump(nodes=nodes)  # Enter collection and establish sample_index baseline.
         for _ in range(4):
-            pump()
+            pump(nodes=nodes)
         clock.advance(2.)
         pump(nodes=())
         wait_for(lambda: controller.latest_snapshot()["calibration"]["active"] is None)
@@ -326,6 +355,67 @@ def harness(tmp_path):
     assert controller.join(2.)
 
 
+@pytest.mark.parametrize("kind, now, expected_phase, expected_progress", [
+    ("mounting", 9., "preparing", 0.),
+    ("mounting", 11.5, "preparing", .5),
+    ("mounting", 13., "collecting", 0.),
+    ("mounting", 15., "collecting", .5),
+    ("mounting", 18., "collecting", 1.),
+    ("neutral_reference", 15., "collecting", .5),
+    ("functional", 11.5, "preparing", .5),
+    ("functional", 14., "collecting_neutral", .5),
+    ("functional", 18., "moving", .5),
+    ("functional_hand", 11.5, "preparing", .5),
+    ("functional_hand", 14., "collecting_neutral", .5),
+    ("functional_hand", 18., "moving_fingers", .5),
+    ("functional_hand", 22.5, "preparing_thumb", .5),
+    ("functional_hand", 28., "moving_thumb", .5),
+    ("functional_hand", 34., "moving_thumb", 1.),
+])
+def test_calibration_phase_progress_uses_backend_window_boundaries(
+        harness, kind, now, expected_phase, expected_progress):
+    # Non-default collection/motion durations ensure the public progress comes
+    # from the actual schedule, rather than UI assumptions about 2/8 seconds.
+    active = dict(step="neutral", kind=kind, collect_at=13., end_at=17.)
+    if kind == "functional":
+        active.update(finger="index", neutral_end_at=15., end_at=21.)
+    elif kind == "functional_hand":
+        active.update(neutral_end_at=15., fingers_end_at=21., thumb_start_at=24., end_at=32.)
+    harness.controller._active = deepcopy(active)
+    result = harness.controller._calibration_state(now)
+    assert result["active"]["phase"] == expected_phase
+    assert result["active"]["phase_progress"] == pytest.approx(expected_progress)
+    assert 0. <= result["active"]["phase_progress"] <= 1.
+    assert result["captured_steps"] == []  # Even a fully elapsed window is not a successful capture.
+    assert harness.controller._active == active
+    assert not harness.sources
+
+
+@pytest.mark.parametrize("kind", ["functional", "functional_hand"])
+def test_reference_wait_has_unknown_progress_and_motion_uses_rescheduled_start(harness, kind):
+    from vt_fsglove12.functional_capture import FunctionalReferenceCapture
+
+    reference = FunctionalReferenceCapture([1, 2], 13.)
+    active = dict(step="neutral", kind=kind, finger="index", collect_at=13., neutral_end_at=15.,
+                  fingers_end_at=23., thumb_start_at=26., end_at=34., reference_capture=reference)
+    harness.controller._active = active
+    preparing = harness.controller._calibration_state(11.5)["active"]
+    assert preparing["phase_progress"] == pytest.approx(.5)
+    for now in (13., 14., 20., reference.deadline_s):
+        waiting = harness.controller._calibration_state(now)["active"]
+        assert waiting["phase"] == "collecting_neutral" and waiting["reference_waiting"]
+        assert waiting["phase_progress"] is None  # A spent timeout budget is not acquired stability.
+    # An actual selection can move the later schedule beyond its original start.
+    reference.selected = []
+    active.update(neutral_end_at=23., fingers_end_at=31., thumb_start_at=34.,
+                  end_at=42. if kind == "functional_hand" else 31.)
+    for now, fraction in ((23., 0.), (27., .5)):
+        moving = harness.controller._calibration_state(now)["active"]
+        assert moving["phase"] == ("moving_fingers" if kind == "functional_hand" else "moving")
+        assert moving["phase_progress"] == pytest.approx(fraction)
+        assert not moving.get("reference_waiting")
+
+
 def test_default_idle_no_source_or_output_and_snapshot_deepcopy(harness):
     controller = harness.controller.start()
     snapshot = controller.latest_snapshot()
@@ -333,6 +423,39 @@ def test_default_idle_no_source_or_output_and_snapshot_deepcopy(harness):
     snapshot["calibration"]["warnings"].append("mutated")
     assert not controller.latest_snapshot()["calibration"]["warnings"]
     assert not harness.sources and not list(harness.output.iterdir())
+
+
+def test_command_ack_reports_execution_and_errors_not_queue_receipt(harness, monkeypatch):
+    controller = harness.controller
+    entered, release = threading.Event(), threading.Event()
+    original = controller._command
+
+    def delayed(name, args):
+        entered.set()
+        assert release.wait(2.)
+        return original(name, args)
+
+    monkeypatch.setattr(controller, "_command", delayed)
+    # Accepted while stopped processing still has no completion ACK.
+    assert controller.submit("cancel_capture")
+    assert controller.latest_snapshot()["runtime"]["command_completed_generation"] == 0
+    controller.start()
+    try:
+        assert entered.wait(1.)
+        assert controller.latest_snapshot()["runtime"]["command_completed_generation"] == 0
+    finally:
+        release.set()
+    wait_for(lambda: controller.latest_snapshot()["runtime"]["command_completed_generation"] == 1)
+    runtime = controller.latest_snapshot()["runtime"]
+    assert runtime["last_command_name"] == "cancel_capture"
+    assert "连接" in runtime["last_command_error"]
+    assert controller.submit("clear_calibration")
+    wait_for(lambda: controller.latest_snapshot()["runtime"]["command_completed_generation"] == 2)
+    runtime = controller.latest_snapshot()["runtime"]
+    assert runtime["last_command_name"] == "clear_calibration"
+    assert runtime["last_command_error"] is None
+    assert not controller.submit("invalid_command")
+    assert controller.latest_snapshot()["runtime"]["command_completed_generation"] == 2
 
 
 def test_input_quality_is_exported_without_stopping_acquisition(harness, monkeypatch):
@@ -463,11 +586,12 @@ def test_fit_failure_retains_steps_for_selective_retry(harness):
     assert snapshot["calibration"]["profile_status"] == "fit_failed"
     assert snapshot["calibration"]["captured_steps"] == list(STEP_KEYS)
     assert "指尖下倾" in snapshot["runtime"]["error"]
-    assert "fingers_down" in snapshot["calibration"]["warnings"][0]
+    assert snapshot["calibration"]["retry_steps"] == ["fingers_down"]
     assert not snapshot["pose"]["pose_available"]
     harness.controls.fail_fit = False
     harness.capture("fingers_down")
     assert harness.controller.latest_snapshot()["calibration"]["calibrated_nodes"] == ["3", "12"]
+    assert harness.controller.latest_snapshot()["calibration"]["retry_steps"] == []
 
 
 def test_manual_reference_keeps_existing_mounts_and_saves_new_profile(harness):
@@ -564,12 +688,14 @@ def test_functional_capture_has_separate_reference_and_motion_and_keeps_versions
     assert json.loads((directory / "profile.v002.json").read_text())["functional_fingers"]["little"]["test_only"]
 
 
-def _official_functional_backend(harness, monkeypatch):
+def _official_functional_backend(harness, monkeypatch, *, nodes=None):
     """Fake the official numerical backend, retaining real worker/recording flow."""
     from vt_fsglove12 import live_runtime
     harness.connect()
+    if nodes is None:
+        nodes = tuple(map(int, harness.controller.config["node_to_slot"]))
     for step in STEP_KEYS:
-        harness.capture(step)
+        harness.capture(step, nodes=nodes)
     calls, control = [], SimpleNamespace(fail=False)
 
     def forbidden(*args, **kwargs):
@@ -608,6 +734,45 @@ def _official_functional_backend(harness, monkeypatch):
     monkeypatch.setattr(live_runtime, "fit_functional_finger", forbidden)
     monkeypatch.setattr(live_runtime, "apply_functional_axes", forbidden)
     return calls, control
+
+
+def test_heading_capture_commits_only_accepted_references_and_keeps_finger_axes(harness, monkeypatch):
+    from vt_fsglove12.upstream_functional import FINGER_SLOTS
+
+    _official_functional_backend(harness, monkeypatch)
+    controller = harness.controller
+    rejected = False
+
+    def fit(rows, profile, *, session_id):
+        assert rows and profile["session_id"] == session_id
+        if rejected:
+            raise ValueError("手指仍在移动")
+        return {**profile, "neutral_heading": {"fixture": True}}
+
+    monkeypatch.setattr(controller._pose_backend, "reanchor_heading", fit, raising=False)
+    assert not controller._heading_reference_available()
+    fingers = {f: {"slot_refs": {str(slot): {} for slot in slots}} for f, slots in FINGER_SLOTS.items()}
+    controller._profile = {**controller._profile, "functional_fingers": fingers}
+
+    def capture():
+        assert controller.submit("capture_heading_reference")
+        wait_for(lambda: (controller.latest_snapshot()["calibration"].get("active") or {}).get("kind")
+                 == "heading_reference")
+        harness.clock.advance(3.)
+        for _ in range(4):
+            harness.pump()
+        harness.clock.advance(2.)
+        harness.pump(nodes=())
+        wait_for(lambda: controller.latest_snapshot()["calibration"]["active"] is None)
+        return controller.latest_snapshot()["calibration"]["heading_reference_status"]["status"]
+
+    assert capture() == "updated"
+    updated = deepcopy(controller._profile)
+    assert updated["functional_fingers"] == fingers
+    assert updated["neutral_heading"]["fixture"]
+    rejected = True
+    assert capture() == "rejected"
+    assert controller._profile == updated
 
 
 def _capture_functional(harness, finger):
@@ -749,6 +914,10 @@ def _hand_capture_phases(harness, *, finish=True):
         active = harness.controller.latest_snapshot()["calibration"]["active"]
         assert active["kind"] == "functional_hand" and active["step"] == "neutral"
         assert active["phase"] == phase and 0 < active["remaining_s"] <= duration
+        if phase == "collecting_neutral":
+            assert active["reference_waiting"] and active["phase_progress"] is None
+        else:
+            assert active["phase_progress"] == pytest.approx(1. - active["remaining_s"] / duration)
     for _ in range(45):
         if harness.controller.latest_snapshot()["calibration"]["active"]["phase"] == "moving_fingers":
             break
@@ -761,6 +930,7 @@ def _hand_capture_phases(harness, *, finish=True):
             harness.pump()
         active = harness.controller.latest_snapshot()["calibration"]["active"]
         assert active["phase"] == phase and 0 < active["remaining_s"] <= duration
+        assert active["phase_progress"] == pytest.approx(1. - active["remaining_s"] / duration)
     if finish:
         harness.clock.value = start + 24.01
         harness.pump()
@@ -777,6 +947,53 @@ def test_hand_capture_only_official_after_basic_profile(harness):
     wait_for(lambda: bool(harness.controller.latest_snapshot()["runtime"]["error"]))
     assert "三姿势" in harness.controller.latest_snapshot()["runtime"]["error"]
     assert harness.controller.latest_snapshot()["calibration"]["active"] is None
+
+
+@pytest.mark.parametrize("finger, mounting_slots, expected", [
+    ("index", (0, 1, 2), [1, 2]), ("thumb", (0, 14, 15), [15]),
+])
+def test_partial_mounting_requests_only_observable_reference_and_motion_groups(
+        harness, monkeypatch, finger, mounting_slots, expected):
+    c = harness.controller
+    nodes = tuple(int(node) for node, slot in c.config["node_to_slot"].items() if slot in mounting_slots)
+    _official_functional_backend(harness, monkeypatch, nodes=nodes)
+    calls = []
+
+    def fit(neutral, fingers, thumb, profile, **kwargs):
+        calls.append((len(neutral), len(fingers), len(thumb)))
+        return dict(entries={finger: dict(slot_refs={}, rejected_slots={}, diagnostics={})}, errors={})
+
+    c._pose_backend.fit_functional_hand = fit
+    _start_hand_capture(harness)
+    cal = c.latest_snapshot()["calibration"]
+    assert {f: s for f, s in cal["functional_slots_by_finger"].items() if s} == {finger: expected}
+    assert set(c._active["reference_capture"].slots) == set(map(str, expected))
+    harness.clock.advance(3.)
+    states = set()
+    for _ in range(340):
+        harness.pump(nodes=nodes)
+        active = c.latest_snapshot()["calibration"]["active"]
+        if active is None:
+            break
+        states.add(active["phase"])
+    assert calls and calls[0][0], (states, c.latest_snapshot()["calibration"]["functional_hand_result"])
+    if finger == "thumb":
+        assert "moving_fingers" not in states and {"preparing_thumb", "moving_thumb"} <= states
+        assert calls[0][1] == 0 and calls[0][2] > 0
+    else:
+        assert "moving_fingers" in states and states.isdisjoint({"preparing_thumb", "moving_thumb"})
+        assert calls[0][1] > 0 and calls[0][2] == 0
+    result = c.latest_snapshot()["calibration"]["functional_hand_result"]
+    assert result["status"] == "partial" and result["updated_fingers"] == [finger]
+
+
+def test_root_only_mounting_cannot_start_a_finger_capture(harness, monkeypatch):
+    _official_functional_backend(harness, monkeypatch, nodes=(12,))
+    c = harness.controller
+    assert c.submit("capture_functional_hand")
+    wait_for(lambda: "相邻传感器" in (c.latest_snapshot()["runtime"]["last_command_error"] or ""))
+    assert c.latest_snapshot()["calibration"]["active"] is None
+    assert not any(c.latest_snapshot()["calibration"]["functional_slots_by_finger"].values())
 
 
 def test_whole_hand_split_capture_single_save_and_preserved_enabled(harness, monkeypatch):
@@ -1299,3 +1516,54 @@ def test_clear_generation_is_advanced_before_releasing_fusion_reset_lock(tmp_pat
     controller._clear_calibration()
     assert observed_generations == [1]
     assert controller._input_snapshot["runtime"]["clear_generation"] == 1
+
+
+@pytest.mark.parametrize("harness", [False], indirect=True)
+def test_calibration_only_run_keeps_solver_and_calibration_without_continuous_files(harness):
+    h = harness
+
+    def no_recorder(*_args, **_kwargs):
+        raise AssertionError("Display-only mode must not create continuous recorders")
+
+    h.controller._recorder_factory = no_recorder
+    h.controller._result_recorder_factory = no_recorder
+    h.connect()
+    session = h.controller._session
+    assert session.recorder is None and session.result_recorder is None
+    assert not h.controller._writers
+    for step in STEP_KEYS:
+        h.capture(step)
+    h.pump(count=5)
+    state = h.controller.latest_snapshot()
+    assert state["runtime"]["connected"] and state["pose"]["pose_available"]
+    status = state["runtime"]["local_recording"]
+    assert status["requested"] is False and status["enabled"] is False
+    assert status["mode"] == "calibration_only" and status["warning"] == ""
+    assert status["recorded_samples"] == 0 and status["received_samples"] > 0
+    assert status["profile_saved"]
+    directory = session.directory
+    assert (directory / "profile.v001.json").is_file()
+    assert len(list((directory / "calibration").glob("capture.*.json"))) == 3
+    assert h.controller.submit("disconnect")
+    wait_for(lambda: (directory / "summary.json").is_file())
+    summary = json.loads((directory / "summary.json").read_text())
+    assert summary["session_complete"] and summary["reader_stopped"] and not summary["errors"]
+    assert summary["recording_requested"] is False
+    assert summary["recording_complete"] is False and summary["raw_recording_complete"] is False
+    assert summary["recorded_samples"] == 0 and summary["result_recording"] is None
+    assert summary["received_samples"] > 0 and summary["available_poses"] > 0
+    assert not any((directory / name).exists() for name in ("raw.csv", "poses.jsonl", "orientations.jsonl"))
+    events = [json.loads(line)["event"] for line in (directory / "events.jsonl").read_text().splitlines()]
+    assert "connecting" in events and "capture_complete" in events and "disconnected" in events
+    metadata = json.loads((directory / "session_metadata.json").read_text())
+    assert metadata["result_recording_mode"] == "calibration_only"
+    assert h.sources[-1].closed
+
+
+@pytest.mark.parametrize("record_streams", [None, 0, 1, "false"])
+def test_record_streams_requires_explicit_boolean(tmp_path, record_streams):
+    config = load_config()
+    rest = dict(parents=list(PARENTS), rest_global_xyzw=[[0., 0., 0., 1.]] * 16)
+    with pytest.raises(ValueError, match="record_streams"):
+        LiveController(config, rest, {}, output_root=tmp_path, record_streams=record_streams)
+    assert not list(tmp_path.iterdir())

@@ -1,7 +1,7 @@
 """Display-only tactile/pose joining, with no ROS, Qt, or solver dependency.
 
 Each input is a rolling ADC state, not a simultaneous skin scan. Source and
-per-block CLOCK_MONOTONIC times remain authoritative after IPC delivery. This
+per-row CLOCK_MONOTONIC times remain authoritative after IPC delivery. This
 module is imported only when the optional tactile display is enabled.
 """
 
@@ -17,15 +17,17 @@ import numpy as np
 
 from vt_tactile_capture.display_baseline import DisplayBaseline
 from vt_tactile_capture.display_transport import LocalTactileReceiver
-from vt_tactile_capture.grid import BLOCK_COUNT, CELL_COUNT, SCHEMA_VERSION, SHAPE, normalize_state
+from vt_tactile_capture.grid import ROWS, CELL_ROW_INDICES, CELL_COUNT, SCHEMA_VERSION, SHAPE, normalize_state
 from vt_tactile_capture.hand_layout import load_layout
+
+from . import host_clock
 
 
 MAX_AGE_NS = 250_000_000
 MAX_SKEW_NS = 150_000_000
 MAX_HISTORY = 60
-_BLOCK_INDEX = np.arange(SHAPE[0])[:, None] * 8 + np.arange(SHAPE[1])[None, :] % 8
-# Physical addresses are the original upper-left 20x20 window, not a rescale.
+_ROW_INDEX = np.asarray(CELL_ROW_INDICES).reshape(SHAPE)
+# Each packet updates one row of the native 20x20 sensor matrix.
 _FINGER_SLOTS = ((range(1, 4), "index"), (range(4, 7), "middle"), (range(7, 10), "little"),
                  (range(10, 13), "ring"), (range(13, 16), "thumb"))
 _UNITS = "ADC 参考差值，非压力"
@@ -54,7 +56,7 @@ def _uint(value, name):
 
 
 def _now(value):
-    return time.monotonic_ns() if value is None else _uint(value, "now_ns")
+    return host_clock.monotonic_ns() if value is None else _uint(value, "now_ns")
 
 
 def _copy_state(message, expected_hand="right"):
@@ -77,21 +79,22 @@ def _copy_state(message, expected_hand="right"):
         if not isinstance(value, (bool, np.bool_)):
             raise ValueError("无效的连接／时间状态")
         health[name] = bool(value)
-    adc, mask, blocks = (np.asarray(getattr(message, key)) for key in (
-        "adc", "valid_mask", "block_monotonic_ns"))
+    adc, mask, row_stamps = (np.asarray(getattr(message, key)) for key in (
+        "adc", "valid_mask", "row_monotonic_ns"))
     if (adc.shape not in ((CELL_COUNT,), SHAPE) or adc.dtype.kind not in "iu"
             or np.any(adc < 0) or np.any(adc > 65535)):
         raise ValueError("无效的 ADC 数组")
     if (mask.shape not in ((CELL_COUNT,), SHAPE) or mask.dtype.kind not in "biu"
             or np.any((mask != 0) & (mask != 1))):
         raise ValueError("无效的触觉有效性掩码")
-    if blocks.shape != (BLOCK_COUNT,) or blocks.dtype.kind not in "iu" or np.any(blocks < 0):
-        raise ValueError("无效的逐块时间数组")
+    if row_stamps.shape != (ROWS,) or row_stamps.dtype.kind not in "iu" or np.any(row_stamps < 0):
+        raise ValueError("无效的逐行时间数组")
     return SimpleNamespace(**integers, **health, hand=message.hand, session_id=message.session_id,
+        layout_id=message.layout_id,
         clock_domain=message.clock_domain, timing_source=message.timing_source,
         adc=_readonly(adc.reshape(-1), np.uint16),
         valid_mask=_readonly(mask.reshape(-1), bool),
-        block_monotonic_ns=_readonly(blocks, np.uint64))
+        row_monotonic_ns=_readonly(row_stamps, np.uint64))
 
 
 def _state_error(state, now_ns):
@@ -113,7 +116,7 @@ def _state_error(state, now_ns):
 
 def _cell_mask(state, now_ns, pose_ns=None):
     age_limit = min(MAX_AGE_NS, state.max_age_ns)
-    stamps = state.block_monotonic_ns[_BLOCK_INDEX]
+    stamps = state.row_monotonic_ns[_ROW_INDEX]
     # Unsigned source clocks are compared, never subtracted (no wraparound).
     valid = (state.valid_mask.reshape(SHAPE) & (stamps > 0)
              & (stamps <= state.host_monotonic_ns)

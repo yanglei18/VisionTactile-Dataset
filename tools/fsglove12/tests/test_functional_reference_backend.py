@@ -55,3 +55,19 @@ def test_partial_reference_cannot_update_an_unqualified_joint(batch_data):
     assert "2" in result["entries"]["index"]["rejected_slots"]
     assert set(result["errors"]) == {"middle", "ring", "little", "thumb"}
     assert (profile, neutral, fingers, thumb) == saved
+
+
+def test_partial_mounting_skips_unbound_nodes_in_reference_and_actual_finger_fit(batch_data):
+    backend, base, neutral, fingers, _ = batch_data
+    profile = deepcopy(base)
+    eligible = {0, 1, 2}  # Retain the palm and both measured index joints only.
+    profile["nodes"] = {node: data for node, data in profile["nodes"].items() if data["slot"] in eligible}
+    slots = [slot for values in FINGER_SLOTS.values() for slot in values]
+    observed = backend.functional_reference_rotations(neutral[-1], profile, slots)
+    assert set(observed) == {"1", "2"}
+    result = backend.fit_functional_hand(neutral, fingers, [], profile, session_id=profile["session_id"],
+                                         reference_selection={"stable_slots": sorted(observed)})
+    assert set(result["entries"]) == {"index"}
+    assert set(result["entries"]["index"]["slot_refs"]) == {"1", "2"}
+    assert set(result["errors"]) == {"middle", "ring", "little", "thumb"}
+    assert all("基础标定" in details for details in result["errors"].values())

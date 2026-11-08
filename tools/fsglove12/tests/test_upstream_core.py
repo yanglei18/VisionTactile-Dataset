@@ -20,6 +20,58 @@ from scipy.spatial.transform import Rotation
 from vt_fsglove12 import upstream_core
 
 
+def _verified_provenance():
+    return dict(checkout_head=None, source_validation="exact_pinned_file_sha256",
+                numerical_ast_modified=False, checkout="/packaged/upstream", mano_assets_root="/models",
+                sources={key: dict(sha256=checksum, relative_path=relative, symbols_ast_sha256={"f": "abc"})
+                         for key, (relative, checksum) in upstream_core._PINNED_SOURCES.items()},
+                runtime_dependencies={"torch": {"version": "trusted", "file": "/same/python"}})
+
+
+def test_packaged_source_legacy_host_head_uses_verified_content_identity():
+    from copy import deepcopy
+    current = _verified_provenance()
+    saved = {**deepcopy(current), "checkout_head": "a" * 40}
+    assert upstream_core.upstream_provenance_matches(saved, current)
+    assert saved["checkout_head"] == "a" * 40  # No historical artifact is rewritten.
+    assert upstream_core.upstream_provenance_matches(current, current)
+    assert not upstream_core.upstream_provenance_matches(saved, {**current, "checkout_head": "b" * 40})
+    for field, value in [("checkout", "/elsewhere"), ("mano_assets_root", "/other"),
+                         ("runtime_dependencies", {}), ("source_validation", "unverified"),
+                         ("numerical_ast_modified", True), ("sources", {})]:
+        assert not upstream_core.upstream_provenance_matches(saved, {**current, field: value})
+    altered = deepcopy(current)
+    altered["sources"]["calibration"]["symbols_ast_sha256"] = {"f": "modified"}
+    assert not upstream_core.upstream_provenance_matches(saved, altered)
+    # Matching forged hashes still fail the fixed pinned-source check.
+    altered["sources"]["calibration"]["sha256"] = "0" * 64
+    assert not upstream_core.upstream_provenance_matches({**altered, "checkout_head": "a" * 40}, altered)
+
+
+def test_packaged_source_does_not_inherit_enclosing_application_head(tmp_path, monkeypatch):
+    root = tmp_path / "packaged"
+    root.mkdir()
+    file = root / "core.py"
+    file.write_text("# exact source")
+    monkeypatch.setattr(upstream_core, "_PINNED_SOURCES", {"test": ("core.py", hashlib.sha256(file.read_bytes()).hexdigest())})
+    calls = []
+    def git(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(stdout=str(tmp_path))
+    monkeypatch.setattr(upstream_core.subprocess, "run", git)
+    assert upstream_core.inspect_upstream_sources(root)["checkout_head"] is None
+    assert len(calls) == 1 and calls[0][-1] == "--show-toplevel"
+
+
+def test_independent_upstream_git_root_keeps_its_revision(tmp_path, monkeypatch):
+    file = tmp_path / "core.py"
+    file.write_text("# exact source")
+    monkeypatch.setattr(upstream_core, "_PINNED_SOURCES", {"test": ("core.py", hashlib.sha256(file.read_bytes()).hexdigest())})
+    monkeypatch.setattr(upstream_core.subprocess, "run", lambda args, **kwargs:
+        SimpleNamespace(stdout=str(tmp_path) if args[-1] == "--show-toplevel" else "b" * 40))
+    assert upstream_core.inspect_upstream_sources(tmp_path)["checkout_head"] == "b" * 40
+
+
 def test_select_nodes_preserves_complete_official_syntax():
     source = "import forbidden_dependency\nX = 3\n@decorate\ndef fit(a=X):\n    return a + X\n"
     tree, hashes = upstream_core._select_nodes(source, "external.py", ("X", "fit"))

@@ -1,9 +1,11 @@
 """Resolved, immutable recording intent derived from the existing Recipe.
 
-The v2 plan separates the configured Recorder allowlist from streams required
+The v3 plan uses explicitly named row44 tactile messages. Frozen v1/v2 plans
+retain the legacy26 tactile type and their original fingerprints. The v2
+admission design separates the configured Recorder allowlist from streams required
 for this recording. Admission freezes available streams as required; the other
 configured streams can still arrive later. Historical v1 plans retain their
-strict complete-inventory contract. Neither version proves bag completeness.
+strict complete-inventory contract. No version proves bag completeness.
 No ROS, Qt or storage access belongs here.
 """
 
@@ -21,7 +23,7 @@ from .recipes import CAMERA_IDS, HAND_IDS, TRACKER_IDS, Recipe, RecipeError, val
 from .validation import ProtocolError, boolean, mapping, text
 
 
-CAPTURE_PLAN_VERSION = 2
+CAPTURE_PLAN_VERSION = 3
 CAPTURE_SCHEMA_VERSION = capture_schema_version()
 MAX_CONTROLLER_TOPICS = 200
 MAX_TOPIC_NAME_BYTES = 512
@@ -90,7 +92,8 @@ def recipe_for_topics(
     roles and hand streams are independent selections. An incomplete camera
     bundle or unknown extra is rejected instead of being silently omitted.
     Complete legacy bundles resolve to recipe v1. With no cameras selected the
-    current recipe version applies, since the remaining stream contracts agree.
+    current recipe version applies. Raw tactile message identity is bound by the
+    resolved plan version, never inferred from this topic-only allowlist.
     """
     configured = set(_controller_topics(topics))
     cameras = tuple(camera for camera in CAMERA_IDS if any(
@@ -157,7 +160,8 @@ def _record_recipe(recipe: Recipe) -> Recipe:
         raise CapturePlanError(str(error)) from error
 
 
-def _streams_for_recipe(recipe: Recipe, *, required: bool = False) -> tuple[PlannedStream, ...]:
+def _streams_for_recipe(recipe: Recipe, *, required: bool = False,
+                        plan_version: int = CAPTURE_PLAN_VERSION) -> tuple[PlannedStream, ...]:
     streams = [
         PlannedStream(f"/{camera}/{suffix}", type_name, f"camera:{camera}", required)
         for camera in recipe.cameras
@@ -170,7 +174,8 @@ def _streams_for_recipe(recipe: Recipe, *, required: bool = False) -> tuple[Plan
     additional = [
         *(PlannedStream(f"/gloves/{hand}/state", "vt_glove_msgs/msg/GloveState", f"glove:{hand}", required)
           for hand in recipe.pose_hands),
-        *(PlannedStream(f"/gloves/{hand}/tactile/samples", "vt_tactile_msgs/msg/TactileSampleArray",
+        *(PlannedStream(f"/gloves/{hand}/tactile/samples", ("vt_tactile_msgs/msg/TactileRow44Array" if plan_version >= 3 else
+                         "vt_tactile_msgs/msg/TactileSampleArray"),
                         f"tactile:{hand}", required) for hand in recipe.tactile_hands),
     ]
     return (*streams, *sorted(additional, key=lambda item: item.topic))
@@ -184,8 +189,8 @@ class ResolvedCapturePlan:
     schema_version: str = CAPTURE_SCHEMA_VERSION
 
     def __post_init__(self):
-        if type(self.version) is not int or self.version not in (1, CAPTURE_PLAN_VERSION):
-            raise CapturePlanError("unsupported capture plan version; expected integer 1 or 2")
+        if type(self.version) is not int or self.version not in (1, 2, CAPTURE_PLAN_VERSION):
+            raise CapturePlanError("unsupported capture plan version; expected integer 1, 2 or 3")
         recipe = _record_recipe(self.recipe)
         if self.schema_version != capture_schema_version(recipe.version):
             raise CapturePlanError("capture plan schema_version does not match its recipe version")
@@ -195,7 +200,7 @@ class ResolvedCapturePlan:
             raise CapturePlanError("v1 capture plans require all three cameras and all three trackers")
         if type(self.streams) is not tuple or any(not isinstance(stream, PlannedStream) for stream in self.streams):
             raise CapturePlanError("capture plan streams must be an immutable tuple of PlannedStream values")
-        expected = _streams_for_recipe(recipe, required=self.version == 1)
+        expected = _streams_for_recipe(recipe, required=self.version == 1, plan_version=self.version)
         normalized = (self.streams if self.version == 1 else
                       tuple(replace(stream, required=False) for stream in self.streams))
         if normalized != expected:
@@ -245,7 +250,7 @@ class ResolvedCapturePlan:
 
 
 def resolve_capture_plan(recipe: Recipe) -> ResolvedCapturePlan:
-    """Resolve v2 candidates without claiming any stream was observed."""
+    """Resolve current candidates without claiming any stream was observed."""
     recipe = _record_recipe(recipe)
     return ResolvedCapturePlan(recipe, _streams_for_recipe(recipe),
                                schema_version=capture_schema_version(recipe.version))
@@ -259,7 +264,7 @@ def require_available_streams(plan: ResolvedCapturePlan, topics: Sequence[str]) 
     immutable historical contracts and cannot be weakened through this API.
     """
     if not isinstance(plan, ResolvedCapturePlan) or plan.version != CAPTURE_PLAN_VERSION:
-        raise CapturePlanError("available streams require a v2 capture plan")
+        raise CapturePlanError("available streams require the current v3 capture plan")
     available = set(_controller_topics(topics, allow_empty=True))
     unexpected = sorted(available - set(plan.record_topics()))
     if unexpected:
@@ -270,7 +275,7 @@ def require_available_streams(plan: ResolvedCapturePlan, topics: Sequence[str]) 
 
 
 def validate_capture_plan(document: dict) -> ResolvedCapturePlan:
-    """Read a frozen v1 or v2 plan; reject inconsistent or altered fields."""
+    """Read a frozen v1, v2 or v3 plan; reject inconsistent or altered fields."""
     try:
         mapping(document, {"version", "schema_version", "recipe", "streams", "fingerprint"}, "capture_plan")
         recipe = validate_recipe(document["recipe"])

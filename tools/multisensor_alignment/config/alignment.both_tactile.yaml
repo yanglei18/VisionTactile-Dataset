@@ -45,7 +45,7 @@ trackers:
 additional_streams:
   - name: left_tactile
     topic: /gloves/left/tactile/samples
-    type: vt_tactile_msgs/msg/TactileSampleArray
+    type: vt_tactile_msgs/msg/TactileRow44Array
     time_source: field
     timestamp_field: host_realtime_ns
     strategy: previous
@@ -53,7 +53,7 @@ additional_streams:
     required: false
   - name: right_tactile
     topic: /gloves/right/tactile/samples
-    type: vt_tactile_msgs/msg/TactileSampleArray
+    type: vt_tactile_msgs/msg/TactileRow44Array
     time_source: field
     timestamp_field: host_realtime_ns
     strategy: previous

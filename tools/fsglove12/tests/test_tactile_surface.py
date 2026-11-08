@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vt_fsglove12.tactile_surface import TactileSurfaceBinding
+from vt_fsglove12.tactile_surface import TactileSurfaceBinding, TactileSurfaceProjection
 
 
 AXES = {"roll_axis": [0., 1., 0.], "pitch_axis": [-1., 0., 0.], "palm_up_axis": [0., 0., 1.]}
@@ -54,12 +54,28 @@ def sample():
     return geometry, TactileSurfaceBinding(geometry, AXES)
 
 
+def test_fixed_projection_reuses_support_as_board_readings_change():
+    weights = np.array([[1., 0.], [.25, .75], [0., 0.]])
+    projection = TactileSurfaceProjection([(0, 3), (1, 2)], [True, True], weights)
+    weights[:] = 0.  # Binding is complete; frames no longer depend on the dense table.
+    values = np.zeros(400)
+    values[[3, 22]] = 20., 100.
+    mask = np.ones(400, dtype=bool)
+    means, present = projection.vertex_means(values, mask)
+    np.testing.assert_array_equal(means, [20., 80., 0.])
+    np.testing.assert_array_equal(present, [True, True, False])
+    mask[3] = False
+    means, present = projection.vertex_means(values, mask)
+    np.testing.assert_array_equal(means, [0., 100., 0.])
+    np.testing.assert_array_equal(present, [False, True, False])
+    np.testing.assert_array_equal(projection.coverage, [True, True, False])
+
+
 def test_candidate_addresses_anchors_and_convex_barycentric_bindings(sample):
     geometry, binding = sample
     assert binding.addresses.shape == (400, 2)
-    np.testing.assert_array_equal(binding._raw_indices, np.arange(400))
     assert binding.metadata()["rows"] == binding.metadata()["cols"] == 20
-    assert binding.metadata()["tactile_state_schema_version"] == 2
+    assert binding.metadata()["tactile_state_schema_version"] == 3
     np.testing.assert_array_equal(binding.addresses, [(r, c) for r in range(20) for c in range(20)])
     assert binding.verified_anchor.sum() == 9
     assert binding.valid.sum() > 300
@@ -277,3 +293,47 @@ def test_real_mano_candidate_coverage_and_fixed_topology_deformation():
     positions = binding.positions(changed["vertices_m"])
     selected = np.asarray(changed["vertices_m"])[np.asarray(changed["faces"])[binding.face_ids[binding.valid]]]
     np.testing.assert_allclose(positions[binding.valid], np.einsum("ni,nij->nj", binding.weights[binding.valid], selected))
+
+
+def test_left_binding_rejects_right_model_axes_even_with_left_geometry():
+    geometry, axes = left_geometry()
+    for incorrect in (AXES, {**axes, "hand": "right"}, {**axes, "palm_up_axis": [0., 0., -1.]}):
+        with pytest.raises(ValueError, match="model_axes.*left hand"):
+            TactileSurfaceBinding(geometry, incorrect, hand="left", layout_path=left_layout_path())
+
+
+def test_left_binding_accepts_axes_from_actual_axis_derivation_and_preserves_rigid_motion():
+    from vt_fsglove12.guided_calibration import model_motion_axes
+    from vt_fsglove12.live_display import display_basis
+
+    geometry, _ = left_geometry()
+    axes = model_motion_axes(geometry["joints_m"], hand="left")
+    binding = TactileSurfaceBinding(geometry, axes, hand="left", layout_path=left_layout_path())
+    assert binding.valid.sum() > 300
+    basis = display_basis(axes)
+    assert np.linalg.det(basis) == pytest.approx(1.)
+    np.testing.assert_allclose(basis @ basis.T, np.eye(3), atol=1e-12)
+    moved = geometry["vertices_m"] @ basis.T + [.03, -.01, .02]
+    np.testing.assert_allclose(binding.positions(moved)[binding.valid],
+        binding.positions(geometry["vertices_m"])[binding.valid] @ basis.T + [.03, -.01, .02], atol=1e-12)
+
+
+def test_deployed_left_row44_layout_binds_native_edges_to_anatomical_surface():
+    from vt_tactile_capture import hand_layout
+
+    geometry, axes = left_geometry()
+    layout = Path(hand_layout.__file__).parent / "layouts/left_glove_from_right_initial.json"
+    binding = TactileSurfaceBinding(geometry, axes, hand="left", layout_path=layout)
+    assert binding.metadata()["anatomical_axes"] == {"row": "-row", "col": "+col"}
+    np.testing.assert_array_equal(binding.addresses, [(r, c) for r in range(20) for c in range(20)])
+    assert binding.region_names[0 * 20 + 10] == "middle"  # Tip-side edge.
+    assert binding.region_names[10 * 20 + 19] == "thumb"  # Thumb-side edge.
+    assert binding.region_names[19 * 20 + 10] == "palm"   # Wrist-side edge.
+    # Stimulate only native thumb tiles; the 3D coloring must not leak to another region.
+    delta = np.zeros((20, 20))
+    delta[:12, 16:] = 3000
+    base = np.tile([.4, .65, .55, 1.], (len(geometry["vertices_m"]), 1))
+    colors = binding.vertex_colors(delta, np.ones((20, 20), bool), base)
+    changed = np.any(np.abs(colors - base) > 1e-6, axis=1)
+    assert changed.any()
+    assert np.all(binding.vertex_regions[changed] == binding.regions[10 * 20 + 19])

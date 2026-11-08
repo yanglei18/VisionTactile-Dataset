@@ -196,7 +196,7 @@ def test_pose_export_keeps_real_interception_status_without_raw_or_fusion_si(bac
             RawSample(node, (((-1) ** index * 32764 if node == protected and index else 0), 0, 0, 0, 0, 8197),
                       stamp_ns / 1_000_000_000, realtime_ns / 1_000_000_000, host_monotonic_ns=stamp_ns,
                       host_realtime_ns=realtime_ns)
-            for node in (6, 12)])
+            for node in map(int, backend.config["node_to_slot"])])
     frame = fusion.snapshot(stamp_ns / 1_000_000_000)
     frame["session_id"] = SESSION
     pose = backend.solve(frame, profile)

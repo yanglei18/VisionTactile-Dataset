@@ -15,19 +15,17 @@ POSIX descriptor checks and ioctls are neither needed nor available.
 """
 
 from dataclasses import dataclass, replace
-import errno
 import math
-import os
 import queue
-import stat
-import sys
 import threading
 import uuid
 from typing import Callable, Optional
 from numbers import Integral
 
-from .protocol import Block, Parser
-from . import host_clock
+from .protocol import Block, StreamParser
+from itertools import groupby
+from . import host_clock, serial_access
+from .serial_access import PortInUseError  # Compatibility for existing callers.
 
 
 CLOCK_DOMAIN = "CLOCK_MONOTONIC"
@@ -37,9 +35,9 @@ MAX_READ_BYTES = 4096
 
 @dataclass(frozen=True)
 class Batch:
-    """Fields of TactileSampleArray except its ROS Header."""
+    """Fields of TactileRow44Array except its ROS Header."""
 
-    schema_version: int = 1
+    schema_version: int = 2
     hand: str = "right"
     session_id: str = ""
     stream_epoch: int = 0
@@ -56,44 +54,6 @@ class Batch:
     discarded_bytes_total: int = 0
     malformed_packets_total: int = 0
     blocks: tuple[Block, ...] = ()
-
-
-class PortInUseError(OSError):
-    """The explicit port already has another visible owner."""
-
-
-def _port_owners(port: str, exclude_fd: Optional[int] = None) -> list[str]:
-    """Find existing descriptors, including non-cooperating legacy readers."""
-    target = os.stat(port)
-    if not stat.S_ISCHR(target.st_mode):
-        raise ValueError("serial port must be a character device")
-    owners = []
-    own_pid = os.getpid()
-    with os.scandir("/proc") as processes:
-        for process in processes:
-            if not process.name.isdecimal():
-                continue
-            try:
-                with os.scandir(os.path.join(process.path, "fd")) as descriptors:
-                    for descriptor in descriptors:
-                        if (int(process.name) == own_pid
-                                and descriptor.name == str(exclude_fd)):
-                            continue
-                        try:
-                            info = os.stat(descriptor.path)
-                        except (FileNotFoundError, PermissionError, ProcessLookupError):
-                            continue
-                        if stat.S_ISCHR(info.st_mode) and info.st_rdev == target.st_rdev:
-                            owners.append(f"pid={process.name},fd={descriptor.name}")
-            except (FileNotFoundError, PermissionError, ProcessLookupError):
-                continue
-    return owners
-
-
-def _assert_port_free(port: str, exclude_fd: Optional[int] = None) -> None:
-    owners = _port_owners(port, exclude_fd)
-    if owners:
-        raise PortInUseError(errno.EBUSY, "serial port already in use: " + ", ".join(owners), port)
 
 
 class SerialWorker:
@@ -153,7 +113,7 @@ class SerialWorker:
         self._queue = queue.Queue(maxsize=queue_capacity)
         self._stop = threading.Event()
         self._thread = None
-        self._parser = Parser()
+        self._parser = StreamParser()
         self._stream_epoch = 0
         self._sequence = 0
         self._packet_index = 0
@@ -260,45 +220,16 @@ class SerialWorker:
                 batch, producer_dropped_total=self._producer_dropped_total))
 
     def _open_serial(self):
-        options = dict(port=self.port, baudrate=self.baudrate,
-                       timeout=self.read_timeout, write_timeout=self.read_timeout,
-                       exclusive=True)
         if self._factory is not None:
-            return self._factory(**options)
-        import serial
-
-        if sys.platform == "win32":
-            # pyserial's Win32 backend passes share mode 0 to CreateFile. The
-            # exclusive keyword controls POSIX flock and is unnecessary here.
-            options.pop("exclusive")
-            return serial.Serial(**options)
-        if not sys.platform.startswith("linux"):
-            # Other POSIX systems retain pyserial's exclusive lock, without
-            # assuming Linux /proc ownership inspection is available.
-            return serial.Serial(**options)
-
-        import fcntl
-        import termios
-
-        _assert_port_free(self.port)
-        device = serial.Serial(**options)
-        try:
-            fcntl.flock(device.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fcntl.ioctl(device.fileno(), termios.TIOCEXCL)
-            _assert_port_free(self.port, exclude_fd=device.fileno())
-        except BaseException:
-            self._close_serial(device)
-            raise
-        return device
+            return self._factory(port=self.port, baudrate=self.baudrate,
+                                 timeout=self.read_timeout, write_timeout=self.read_timeout,
+                                 exclusive=True)
+        return serial_access.open_serial(self.port, self.baudrate, self.read_timeout)
 
     def _close_serial(self, device) -> None:
-        if self._factory is None and sys.platform.startswith("linux"):
-            import fcntl
-            import termios
-            try:
-                fcntl.ioctl(device.fileno(), termios.TIOCNXCL)
-            except (OSError, ValueError):
-                pass
+        if self._factory is None:
+            serial_access.close_serial(device)
+            return
         try:
             device.close()
         except (OSError, ValueError):
@@ -328,12 +259,24 @@ class SerialWorker:
                             break
                         if data:
                             last_byte_ns = clocks[1]
-                        blocks = self._parser.feed(data)
-                        if blocks:
-                            last_packet_ns = clocks[1]
+                        if not clocks[2]:
+                            # A discontinuity is a boundary in the byte stream too:
+                            # neither pending frames nor this read may cross it.
+                            self._parser.reset()
+                            self._parser.discarded_bytes_total += len(data)
+                            self._emit(connected=True, reason=self._pending_clock_fault or "invalid_time",
+                                       clocks=clocks)
+                            self._pending_clock_fault = ""
+                            continue
+                        decoded = self._parser.feed(data, clocks)
+                        received_packets = bool(decoded)
+                        for read_clocks, group in groupby(decoded, key=lambda entry: entry[1]):
+                            blocks = tuple(block for block, _tag in group)
+                            last_packet_ns = read_clocks[1]
                             timeout_reported = False
-                            self._emit(connected=True, reason="ok", blocks=blocks, clocks=clocks)
-                        elif (not timeout_reported
+                            self._emit(connected=True, reason="ok", blocks=blocks,
+                                       clocks=read_clocks)
+                        if (not received_packets and not timeout_reported
                               and clocks[1] - last_packet_ns >= self.no_data_timeout * 1e9):
                             reason = ("no_data_timeout" if clocks[1] - last_byte_ns
                                       >= self.no_data_timeout * 1e9 else "no_valid_packets")

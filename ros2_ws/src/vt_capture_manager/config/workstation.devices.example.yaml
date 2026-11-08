@@ -27,6 +27,7 @@ process_groups:
     parameters:
       hand: right
       launch_gui: 'true'
+      resources: ''         # Checked standalone hand resource bundle (manifest.json).
       glove_python: ''      # Absolute executable in the existing glove environment.
       fsglove_source: ''
       mano_assets: ''
@@ -39,6 +40,7 @@ process_groups:
     parameters:
       hand: left
       launch_gui: 'true'
+      resources: ''         # Checked standalone hand resource bundle (manifest.json).
       glove_python: ''
       fsglove_source: ''
       mano_assets: ''

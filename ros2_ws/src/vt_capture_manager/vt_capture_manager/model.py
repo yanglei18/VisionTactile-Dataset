@@ -38,6 +38,26 @@ def _stamp_ns(message):
     return int(value)
 
 
+def _tactile_cell_stamps(message):
+    """Expand declared wire clocks without inventing a simultaneous scan.
+
+    Live subscriptions use TactileGridState/schema 3. The explicitly versioned
+    block-clock branch is retained for historical projections and fixtures.
+    """
+    schema, rows, cols = int(message.schema_version), int(message.rows), int(message.cols)
+    if (schema, rows, cols) == (3, 20, 20):
+        if message.layout_id != "row20_col20_v3" or message.unit != "adc_counts":
+            raise ValueError("unsupported tactile row layout/unit")
+        if len(message.row_realtime_ns) != 20 or len(message.row_monotonic_ns) != 20:
+            raise ValueError("tactile row clock length mismatch")
+        return [int(message.row_realtime_ns[r]) for r in range(20) for _ in range(20)]
+    if (schema, rows, cols) in ((1, 80, 80), (2, 20, 20)):
+        if len(message.block_realtime_ns) != rows * 8:
+            raise ValueError("tactile block clock length mismatch")
+        return [int(message.block_realtime_ns[r*8+c%8]) for r in range(20) for c in range(20)]
+    raise ValueError("unsupported tactile grid/schema")
+
+
 def _mano_identity(message):
     """Only bounded result provenance, never raw IMU or calibration contents."""
     result = {}
@@ -153,7 +173,7 @@ class SnapshotModel:
                 if timestamp_eligible:
                     state.last_sample_key = sample_key
                 if config.kind == "tactile":
-                    state.cell_stamps = [int(message.block_realtime_ns[r*8+c%8]) for r in range(20) for c in range(20)]
+                    state.cell_stamps = _tactile_cell_stamps(message)
                     state.cell_max_age_ns = min(int(message.max_age_ns), int(self.config.stale_after_s * 1e9))
             except (AttributeError, TypeError, ValueError, OverflowError) as exc:
                 state.valid = False
@@ -224,21 +244,18 @@ class SnapshotModel:
             return preview, valid, detail[:1024], False, (message.session_id, message.calibration_version,
                                                           message.config_sha256, message.model_rest_sha256)
         rows, cols, schema = int(message.rows), int(message.cols), int(message.schema_version)
-        if (schema, rows, cols) not in ((1, 80, 80), (2, 20, 20)):
-            raise ValueError("unsupported tactile grid/schema")
+        cell_stamps = _tactile_cell_stamps(message)
         if len(message.adc) != rows * cols or len(message.valid_mask) != rows * cols:
             raise ValueError("tactile array length mismatch")
         values = _finite([message.adc[r * cols + c] for r in range(20) for c in range(20)], 400)
         masks = [bool(message.valid_mask[r * cols + c]) for r in range(20) for c in range(20)]
-        if len(message.block_realtime_ns) != rows * 8:
-            raise ValueError("tactile block clock length mismatch")
-        # Each physical column is a separate column group. Never make a stale
-        # rolling cell fresh merely because another block was updated.
+        # Never make a stale rolling cell fresh merely because another row
+        # (or a historical column group) was updated.
         wall = self._wall()
         max_age = min(int(message.max_age_ns), int(self.config.stale_after_s * 1e9))
         for r in range(20):
             for c in range(20):
-                stamp = int(message.block_realtime_ns[r * 8 + c % 8])
+                stamp = cell_stamps[r*20+c]
                 masks[r*20+c] &= bool(0 < stamp <= wall + 500_000_000 and 0 <= wall - stamp <= max_age)
         connected, time_valid = bool(message.connected), bool(message.time_valid)
         if not connected or not time_valid:

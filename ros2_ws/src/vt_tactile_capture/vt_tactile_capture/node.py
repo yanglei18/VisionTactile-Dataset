@@ -18,7 +18,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
-from vt_tactile_msgs.msg import TactileSampleArray, TactileState
+from vt_tactile_msgs.msg import TactileRow44Array, TactileGridState
 
 from .assembler import Assembler
 from .grid import CELL_COUNT, COLS, ROWS, SCHEMA_VERSION
@@ -74,12 +74,12 @@ class TactileNode(Node):
         self._batch_rate_hz = 0.0
         self._packet_rate_hz = 0.0
         self.sample_publisher = self.create_publisher(
-            TactileSampleArray, "samples",
+            TactileRow44Array, "samples",
             QoSProfile(depth=self.config["sample_qos_depth"],
                        reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.VOLATILE),
         )
         self.state_publisher = self.create_publisher(
-            TactileState, "state",
+            TactileGridState, "state",
             QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                        durability=DurabilityPolicy.VOLATILE),
         )

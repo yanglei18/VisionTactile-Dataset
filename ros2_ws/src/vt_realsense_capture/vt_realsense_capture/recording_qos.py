@@ -12,6 +12,7 @@ MAX_DEPTH = 4096
 _TOPIC = re.compile(r"(?:/[A-Za-z_][A-Za-z0-9_]*)+")
 _TYPE_DEPTHS = {
     "vt_tactile_msgs/msg/TactileSampleArray": 512,
+    "vt_tactile_msgs/msg/TactileRow44Array": 512,
     "vt_glove_msgs/msg/GloveState": 256,
 }
 

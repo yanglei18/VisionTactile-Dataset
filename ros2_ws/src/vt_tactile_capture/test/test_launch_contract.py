@@ -34,6 +34,8 @@ def test_launch_has_headless_explicit_port_and_namespace_controls():
     assert arguments["hand_layout_path"] == ""
     assert arguments["baseline_path"] == ""
     assert arguments["initial_view"] == "hand"
+    assert arguments["display_bridge"] == "false"
+    assert arguments["display_socket"] == ""
     assert 'IfCondition(LaunchConfiguration("gui"))' in (ROOT / "launch/tactile.launch.py").read_text()
 
 

@@ -34,7 +34,7 @@ def test_tactile_recording_activity_observes_raw_samples_separately_from_state()
     from rclpy.executors import SingleThreadedExecutor
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-    from vt_tactile_msgs.msg import TactileSampleArray, TactileState
+    from vt_tactile_msgs.msg import TactileRow44Array, TactileGridState
     from vt_capture_manager.config import DeviceConfig, ManagerConfig
     from vt_capture_manager.model import SnapshotModel
     from vt_capture_manager.node import build_node
@@ -53,8 +53,8 @@ def test_tactile_recording_activity_observes_raw_samples_separately_from_state()
     executor.add_node(source)
     qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                      durability=DurabilityPolicy.VOLATILE)
-    state = source.create_publisher(TactileState, prefix + "/state", qos)
-    samples = source.create_publisher(TactileSampleArray, prefix + "/samples", qos)
+    state = source.create_publisher(TactileGridState, prefix + "/state", qos)
+    samples = source.create_publisher(TactileRow44Array, prefix + "/samples", qos)
 
     def until(predicate):
         deadline = time.monotonic() + 8
@@ -71,14 +71,14 @@ def test_tactile_recording_activity_observes_raw_samples_separately_from_state()
         assert sample_subscription.qos_profile.depth == 1
         assert sample_subscription.qos_profile.reliability == ReliabilityPolicy.BEST_EFFORT
         until(lambda: state.get_subscription_count() == samples.get_subscription_count() == 1)
-        state.publish(TactileState())  # An invalid heartbeat cannot stand in for raw data.
+        state.publish(TactileGridState())  # An invalid heartbeat cannot stand in for raw data.
         until(lambda: model.snapshot()["devices"][0]["receive_hz"] >= 1)
         assert model.topic_activity() == {prefix + "/samples": False}
-        samples.publish(TactileSampleArray())  # Invalid payload is still recordable evidence.
+        samples.publish(TactileRow44Array())  # Invalid payload is still recordable evidence.
         until(lambda: model.topic_activity()[prefix + "/samples"])
         assert not model.topic_health()[prefix + "/state"]
         monotonic[0] += 2_000_000_000
-        state.publish(TactileState())
+        state.publish(TactileGridState())
         until(lambda: model.snapshot()["devices"][0]["age_s"] == 0)
         assert model.topic_activity() == {prefix + "/samples": False}
     finally:
@@ -100,7 +100,7 @@ def test_synthetic_ros_to_unix_snapshot(tmp_path, image_reliability):
     from sensor_msgs.msg import Image
     from vt_camera_msgs.msg import CaptureStatus
     from vt_glove_msgs.msg import GloveState
-    from vt_tactile_msgs.msg import TactileState
+    from vt_tactile_msgs.msg import TactileGridState
     from vt_tracker_msgs.msg import TrackerSample
     from vt_capture_core import encode_message, decode_message
     from vt_capture_manager.config import DeviceConfig, ManagerConfig
@@ -120,7 +120,7 @@ def test_synthetic_ros_to_unix_snapshot(tmp_path, image_reliability):
     executor = SingleThreadedExecutor(context=context)
     executor.add_node(manager)
     executor.add_node(publisher_node)
-    types = (Image, TrackerSample, GloveState, TactileState)
+    types = (Image, TrackerSample, GloveState, TactileGridState)
     publishers = []
     for kind, cls in zip(kinds, types):
         reliable = kind == "glove" or (kind == "camera" and image_reliability == "reliable")
@@ -154,8 +154,9 @@ def test_synthetic_ros_to_unix_snapshot(tmp_path, image_reliability):
                                 mano_pose_rotvec=[0.]*48, shape_params=[0.]*10, root_quat_xyzw=[0.,0.,0.,1.],
                                 joint_positions_m=[.01]*63, quality="valid", frame_index=1))
         glove.header.frame_id = "glove_right_reference"
-        tactile = stamp(TactileState(schema_version=2, hand="right", session_id="synthetic", rows=20, cols=20,
-            adc=[0]*400, valid_mask=[True]*400, block_realtime_ns=[realtime]*160, connected=True, time_valid=True,
+        tactile = stamp(TactileGridState(schema_version=3, hand="right", session_id="synthetic", rows=20, cols=20,
+            adc=[0]*400, valid_mask=[True]*400, row_realtime_ns=[realtime]*20, row_monotonic_ns=[mono]*20,
+            layout_id="row20_col20_v3", unit="adc_counts", connected=True, time_valid=True,
             host_realtime_ns=realtime, host_monotonic_ns=mono, max_age_ns=1_000_000_000, stream_epoch=1, source_sequence=1))
         capture = stamp(CaptureStatus(state=CaptureStatus.IDLE, recorder_alive=False, session_id="", detail="synthetic idle"))
         for publisher, message in zip(publishers, (image, tracker, glove, tactile)):

@@ -111,6 +111,21 @@ def _parser():
     shape.add_argument("--iterations", type=_positive_int, default=500)
     shape.add_argument("--seed", type=int, default=0)
     shape.add_argument("--output", required=True)
+    service = sub.add_parser("hand-service", help="无界面单手运行服务；只有显式 --port 或连接命令打开设备")
+    service.add_argument("--hand", choices=("left", "right"), required=True)
+    service.add_argument("--control-socket", required=True)
+    service.add_argument("--resources")
+    service.add_argument("--config")
+    service.add_argument("--rest")
+    service.add_argument("--mano-assets")
+    service.add_argument("--fsglove-source")
+    service.add_argument("--output-root", required=True)
+    service.add_argument("--ros-socket")
+    service.add_argument("--port", default="", help="托管配置的显式连接请求；省略时等待连接命令")
+    service.add_argument("--output-rate-hz", type=float)
+    service.add_argument("--record-streams", action="store_true", help="显式开启连续原始/位姿日志；默认只保存标定")
+    service.add_argument("--replay-raw")
+    service.add_argument("--replay-speed", type=float, default=1.)
     for command in (layout, inspect, units, check, replay, rest, calibration, solve, view,
                     live, official, check_upstream, shape):
         command.add_argument("--hand", choices=("right", "left"), default=None,
@@ -265,6 +280,9 @@ def main(argv=None):
                 core.require_model(args.hand)
             _report({"status": "loaded", "upstream": core.provenance, "hardware_accessed": False,
                      "paper_complete_reproduction": False})
+        elif args.command == "hand-service":
+            from .hand_service import run_service
+            return run_service(args)
         elif args.command == "upstream-live":
             from .upstream_core import load_upstream_core
             from .live_ui import run_live

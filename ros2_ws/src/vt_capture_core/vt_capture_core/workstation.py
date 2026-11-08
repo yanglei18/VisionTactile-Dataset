@@ -19,27 +19,30 @@ PRESETS = {
                  {"bundle_path", "role_map_path", "frame_id", "pyvut_source", "pyvut_site_packages",
                   "backend", "hub_bindings_path", "hub_reader_path", "hub_socket_path"},
                  {"bundle_path", "role_map_path"}),
-    "glove": ("glove", "vt_glove_bridge", "glove.launch.py",
+    "glove": ("glove", "vt_glove_bridge", "hand_service.launch.py",
               {"hand", "launch_gui", "glove_python", "fsglove_source", "mano_assets", "config",
-               "port", "socket_path", "output_root", "output_rate_hz"}, {"hand"}),
+               "port", "socket_path", "control_socket", "resources", "output_root", "output_rate_hz"}, {"hand"}),
     "tactile": ("tactile", "vt_tactile_capture", "tactile.launch.py",
-                {"hand", "config", "port"}, {"hand", "port"}),
+                {"hand", "config", "port", "display_bridge", "display_socket"}, {"hand", "port"}),
 }
 PATH_KEYS = {"config_path", "output_root", "bundle_path", "role_map_path", "glove_python",
              "fsglove_source", "mano_assets", "config", "port", "socket_path", "pyvut_source", "pyvut_site_packages",
-             "hub_bindings_path", "hub_reader_path", "hub_socket_path"}
+             "hub_bindings_path", "hub_reader_path", "hub_socket_path", "control_socket", "resources", "display_socket"}
 
 
 def required_parameters(preset, parameters):
     if preset == "trackers" and parameters.get("backend", "pyvut") == "vivehub":
         return {"hub_bindings_path", "hub_reader_path", "hub_socket_path", "frame_id"}
+    if preset == "glove":
+        return {"hand", "glove_python", "port"} | (
+            {"resources"} if parameters.get("resources") else {"fsglove_source", "mano_assets", "config"})
     return set(PRESETS[preset][4])
 
 
 def parse_profiles(raw):
     if not isinstance(raw, list) or len(raw) > 32:
         raise ValueError("process_groups must be a list of at most 32 launch profiles")
-    result, identifiers = [], set()
+    result, identifiers, hand_profiles = [], set(), set()
     for entry in raw:
         if not isinstance(entry, dict) or set(entry) - {"id", "label", "preset", "enabled", "parameters", "startup_timeout_s"}:
             raise ValueError("process group only accepts id, label, preset, enabled, parameters, startup_timeout_s")
@@ -77,6 +80,11 @@ def parse_profiles(raw):
                 raise ValueError("VIVE Hub requires frame_id=vive_hub_map; legacy extrinsics are not compatible")
         if preset in {"glove", "tactile"} and parameters.get("hand") not in {"left", "right"}:
             raise ValueError("each hand process requires explicit hand: left or right")
+        if preset in {"glove", "tactile"}:
+            key = (preset, parameters["hand"])
+            if key in hand_profiles:
+                raise ValueError("each hand must have exactly one profile per glove/tactile preset")
+            hand_profiles.add(key)
         if preset == "glove":
             if parameters.get("launch_gui", "true") not in {"true", "false"}:
                 raise ValueError("launch_gui must be the string true or false")
@@ -89,8 +97,6 @@ def parse_profiles(raw):
                     raise ValueError("output_rate_hz must be between 1 and 1000")
         if enabled:
             required = required_parameters(preset, parameters)
-            if preset == "glove" and parameters.get("launch_gui", "true") == "true":
-                required |= {"glove_python", "fsglove_source", "mano_assets", "port"}
             if any(not parameters.get(key) for key in required):
                 raise ValueError(f"enabled {identity} requires explicit parameters: {', '.join(sorted(required))}")
         identifiers.add(identity)

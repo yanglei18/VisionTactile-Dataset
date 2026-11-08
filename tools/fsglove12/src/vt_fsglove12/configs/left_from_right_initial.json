@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "input_contract": {
+    "schema_version": 1,
+    "sensor_model": "unknown",
+    "model_source": "undeclared",
+    "scale_source": "configured_assumption"
+  },
+  "hand": "left",
+  "layout": "left_mirrored_finger_groups_palm11",
+  "node_to_slot": {
+    "1": 8,
+    "2": 7,
+    "3": 11,
+    "4": 10,
+    "5": 5,
+    "6": 4,
+    "7": 2,
+    "8": 1,
+    "9": 15,
+    "10": 14,
+    "11": 0
+  },
+  "mounting_confirmed": false,
+  "sample_rate_hz": 104.0,
+  "output_rate_hz": 104.0,
+  "gyro_dps_per_lsb": 0.035,
+  "gyro_dps_per_lsb_by_node": {},
+  "accel_g_per_lsb": 0.000244,
+  "vqf": {
+    "biasClip": 8.0
+  },
+  "calibration_reset_preserve_bias": true,
+  "stale_after_s": 0.15,
+  "filter_reset_gap_s": 1.0,
+  "input_filter": {
+    "enabled": true,
+    "boundary_lsb": 32760,
+    "gyro_jump_dps": 120.0,
+    "accel_jump_g": 1.5,
+    "confirmation_samples": 2,
+    "max_hold_samples": 2,
+    "max_invalid_s": 0.25
+  },
+  "input_health": {
+    "enabled": true
+  },
+  "dip_ratio": 0.65,
+  "units_verified": false,
+  "sample_rate_verified": false,
+  "provenance": "Independent left-hand configuration. Finger-group numbering follows the user's reported mirror of the right glove: little 1/2, ring 3/4, middle 5/6, index 7/8, thumb 9/10. Within-pair segment assignments and palm/wrist numbering retain the existing convention pending physical confirmation. Sample/output rate, scale factors and filter policy remain copied starting assumptions, not measurements of the left glove. Later right-hand changes are not inherited.",
+  "notes": "Use the actual MANO_LEFT model and a new left-hand calibration; profiles made with the previous left numbering are not reusable. Odd IDs 1/3/5/7 map to long-finger middle phalanges, even IDs 2/4/6/8 to proximal phalanges; thumb 9 is distal and 10 proximal. Palm 11 and unmapped wrist 12 are retained. The group permutation does not change raw-axis signs, unit scales or the tactile layout. Sensor mounting, units and cadence still require left-device validation. Never copy right-hand calibration, functional profiles, device bindings or measured unloaded references."
+}

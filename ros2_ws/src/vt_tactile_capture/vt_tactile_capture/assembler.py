@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from numbers import Integral
 
-from .grid import BLOCK_COUNT, CELL_COUNT, COLS, COLUMN_GROUPS, LAYOUT_ID, ROWS, SCHEMA_VERSION
-from .protocol import ROWS as WIRE_ROWS, VALUES_PER_BLOCK
+from .grid import CELL_COUNT, COLS, LAYOUT_ID, ROWS, SCHEMA_VERSION
+from .protocol import VALUES_PER_BLOCK
 from .serial_source import Batch, CLOCK_DOMAIN, TIMING_SOURCE
 
 
@@ -13,7 +13,7 @@ UNIT = "adc_counts"
 
 @dataclass(frozen=True)
 class State:
-    """Fields of TactileState except its ROS Header; arrays are immutable."""
+    """Fields of TactileGridState except its ROS Header; arrays are immutable."""
 
     schema_version: int
     hand: str
@@ -35,8 +35,8 @@ class State:
     adc: tuple[int, ...]
     valid_mask: tuple[bool, ...]
     updated_mask: tuple[bool, ...]
-    block_realtime_ns: tuple[int, ...]
-    block_monotonic_ns: tuple[int, ...]
+    row_realtime_ns: tuple[int, ...]
+    row_monotonic_ns: tuple[int, ...]
     max_age_ns: int
     producer_dropped_total: int
 
@@ -45,9 +45,8 @@ class Assembler:
     """Apply loss-aware batches and derive age-masked row-major snapshots.
 
     Gaps, resets, corruption, clock regressions and fault events invalidate the
-    old cache. A subsequent valid batch can populate only the two or three
-    physically active cells in each raw ten-value block. Raw addresses outside
-    [0, 20) remain part of continuity accounting but never enter the state.
+    old cache. Each valid packet updates exactly one complete row. Invalid
+    row addresses are rejected before any row of that batch is applied.
     Zero ADC is a valid value, never a missing sentinel.
     """
 
@@ -81,10 +80,10 @@ class Assembler:
 
     def _clear(self) -> None:
         self._adc = [0] * CELL_COUNT
-        self._block_realtime_ns = [0] * BLOCK_COUNT
-        self._block_monotonic_ns = [0] * BLOCK_COUNT
-        self._seen = [False] * BLOCK_COUNT
-        self._updated = [False] * BLOCK_COUNT
+        self._row_realtime_ns = [0] * ROWS
+        self._row_monotonic_ns = [0] * ROWS
+        self._seen = [False] * ROWS
+        self._updated = [False] * ROWS
 
     @staticmethod
     def _reset_reason(previous: Batch, batch: Batch) -> str:
@@ -173,8 +172,7 @@ class Assembler:
         self._reason = ("clock_backwards" if backwards else "clock_step" if clock_step
                         else "nonincreasing_realtime" if nonincreasing_realtime and batch.blocks
                         else (reset_reason or batch.reason))
-        # Out-of-area packets and health events must not restamp old physical
-        # readings. Raw batch/packet continuity still includes every packet.
+        # Health events must not restamp previous physical readings.
         contributes = any(isinstance(block.row, Integral) and not isinstance(block.row, bool)
                           and 0 <= block.row < ROWS for block in batch.blocks)
         if contributes:
@@ -190,37 +188,29 @@ class Assembler:
                   and not nonincreasing_realtime and not time_valid):
                 self._reason = "invalid_time"
             return
-        # Validate the whole batch before writing so malformed external input
-        # cannot leave an apparently valid, partially applied snapshot.
-        if any(not (all(isinstance(value, Integral) and not isinstance(value, bool)
-                        for value in (block.row, block.column_group, block.status_raw))
-                    and 0 <= block.row < WIRE_ROWS
-                    and 0 <= block.column_group < COLUMN_GROUPS
-                    and 0 <= block.status_raw <= 255
+        # Validate all rows before applying any, so an invalid batch cannot
+        # leave an apparently valid partial update.
+        if any(not (isinstance(block.row, Integral) and not isinstance(block.row, bool)
+                    and 0 <= block.row < ROWS
                     and len(block.adc) == VALUES_PER_BLOCK
                     and all(isinstance(value, Integral) and not isinstance(value, bool)
-                            and 0 <= value <= 65535
-                            for value in block.adc)) for block in batch.blocks):
+                            and 0 <= value <= 65535 for value in block.adc))
+               for block in batch.blocks):
             self._clear()
             self._time_valid = False
             self._reason = "invalid_block"
             return
         for block in batch.blocks:
-            if block.row >= ROWS:
-                continue
-            index = block.row * COLUMN_GROUPS + block.column_group
-            for k, value in enumerate(block.adc):
-                col = block.column_group + COLUMN_GROUPS * k
-                if col < COLS:
-                    self._adc[block.row * COLS + col] = value
-            self._block_realtime_ns[index] = batch.host_realtime_ns
-            self._block_monotonic_ns[index] = batch.host_monotonic_ns
-            self._seen[index] = True
-            self._updated[index] = True
+            row = block.row
+            self._adc[row * COLS:(row + 1) * COLS] = block.adc
+            self._row_realtime_ns[row] = batch.host_realtime_ns
+            self._row_monotonic_ns[row] = batch.host_monotonic_ns
+            self._seen[row] = True
+            self._updated[row] = True
 
     def _contract_error(self, batch: Batch) -> str:
         if (isinstance(batch.schema_version, bool)
-                or not isinstance(batch.schema_version, Integral) or batch.schema_version != 1):
+                or not isinstance(batch.schema_version, Integral) or batch.schema_version != 2):
             return "invalid_schema"
         if batch.hand != self.hand:
             return "invalid_hand"
@@ -263,12 +253,11 @@ class Assembler:
             for index, seen in enumerate(self._seen):
                 if not seen:
                     continue
-                age = now_monotonic_ns - self._block_monotonic_ns[index]
+                age = now_monotonic_ns - self._row_monotonic_ns[index]
                 if age < 0 or age > max_age_ns:
                     continue
-                row, group = divmod(index, COLUMN_GROUPS)
-                for col in range(group, COLS, COLUMN_GROUPS):
-                    cell = row * COLS + col
+                for col in range(COLS):
+                    cell = index * COLS + col
                     adc[cell] = self._adc[cell]
                     valid_mask[cell] = True
                     updated_mask[cell] = self._updated[index]
@@ -283,9 +272,9 @@ class Assembler:
             timing_source=self._timing_source, layout_id=LAYOUT_ID, unit=UNIT,
             rows=ROWS, cols=COLS, connected=self._connected, time_valid=self._time_valid,
             reason=reason, adc=tuple(adc), valid_mask=tuple(valid_mask),
-            updated_mask=tuple(updated_mask), block_realtime_ns=tuple(self._block_realtime_ns),
-            block_monotonic_ns=tuple(self._block_monotonic_ns), max_age_ns=max_age_ns,
+            updated_mask=tuple(updated_mask), row_realtime_ns=tuple(self._row_realtime_ns),
+            row_monotonic_ns=tuple(self._row_monotonic_ns), max_age_ns=max_age_ns,
             producer_dropped_total=self._producer_dropped_total,
         )
-        self._updated = [False] * BLOCK_COUNT
+        self._updated = [False] * ROWS
         return state

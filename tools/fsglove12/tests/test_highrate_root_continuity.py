@@ -8,9 +8,10 @@ from test_upstream_backend import official_core
 from test_upstream_functional_integration import trial
 
 
+@pytest.mark.parametrize("root_state", ["absent", "awaiting_backlog"])
 @pytest.mark.parametrize('first_bend,next_bend', [(.6, .6), (np.deg2rad(179.9), np.deg2rad(180.1))])
 def test_brief_missing_root_keeps_hinge_reference_without_publishing_a_pose(
-        official_core, first_bend, next_bend):
+        official_core, first_bend, next_bend, root_state):
     backend, profile, frame, _, _ = trial(official_core, "little")
     initial = backend.solve(frame(first_bend, sequence=400), profile)
     # A bound calibration already defines the current projection, but a
@@ -23,7 +24,10 @@ def test_brief_missing_root_keeps_hinge_reference_without_publishing_a_pose(
     history = deepcopy(list(state.observer.history))
     assert delta == 0. and state.observer.evidence_time is None
     missing = frame(first_bend, sequence=401)
-    missing["nodes"].pop(backend._root_node)
+    if root_state == "absent":
+        missing["nodes"].pop(backend._root_node)
+    else:
+        missing["nodes"][backend._root_node].update(orientation_valid=False, continuity=root_state)
     for _ in range(8):
         result = backend.solve(missing, profile)
         assert not result["pose_available"] and result["reason"] == "missing_or_stale_root"
@@ -40,6 +44,30 @@ def test_brief_missing_root_keeps_hinge_reference_without_publishing_a_pose(
     assert recovered['joint_estimation']['8']['continuity']['branch_corrected'] == (next_bend > np.pi)
     assert recovered['joint_estimation']['8']['delta_rad'] == delta
     assert backend._functional_pipeline.hinges._states[8] is state
+
+
+@pytest.mark.parametrize("new_epoch", [False, True])
+def test_pending_finger_samples_hide_the_joint_without_resetting_its_reference(official_core, new_epoch):
+    backend, profile, frame, _, _ = trial(official_core, "little")
+    backend.solve(frame(.6, sequence=400), profile)
+    hinges = backend._functional_pipeline.hinges
+    previous = hinges._states[8]
+    sample = frame(.6, sequence=401)
+    node = next(node for node, slot in backend.config["node_to_slot"].items() if slot == 8)
+    current = sample["nodes"][node]
+    current.update(orientation_valid=False, continuity="awaiting_backlog")
+    current["epoch"] += int(new_epoch)
+    pose = backend.solve(sample, profile)
+    assert pose["pose_available"] and not pose["joint_display_available_mask"][8]
+    if new_epoch:
+        assert 8 not in hinges._states
+        assert pose["calibration_rejections"][node] == "filter_epoch_changed_recalibration_required"
+    else:
+        assert hinges._states[8] is previous
+        assert pose["calibration_rejections"][node] == "waiting_for_backlog"
+        recovered = backend.solve(frame(.6, sequence=402), profile)
+        assert recovered["joint_display_available_mask"][8]
+        assert hinges._states[8] is previous
 
 
 def test_real_input_health_fault_still_invalidates_root_reference(official_core):

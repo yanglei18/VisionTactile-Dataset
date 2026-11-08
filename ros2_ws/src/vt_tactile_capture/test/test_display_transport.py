@@ -20,16 +20,16 @@ from vt_tactile_capture.display_transport import (
 
 def state(sequence=1, **changes):
     message = SimpleNamespace(
-        schema_version=2, rows=20, cols=20, stream_epoch=1, hand="right", session_id="synthetic",
+        schema_version=3, rows=20, cols=20, stream_epoch=1, hand="right", session_id="synthetic",
         source_sequence=sequence, host_realtime_ns=1_700_000_000_123_456_789,
         host_monotonic_ns=123_456_789_123, snapshot_monotonic_ns=123_456_799_123,
         max_age_ns=100_000_000, producer_dropped_total=7, connected=True, time_valid=True,
-        clock_domain="CLOCK_MONOTONIC", timing_source="host_receive", layout_id="row20_col_group_stride8_v2",
+        clock_domain="CLOCK_MONOTONIC", timing_source="host_receive", layout_id="row20_col20_v3",
         unit="adc_counts", reason="ok", header=SimpleNamespace(frame_id="right_tactile"),
         adc=np.arange(400, dtype=np.uint16), valid_mask=np.ones(400, dtype=bool),
         updated_mask=np.arange(400) % 3 == 0,
-        block_monotonic_ns=np.arange(160, dtype=np.uint64) + 123_450_000_000,
-        block_realtime_ns=np.arange(160, dtype=np.uint64) + 1_700_000_000_120_000_000,
+        row_monotonic_ns=np.arange(20, dtype=np.uint64) + 123_450_000_000,
+        row_realtime_ns=np.arange(20, dtype=np.uint64) + 1_700_000_000_120_000_000,
     )
     message.valid_mask[1] = False
     for key, value in changes.items():
@@ -47,11 +47,11 @@ def endpoint():
 def test_roundtrip_preserves_all_values_masks_source_clocks_and_identity():
     message = state()
     message.adc[-1] = 65535
-    message.block_monotonic_ns[-1] = np.iinfo(np.uint64).max
+    message.row_monotonic_ns[-1] = np.iinfo(np.uint64).max
     payload = encode_state(message)
     assert len(payload) < MAX_PACKET_BYTES
     decoded = decode_state(payload)
-    for field in ("adc", "valid_mask", "updated_mask", "block_monotonic_ns", "block_realtime_ns"):
+    for field in ("adc", "valid_mask", "updated_mask", "row_monotonic_ns", "row_realtime_ns"):
         np.testing.assert_array_equal(getattr(decoded, field), getattr(message, field))
     for field in ("hand", "session_id", "stream_epoch", "source_sequence", "host_realtime_ns",
                   "host_monotonic_ns", "snapshot_monotonic_ns", "max_age_ns", "clock_domain",
@@ -112,8 +112,8 @@ def legacy_state():
                  adc=np.arange(6400, dtype=np.uint16),
                  valid_mask=np.arange(6400) % 5 != 0,
                  updated_mask=np.arange(6400) % 3 == 0,
-                 block_monotonic_ns=np.arange(640, dtype=np.uint64) + 120_000_000_000,
-                 block_realtime_ns=np.arange(640, dtype=np.uint64) + 1_700_000_000_000_000_000)
+                 row_monotonic_ns=np.arange(20, dtype=np.uint64) + 120_000_000_000,
+                 row_realtime_ns=np.arange(20, dtype=np.uint64) + 1_700_000_000_000_000_000)
 
 
 def legacy_packet(message):
@@ -121,55 +121,34 @@ def legacy_packet(message):
     names = ("schema_version", "rows", "cols", "stream_epoch", "hand", "session_id",
              "clock_domain", "timing_source", "connected", "time_valid", "source_sequence",
              "host_realtime_ns", "host_monotonic_ns", "snapshot_monotonic_ns", "max_age_ns",
-             "producer_dropped_total", "layout_id", "unit", "reason")
+             "producer_dropped_total", "unit", "reason")
     header = json.dumps(dict({key: getattr(message, key) for key in names},
                              frame_id=message.header.frame_id)).encode()
     return (struct.pack("!4sHH", b"VTTD", 1, len(header)) + header
             + message.adc.astype("<u2").tobytes()
             + np.packbits(message.valid_mask, bitorder="little").tobytes()
             + np.packbits(message.updated_mask, bitorder="little").tobytes()
-            + message.block_monotonic_ns.astype("<u8").tobytes()
-            + message.block_realtime_ns.astype("<u8").tobytes())
+            + message.row_monotonic_ns.astype("<u8").tobytes()
+            + message.row_realtime_ns.astype("<u8").tobytes())
 
 
 @pytest.mark.parametrize("path", ["legacy_wire", "legacy_ros_to_new_wire"])
-def test_legacy_80_state_crops_exact_addresses_masks_and_clocks(path):
+def test_old_state_and_datagram_are_rejected(path):
     message = legacy_state()
-    payload = legacy_packet(message) if path == "legacy_wire" else encode_state(message)
-    decoded = decode_state(payload)
-    assert (decoded.schema_version, decoded.rows, decoded.cols) == (2, 20, 20)
-    assert decoded.layout_id == "row20_col_group_stride8_v2"
-    assert decoded.metadata["rows"] == decoded.metadata["cols"] == 20
-    assert decoded.host_monotonic_ns == message.host_monotonic_ns
-    assert decoded.snapshot_monotonic_ns == message.snapshot_monotonic_ns
-    assert decoded.header.frame_id == message.header.frame_id
-    for field in ("adc", "valid_mask", "updated_mask"):
-        np.testing.assert_array_equal(getattr(decoded, field).reshape(20, 20),
-                                      getattr(message, field).reshape(80, 80)[:20, :20])
-    for field in ("block_monotonic_ns", "block_realtime_ns"):
-        np.testing.assert_array_equal(getattr(decoded, field), getattr(message, field)[:160])
-    assert decoded.adc[20] == 80  # Crop by row stride, never take first 400 raw cells.
-    decoded.adc[0] = 65535
-    assert message.adc[0] == 0
-    if path == "legacy_ros_to_new_wire":
-        assert struct.unpack("!H", payload[4:6])[0] == 2
-        assert len(payload) < 5000
-
-
-def test_wire_v1_cannot_claim_v2_shape():
-    message = legacy_state()
-    message.schema_version = 2
-    with pytest.raises(ValueError, match="schema"):
-        decode_state(legacy_packet(message))
+    with pytest.raises(ValueError):
+        if path == "legacy_wire":
+            decode_state(legacy_packet(message))
+        else:
+            encode_state(message)
 
 
 def test_optional_display_fields_have_unambiguous_defaults():
     message = state()
-    for field in ("updated_mask", "block_realtime_ns", "producer_dropped_total", "layout_id", "unit", "reason", "header"):
+    for field in ("updated_mask", "row_realtime_ns", "producer_dropped_total", "unit", "reason", "header"):
         delattr(message, field)
     decoded = decode_state(encode_state(message))
     assert not decoded.updated_mask.any()
-    assert not decoded.block_realtime_ns.any()
+    assert not decoded.row_realtime_ns.any()
     assert decoded.producer_dropped_total == 0
     assert decoded.unit == "adc_counts"
 
@@ -177,10 +156,10 @@ def test_optional_display_fields_have_unambiguous_defaults():
 @pytest.mark.parametrize("changes", [
     {"adc": [-1] * 400}, {"adc": [65536] * 400}, {"adc": [0.5] * 400},
     {"adc": [0] * 399}, {"valid_mask": [2] * 400}, {"updated_mask": [False]},
-    {"block_monotonic_ns": [0] * 10}, {"block_realtime_ns": [-1] * 160},
+    {"row_monotonic_ns": [0] * 10}, {"row_realtime_ns": [-1] * 20},
     {"source_sequence": True}, {"source_sequence": -1}, {"source_sequence": 1 << 64},
     {"stream_epoch": 1 << 32}, {"connected": 1}, {"time_valid": "true"},
-    {"hand": "unknown"}, {"session_id": ""}, {"schema_version": 3}, {"rows": 21},
+    {"hand": "unknown"}, {"session_id": ""}, {"schema_version": 2}, {"rows": 21},
     {"unit": "pressure"}, {"reason": "x" * 1025}, {"session_id": "\x00"},
 ])
 def test_malformed_fields_cannot_be_encoded(changes):
@@ -190,7 +169,7 @@ def test_malformed_fields_cannot_be_encoded(changes):
 
 @pytest.mark.parametrize("mutate", [
     lambda p: b"", lambda p: p[:-1], lambda p: p + b"x", lambda p: b"BAD!" + p[4:],
-    lambda p: p[:4] + b"\x00\x03" + p[6:],
+    lambda p: p[:4] + b"\x00\x02" + p[6:],
     lambda p: p[:6] + b"\xff\xff" + p[8:],
     lambda p: p[:8] + b"!" + p[9:], lambda p: b"x" * (MAX_PACKET_BYTES + 1),
 ])

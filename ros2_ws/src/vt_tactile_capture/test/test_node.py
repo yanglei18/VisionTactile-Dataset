@@ -16,7 +16,7 @@ from vt_tactile_capture.replay import TactileReplayNode
 from vt_tactile_capture.ros_messages import heatmap_message, sample_message
 from vt_tactile_capture.serial_source import Batch
 from vt_tactile_capture.viewer import ViewerModel, create_viewer_node
-from vt_tactile_msgs.msg import TactileState
+from vt_tactile_msgs.msg import TactileGridState
 
 
 class Recorder:
@@ -58,8 +58,8 @@ def batch(**kwargs):
     default = dict(session_id="synthetic", stream_epoch=1, sequence=1,
                    host_realtime_ns=10_000_000_000, host_monotonic_ns=8_000_000_000,
                    connected=True, time_valid=True, reason="ok",
-                   blocks=(Block(row=0, column_group=0, status_raw=17, adc=tuple(range(10))),
-                           Block(row=2, column_group=7, status_raw=255, adc=(23000,) * 10)))
+                   blocks=(Block(row=0, adc=tuple(range(20))),
+                           Block(row=2, adc=(23000,) * 20)))
     default.update(kwargs)
     return Batch(**default)
 
@@ -119,7 +119,7 @@ def test_two_capture_instances_keep_workers_topics_sessions_and_shutdown_separat
             assert node.frame_id == f"{hand}_tactile"
             assert node.sample_publisher.topic_name == f"/gloves/{hand}/tactile/samples"
             node.source.batches.append(batch(hand=hand, session_id=hand + "-session",
-                blocks=(Block(row=0, column_group=0, status_raw=0, adc=(adc,) * 10),)))
+                blocks=(Block(row=0, adc=(adc,) * 20),)))
             node.drain_samples()
             node.publish_state()
             assert node._last_snapshot.hand == hand
@@ -192,8 +192,8 @@ def test_drain_preserves_every_block_and_acquisition_clocks(node):
     node.drain_samples()
     assert len(node.sample_publisher.messages) == 2
     assert len(node.sample_publisher.messages[0].blocks) == 2
-    assert list(node.sample_publisher.messages[0].blocks[0].adc) == list(range(10))
-    assert node.sample_publisher.messages[0].blocks[1].status_raw == 255
+    assert list(node.sample_publisher.messages[0].blocks[0].adc) == list(range(20))
+    assert len(node.sample_publisher.messages[0].blocks[1].adc) == 20
     assert node.sample_publisher.messages[1].header.stamp.sec == 10
     assert node.sample_publisher.messages[1].header.stamp.nanosec == 5_000_000
     node.publish_state()
@@ -201,9 +201,9 @@ def test_drain_preserves_every_block_and_acquisition_clocks(node):
     state1, state2 = node.state_publisher.messages
     assert state1.host_realtime_ns == state2.host_realtime_ns == 10_005_000_000
     assert state1.header == state2.header
-    assert state1.schema_version == 2 and (state1.rows, state1.cols) == (20, 20)
-    assert sum(state1.valid_mask) == 5
-    assert sum(state1.updated_mask) == 5
+    assert state1.schema_version == 3 and (state1.rows, state1.cols) == (20, 20)
+    assert sum(state1.valid_mask) == 40
+    assert sum(state1.updated_mask) == 40
     assert not any(state2.updated_mask)
     assert state1.adc[0] == 0 and state1.valid_mask[0]
 
@@ -269,36 +269,19 @@ def test_optional_rgb_preview_preserves_header_and_invalid_pixels(node):
     assert image.height == image.width == 20
     assert image.step == 60
     assert len(image.data) == 20 * 20 * 3
-    assert list(image.data[3:6]) == [0, 0, 0]
+    assert list(image.data[60:63]) == [0, 0, 0]
     assert image.header == state.header
 
 
-def test_legacy_rgb_preview_crops_by_coordinates_and_preserves_source():
-    legacy = TactileState(schema_version=1, rows=80, cols=80,
-                         adc=[20000] * 6400, valid_mask=[True] * 6400,
-                         updated_mask=[False] * 6400,
-                         block_monotonic_ns=[100] * 640, block_realtime_ns=[1000] * 640)
-    legacy.header.stamp.sec = 12
-    legacy.header.frame_id = "right_tactile"
-    legacy.adc[80] = 22000  # (1, 0), retained at compact index 20.
-    legacy.adc[20] = 24000  # (0, 20), must not enter the compact grid.
-    legacy.valid_mask[81] = False
-    compact = TactileState(schema_version=2, rows=20, cols=20,
-                          adc=[20000] * 400, valid_mask=[True] * 400)
-    compact.header = legacy.header
-    compact.adc[20] = 22000
-    compact.valid_mask[21] = False
-    image = heatmap_message(legacy)
-    assert image == heatmap_message(compact)
-    assert image.width == image.height == 20 and image.step == 60
-    assert len(image.data) == 1200 and list(image.data[63:66]) == [0, 0, 0]
-    assert (legacy.schema_version, legacy.rows, legacy.cols, len(legacy.adc)) == (1, 80, 80, 6400)
-    assert legacy.adc[80] == 22000 and legacy.adc[20] == 24000
+def test_old_rgb_state_is_rejected():
+    legacy = TactileGridState(schema_version=1, rows=80, cols=80)
+    with pytest.raises(ValueError):
+        heatmap_message(legacy)
 
 
 @pytest.mark.parametrize("field", ["adc", "valid_mask"])
 def test_rgb_preview_rejects_incomplete_compact_arrays(field):
-    state = TactileState(schema_version=2, rows=20, cols=20,
+    state = TactileGridState(schema_version=3, rows=20, cols=20, layout_id="row20_col20_v3",
                          adc=[0] * 400, valid_mask=[True] * 400)
     setattr(state, field, list(getattr(state, field))[:-1])
     with pytest.raises(ValueError, match="400"):
@@ -330,7 +313,7 @@ def test_diagnostics_measure_host_publish_rates_and_source_age(node):
     values = {item.key: item.value for item in node.diagnostic_publisher.messages[-1].status[0].values}
     assert float(values["batch_rate_hz"]) == 2.0
     assert float(values["packet_rate_hz"]) == 4.0
-    assert values["valid_cell_count"] == "5"
+    assert values["valid_cell_count"] == "40"
     assert values["cell_count"] == "400"
     assert values["rows"] == values["cols"] == "20"
     assert values["source_age_ns"] == "1005000000"
@@ -367,14 +350,14 @@ def test_hardware_free_replay_uses_recorded_monotonic_axis(context):
         state = replay.state_publisher.messages[-1]
         assert state.host_realtime_ns == 10_000_000_000
         assert state.snapshot_monotonic_ns == 8_020_000_000
-        assert sum(state.valid_mask) == 5
+        assert sum(state.valid_mask) == 40
         replay.get_clock().set_ros_time_override(Time(nanoseconds=10_200_000_000))
         replay.publish_state()
         assert not any(replay.state_publisher.messages[-1].valid_mask)
         replay.get_clock().set_ros_time_override(Time(nanoseconds=10_000_000_000))
         replay.on_samples(message)
         replay.publish_state()
-        assert sum(replay.state_publisher.messages[-1].valid_mask) == 5
+        assert sum(replay.state_publisher.messages[-1].valid_mask) == 40
         message.header.stamp.nanosec = 1
         replay.on_samples(message)
         assert replay.rejected_samples == 1

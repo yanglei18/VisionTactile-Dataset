@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from vt_capture_console.backend.ipc_client import IpcBackend, fetch_snapshot
 from vt_capture_core.capture_plan import topics_fingerprint, validate_capture_plan
-from vt_capture_core.protocol import CALIBRATION_PROTOCOL_VERSION
+from vt_capture_core.protocol import HAND_PROTOCOL_VERSION
 from vt_capture_core.recipes import Recipe
 from vt_capture_manager.config import ManagerConfig
 from vt_capture_manager.management import ManagementService
@@ -158,7 +158,7 @@ def test_current_ipc_plan_freeze_quality_child_and_v2_compatibility(tmp_path, mo
         backend = IpcBackend(server.path)
         _wait(lambda: backend.supports_capture_plan and backend.snapshot()["capabilities"]["record"],
               "healthy current management")
-        assert backend._version == CALIBRATION_PROTOCOL_VERSION and backend.supports_details
+        assert backend._version == HAND_PROTOCOL_VERSION and backend.supports_details
 
         batch_request = backend.submit("batch.create", {"label": "Metadata-only integration"})
         _wait(lambda: _receipt(backend, batch_request), "batch receipt")
@@ -197,7 +197,7 @@ def test_current_ipc_plan_freeze_quality_child_and_v2_compatibility(tmp_path, mo
         assert start_metadata["task_name"] == "metadata-only 流程验收"
         assert start_metadata["operator_name"] == "test-operator"
         frozen_plan = validate_capture_plan(start_metadata["capture_plan"])
-        assert frozen_plan.version == 2
+        assert frozen_plan.version == 3
         assert frozen_plan.record_topics() == RECIPE.record_topics()
         assert {stream.topic for stream in frozen_plan.streams if stream.required} == set(active_topics)
         assert {stream.topic for stream in frozen_plan.streams if not stream.required} == set(optional_topics)

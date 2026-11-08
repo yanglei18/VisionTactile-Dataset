@@ -19,13 +19,14 @@ NS = 1_000_000_000
 
 
 def state(stamp=10 * NS, sequence=1, adc=100, **changes):
-    values = dict(schema_version=2, rows=20, cols=20, hand="right", unit="adc_counts",
+    values = dict(schema_version=3, rows=20, cols=20, hand="right", unit="adc_counts",
+        layout_id="row20_col20_v3",
         session_id="one", stream_epoch=0, source_sequence=sequence,
         host_monotonic_ns=stamp, snapshot_monotonic_ns=stamp,
         clock_domain="CLOCK_MONOTONIC", timing_source="host_receive",
         connected=True, time_valid=True, max_age_ns=250_000_000,
         adc=np.full(400, adc, dtype=np.uint16), valid_mask=np.ones(400, dtype=bool),
-        block_monotonic_ns=np.full(160, stamp, dtype=np.uint64))
+        row_monotonic_ns=np.full(20, stamp, dtype=np.uint64))
     values.update(changes)
     return SimpleNamespace(**values)
 
@@ -119,23 +120,19 @@ def test_left_held_finger_mask_uses_explicit_anatomical_layout_not_right_columns
     assert np.all(display._latest.adc == 123)
 
 
-def test_legacy_state_crops_physical_addresses_without_retiming_or_rescaling():
+def test_legacy_state_is_rejected_without_reusing_reference_or_history():
     message = state(schema_version=1, rows=80, cols=80,
         valid_mask=np.ones(6400, dtype=bool),
-        block_monotonic_ns=np.full(640, 10 * NS, dtype=np.uint64))
+        row_monotonic_ns=np.full(640, 10 * NS, dtype=np.uint64))
     message.adc = np.arange(6400, dtype=np.uint16)
-    # Values/clocks outside the physical region must never affect the overlay.
-    message.valid_mask[19 * 80 + 19] = False
-    message.block_monotonic_ns[20 * 8:] = 11 * NS
-    display, _ = controller(message)
+    display, receiver = controller(state())
     display.poll(10 * NS)
     install_reference(display, value=0)
-    frame = show(display)
-    assert frame.delta.shape == (20, 20) and frame.valid_mask.sum() == 399
-    assert frame.delta[1, 0] == 80 and frame.delta[19, 18] == 1538
-    assert np.isnan(frame.delta[19, 19])
-    assert display._latest.block_monotonic_ns.shape == (160,)
-    assert display._latest.host_monotonic_ns == display._latest.snapshot_monotonic_ns == 10 * NS
+    assert show(display).delta is not None
+    receiver.messages.append(message)
+    display.poll(10 * NS)
+    assert show(display).delta is None
+    assert display.baseline.values is None and not display._history
     assert message.adc.shape == (6400,) and message.rows == 80
 
 
@@ -215,18 +212,18 @@ def test_pose_gating_clears_only_overlay_and_preserves_tactile_reference(pose, k
     assert show(display).delta is not None
 
 
-def test_per_block_stride_eight_old_future_zero_and_original_invalid():
+def test_per_row_old_future_zero_and_original_invalid():
     message = state()
-    message.block_monotonic_ns[2 * 8 + 3] = 9 * NS  # row2 cols3,11,19
-    message.block_monotonic_ns[3 * 8 + 4] = 11 * NS
-    message.block_monotonic_ns[4 * 8 + 5] = 0
+    message.row_monotonic_ns[2] = 9 * NS
+    message.row_monotonic_ns[3] = 11 * NS
+    message.row_monotonic_ns[4] = 0
     message.valid_mask[5 * 20 + 6] = False
     display, _ = controller(message)
     display.poll(10 * NS)
     install_reference(display)
     frame = show(display)
     expected = np.ones((20, 20), dtype=bool)
-    expected[2, 3::8] = expected[3, 4::8] = expected[4, 5::8] = False
+    expected[2:5, :] = False
     expected[5, 6] = False
     np.testing.assert_array_equal(frame.valid_mask, expected)
     assert np.isnan(frame.delta[~expected]).all()
@@ -235,11 +232,11 @@ def test_per_block_stride_eight_old_future_zero_and_original_invalid():
 
 def test_producer_shorter_max_age_is_honored():
     message = state(max_age_ns=20_000_000)
-    message.block_monotonic_ns[0] -= np.uint64(21_000_000)
+    message.row_monotonic_ns[0] -= np.uint64(21_000_000)
     display, _ = controller(message)
     display.poll(10 * NS)
     install_reference(display)
-    assert not show(display).valid_mask[0, ::8].any()
+    assert not show(display).valid_mask[0].any()
     assert display.frame(10.021, now_ns=10 * NS + 21_000_000).delta is None
 
 
@@ -339,18 +336,18 @@ def test_all_invalid_source_cannot_start_and_missing_reference_cells_stay_masked
     assert frame.valid_mask.sum() == 399
 
 
-def test_reference_rejects_stale_blocks_and_can_finish_without_imu():
+def test_reference_rejects_stale_rows_and_can_finish_without_imu():
     display, receiver = controller(state())
     assert display.start_reference(10 * NS)
     for i in range(1, 31):
         stamp = 10 * NS + i * 100_000_000
         message = state(stamp, sequence=i + 1, adc=200)
-        message.block_monotonic_ns[0] = 9 * NS
+        message.row_monotonic_ns[0] = 9 * NS
         receiver.messages.append(message)
         display.poll(stamp)
     assert display.baseline.values is not None
-    # Block0's only valid observation was the initial value 100, not stale 200s.
-    np.testing.assert_array_equal(display.baseline.values[0, ::8], 100)
+    # Row 0's only valid observation was the initial value 100, not stale 200s.
+    np.testing.assert_array_equal(display.baseline.values[0], 100)
     assert display.baseline.values[1, 0] == 200
 
 
@@ -417,7 +414,7 @@ def test_absent_stream_and_status_do_not_accumulate_text():
 
 
 @pytest.mark.parametrize("changes", [{"adc": [0] * 10}, {"valid_mask": [2] * 400},
-    {"block_monotonic_ns": [0] * 10}, {"connected": 1}, {"rows": 80},
+    {"row_monotonic_ns": [0] * 10}, {"connected": 1}, {"rows": 80},
     {"source_sequence": -1}, {"hand": "left"}])
 def test_malformed_injected_state_does_not_crash_or_retain_reference(changes):
     display, receiver = controller(state())

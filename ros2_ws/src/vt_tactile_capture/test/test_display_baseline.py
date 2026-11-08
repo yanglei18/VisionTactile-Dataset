@@ -13,7 +13,7 @@ IDENTITY = ("tactile-session", 1)
 
 def state(sequence=1, **changes):
     message = SimpleNamespace(
-        schema_version=2, rows=20, cols=20, adc=[18000] * 400,
+        schema_version=3, rows=20, cols=20, layout_id="row20_col20_v3", adc=[18000] * 400,
         valid_mask=[True] * 400, connected=True, time_valid=True,
         session_id=IDENTITY[0], stream_epoch=IDENTITY[1], source_sequence=sequence,
     )
@@ -40,6 +40,7 @@ def archive(tmp_path, *, identity=IDENTITY, frames=12):
     # The loader must not access this object array; allow_pickle=False protects it.
     np.savez_compressed(path, adc=adc, valid_mask=valid, unrelated=np.array([{}], dtype=object))
     path.with_suffix(".json").write_text(json.dumps({
+        "protocol": "vt_tactile_row44_v1", "layout_id": "row20_col20_v3", "state_schema_version": 3,
         "session_epoch_frame_counts": {f"{identity[0]}:{identity[1]}": frames},
     }))
     return path
@@ -190,7 +191,7 @@ def test_memory_bounded_and_refresh_clears_previous_reference():
 
 
 @pytest.mark.parametrize("changes", [
-    {"schema_version": 3}, {"rows": 21}, {"adc": [1]},
+    {"schema_version": 2}, {"rows": 21}, {"adc": [1]},
     {"valid_mask": [True]}, {"adc": [65536] * 400},
     {"valid_mask": [2] * 400}, {"source_sequence": -1}, {"connected": "yes"},
 ])
@@ -237,11 +238,13 @@ def test_load_rejects_mixed_identity_or_mismatched_frame_count(tmp_path):
     baseline = DisplayBaseline()
     path = archive(tmp_path)
     path.with_suffix(".json").write_text(json.dumps({
+        "protocol": "vt_tactile_row44_v1", "layout_id": "row20_col20_v3", "state_schema_version": 3,
         "session_epoch_frame_counts": {f"{IDENTITY[0]}:1": 6, f"{IDENTITY[0]}:2": 6},
     }))
     with pytest.raises(ValueError, match="exactly one"):
         baseline.load(path, IDENTITY)
     path.with_suffix(".json").write_text(json.dumps({
+        "protocol": "vt_tactile_row44_v1", "layout_id": "row20_col20_v3", "state_schema_version": 3,
         "session_epoch_frame_counts": {f"{IDENTITY[0]}:1": 11},
     }))
     with pytest.raises(ValueError, match="shape"):
@@ -256,6 +259,7 @@ def test_load_oversize_header_rejected_without_loading_array(tmp_path):
                 "descr": "<u2", "fortran_order": False, "shape": (10001, 20, 20),
             })
     path.with_suffix(".json").write_text(json.dumps({
+        "protocol": "vt_tactile_row44_v1", "layout_id": "row20_col20_v3", "state_schema_version": 3,
         "session_epoch_frame_counts": {f"{IDENTITY[0]}:1": 10001},
     }))
     with pytest.raises(ValueError, match="10000"):
@@ -293,42 +297,30 @@ def test_subtract_requires_reference_and_correct_shape():
         completed().subtract(np.zeros((80, 80)))
 
 
-def test_legacy_80_reference_load_crops_by_coordinates_and_preserves_identity(tmp_path):
-    path = tmp_path / "legacy.npz"
-    adc = np.broadcast_to(np.arange(6400, dtype=np.uint16).reshape(80, 80), (12, 80, 80)).copy()
-    valid = np.ones((12, 80, 80), dtype=bool)
-    valid[:, 2, 3] = False
-    np.savez_compressed(path, adc=adc, valid_mask=valid)
-    path.with_suffix(".json").write_text(json.dumps({
-        "session_epoch_frame_counts": {f"{IDENTITY[0]}:1": 12},
-    }))
-    baseline = DisplayBaseline()
-    baseline.load(path, IDENTITY)
-    assert baseline.values.shape == (20, 20)
-    assert baseline.identity == IDENTITY
-    assert baseline.values[0, 0] == 0
-    assert baseline.values[1, 0] == 80
-    assert baseline.values[19, 19] == 1539
-    assert np.isnan(baseline.values[2, 3])
-    assert baseline.metadata()["valid_cells"] == 399
-    assert "Legacy 80x80" in baseline.status
+def test_old_reference_shape_is_rejected(tmp_path):
+    path = archive(tmp_path)
+    np.savez_compressed(path, adc=np.zeros((12, 80, 80), dtype=np.uint16),
+                        valid_mask=np.ones((12, 80, 80), dtype=bool))
+    with pytest.raises(ValueError, match="shape"):
+        DisplayBaseline().load(path, IDENTITY)
 
 
-def test_legacy_80_states_can_collect_reference_without_clock_fields():
+def test_old_state_cannot_collect_reference():
     baseline = DisplayBaseline()
     baseline.start(IDENTITY, 0)
-    for sequence in range(1, 31):
-        message = state(sequence, schema_version=1, rows=80, cols=80,
-                        adc=np.arange(6400, dtype=np.uint16), valid_mask=[True] * 6400)
-        baseline.observe(message, sequence * 100_000_000)
-    assert baseline.values.shape == (20, 20)
-    assert baseline.values[1, 0] == 80
-    assert baseline.values[19, 19] == 1539
+    baseline.observe(state(schema_version=1, rows=80, cols=80,
+                           adc=np.zeros(6400, dtype=np.uint16), valid_mask=[True] * 6400), 100_000_000)
+    assert baseline.samples_count == 0 and baseline.values is None
 
 
-def test_reference_load_rejects_mixed_compact_and_legacy_shapes(tmp_path):
+@pytest.mark.parametrize("field", ["protocol", "layout_id", "state_schema_version"])
+def test_old_20_by_20_reference_without_current_contract_is_rejected(tmp_path, field):
     path = archive(tmp_path)
-    np.savez_compressed(path, adc=np.ones((12, 20, 20), dtype=np.uint16),
-                        valid_mask=np.ones((12, 80, 80), dtype=bool))
-    with pytest.raises(ValueError, match="shapes must match"):
-        DisplayBaseline().load(path, IDENTITY)
+    sidecar = path.with_suffix(".json")
+    metadata = json.loads(sidecar.read_text())
+    del metadata[field]
+    sidecar.write_text(json.dumps(metadata))
+    baseline = completed()
+    with pytest.raises(ValueError, match="protocol/layout"):
+        baseline.load(path, IDENTITY)
+    assert baseline.values is None

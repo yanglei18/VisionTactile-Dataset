@@ -213,65 +213,12 @@ def test_legacy_joint_only_data_remains_renderable_without_requesting_a_model(fa
     assert not render(card.preview).isNull()
 
 
-def action_window(monkeypatch, *, can_focus=False, can_start=False, runtime=True, accept=True):
-    """Invoke the real UI action method on an inert ownership/capability seam."""
-    calls, messages = [], []
-    snapshot = {"synthetic_test_only": True}
-    status = {"can_focus": can_focus, "can_start": can_start, "message": "不可启动",
-              "group": {"id": "right_glove", "pid": 12345}}
-    monkeypatch.setattr(main_window, "glove_status", lambda value, hand: status)
-    monkeypatch.setattr(main_window, "focus_owned_calibration",
-                        lambda group, hand: (calls.append(("focus", group["id"], hand)) or True, "已切换标定窗口"))
-    backend = SimpleNamespace(snapshot=lambda: snapshot)
-    if runtime:
-        backend.runtime = SimpleNamespace(configuration={"process_groups": [{"id": "right_glove",
-            "parameters": {"hand": "right", "launch_gui": "true"}}]})
-    controls = SimpleNamespace(pending_request=None, selected_id=None,
-        operation_notice=SimpleNamespace(text=lambda: "队列拒绝"),
-        refresh=lambda value: calls.append(("refresh", value)))
 
-    def submit(action):
-        calls.append(("submit", controls.selected_id, action))
-        if accept:
-            controls.pending_request = "queued-request"
-
-    controls.submit = submit
-    window = SimpleNamespace(demo=False, backend=backend, device_controls=controls,
-                             statusBar=lambda: SimpleNamespace(showMessage=lambda text, duration: messages.append(text)))
-    return window, calls, messages
-
-
-def test_calibration_action_focuses_owned_window_without_second_start(monkeypatch):
-    window, calls, messages = action_window(monkeypatch, can_focus=True, can_start=True)
-    main_window.MainWindow.open_glove_calibration(window, "right")
-    assert calls == [("focus", "right_glove", "right")]
-    assert messages == ["已切换标定窗口"]
-
-
-@pytest.mark.parametrize("accept", [True, False])
-def test_calibration_action_uses_explicit_managed_start_and_reports_actual_queue_result(monkeypatch, accept):
-    window, calls, messages = action_window(monkeypatch, can_start=True, accept=accept)
-    main_window.MainWindow.open_glove_calibration(window, "right")
-    assert calls[-1] == ("submit", "right_glove", "start")
-    assert len(calls) == 2
-    assert ("已请求" in messages[-1]) is accept
-    if accept:
-        assert "不会自动标定" in messages[-1]
-    else:
-        assert messages[-1] == "队列拒绝"
-
-
-@pytest.mark.parametrize("blocked", ["demo", "readonly", "no_capability", "wrong_hand", "headless"])
-def test_calibration_action_does_not_launch_without_owned_desktop_configuration(monkeypatch, blocked):
-    window, calls, messages = action_window(monkeypatch, can_start=blocked != "no_capability",
-                                            runtime=blocked != "readonly")
-    if blocked == "demo":
-        window.demo = True
-    elif blocked in ("wrong_hand", "headless"):
-        parameters = window.backend.runtime.configuration["process_groups"][0]["parameters"]
-        parameters["hand" if blocked == "wrong_hand" else "launch_gui"] = "left" if blocked == "wrong_hand" else "false"
-    main_window.MainWindow.open_glove_calibration(window, "right")
-    assert calls == [] and messages
+def test_calibration_action_routes_to_embedded_panel_without_acquisition():
+    calls = []
+    window = SimpleNamespace(_show_hand_preview=lambda hand, **kwargs: calls.append((hand, kwargs)))
+    main_window.MainWindow.open_glove_calibration(window, "left")
+    assert calls == [("left", {"calibration": True})]
 
 
 @pytest.mark.parametrize("change", [

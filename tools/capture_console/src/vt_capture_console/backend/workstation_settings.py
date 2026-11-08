@@ -78,8 +78,8 @@ def default_configuration(repo_root=None, *, discover=True):
                      startup_timeout_s=30., parameters=dict(bundle_path="", role_map_path="",
                      pyvut_source="", pyvut_site_packages=""))]
     for hand, label in (("right", "右手"), ("left", "左手")):
-        profiles.append(dict(id=hand + "_glove", label=label + "姿态与标定窗口", preset="glove", enabled=False,
-                             startup_timeout_s=120., parameters=dict(hand=hand, launch_gui="true", glove_python="",
+        profiles.append(dict(id=hand + "_glove", label=label + "姿态与标定服务", preset="glove", enabled=False,
+                             startup_timeout_s=120., parameters=dict(hand=hand, launch_gui="false", glove_python="", resources="",
                              fsglove_source="", mano_assets="", port="", config="")))
     for hand, label in (("right", "右手"), ("left", "左手")):
         profiles.append(dict(id=hand + "_tactile", label=label + "触觉采集", preset="tactile", enabled=False,

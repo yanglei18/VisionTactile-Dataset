@@ -60,6 +60,8 @@ def _snapshot_problem(snapshot):
         return "需要真实后台的新鲜状态，不能依据离线或演示状态重启。"
     if snapshot.get("calibration", {}).get("busy"):
         return "标定任务正在运行，请先取消或等待完成后再应用设备配置。"
+    if any(row.get("busy") for row in snapshot.get("hand_sessions", {}).values()):
+        return "手部标定任务尚未结束，请先取消或等待完成后再应用设备配置。"
     management = snapshot.get("management")
     process_control = snapshot.get("process_control")
     if not isinstance(management, dict) or not isinstance(process_control, dict):
@@ -238,11 +240,13 @@ class DesktopRuntime:
         return _identity(identity["pid"]) == identity
 
     def _probe(self):
-        """Probe calibration-aware admission, retaining explicit old-manager support."""
-        try:
-            return self._probe_version(6)
-        except _UnsupportedManagerProtocol:
-            return self._probe_version(4)
+        """Read hand admission first; only explicit mismatch permits fallback."""
+        for version in (7, 6):
+            try:
+                return self._probe_version(version)
+            except _UnsupportedManagerProtocol:
+                continue
+        return self._probe_version(4)
 
     def _probe_version(self, version):
         """One bounded request, authenticated to the peer PID on that socket."""

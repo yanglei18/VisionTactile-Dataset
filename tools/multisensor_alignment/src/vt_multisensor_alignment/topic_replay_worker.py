@@ -26,6 +26,8 @@ KINDS = {
     'vt_tracker_msgs/msg/TrackerSample': 'tracker',
     'vt_glove_msgs/msg/GloveState': 'glove',
     'vt_tactile_msgs/msg/TactileState': 'tactile',
+    'vt_tactile_msgs/msg/TactileGridState': 'tactile',
+    'vt_tactile_msgs/msg/TactileRow44Array': 'tactile',
     'vt_tactile_msgs/msg/TactileSampleArray': 'tactile',
 }
 
@@ -150,9 +152,10 @@ def _device(topic, type_name, message, sample_ns, time_ns, warnings):
         sources = glove_sources(message)
         if sources:
             preview['glove_sources'] = sources
-    elif type_name == 'vt_tactile_msgs/msg/TactileState':
+    elif type_name in ('vt_tactile_msgs/msg/TactileState', 'vt_tactile_msgs/msg/TactileGridState'):
         rows, cols = int(message.rows), int(message.cols)
-        if (int(message.schema_version), rows, cols) not in ((1, 80, 80), (2, 20, 20)):
+        schemas = ((3, 20, 20),) if type_name.endswith("/TactileGridState") else ((1, 80, 80), (2, 20, 20))
+        if (int(message.schema_version), rows, cols) not in schemas:
             raise ValueError('触觉网格/版本不受支持')
         if len(message.adc) != rows * cols or len(message.valid_mask) != rows * cols:
             raise ValueError('触觉网格长度不匹配')
@@ -168,7 +171,7 @@ def _device(topic, type_name, message, sample_ns, time_ns, warnings):
             warnings.append('该触觉快照没有有效单元；保留原始字段供检查')
             return None
     else:
-        if type_name == 'vt_tactile_msgs/msg/TactileSampleArray':
+        if type_name in ('vt_tactile_msgs/msg/TactileSampleArray', 'vt_tactile_msgs/msg/TactileRow44Array'):
             warnings.append('触觉原始消息为稀疏批次；按记录展示其字段，不拼接为同时采样的整手图')
         return None
     return dict(id=topic, label=topic, kind=kind, side=side, status='ready', preview=preview,

@@ -20,7 +20,7 @@ from ..i18n.widgets import (
 
 from .widgets.trial_details import TrialDetailsDialog, QUALITY_LABELS
 from .widgets.device_card import DeviceCard, STATUS
-from ..backend.glove_calibration import inspect_status as glove_status, focus_owned_calibration
+from ..backend.glove_calibration import inspect_status as glove_status
 from ..backend.operation_receipts import operation_for
 from .widgets.workstation_settings import BackendLogDialog, WorkstationSettingsDialog, runtime_busy
 from .icons import icon
@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
         self.spatial_settings_dialog = None
         self.devices = {}
         self.cards = {}
+        self.hand_panes = {}
         self.selected_id = None
         self.grid_signature = None
         self.last_events = None
@@ -291,6 +292,9 @@ class MainWindow(QMainWindow):
             button.setChecked(value == language())
         self.last_events = None
         self._batches_signature = None
+        for pane in self.hand_panes.values():
+            if pane.panel is not None:
+                pane.panel.set_language(code)
         self.refresh()
         self.capture_stage.refresh_layout()
 
@@ -360,7 +364,10 @@ class MainWindow(QMainWindow):
         self.capture_stage = CaptureStage()
         self.capture_stage.expand_requested.connect(self._expand_selected)
         self.capture_stage.calibration_requested.connect(self.open_glove_calibration)
-        stage_row.addWidget(self.capture_stage, 1)
+        from PySide6.QtWidgets import QStackedWidget
+        self.preview_stack = QStackedWidget()
+        self.preview_stack.addWidget(self.capture_stage)
+        stage_row.addWidget(self.preview_stack, 1)
         self.details_panel = QFrame()
         self.details_panel.setObjectName("details")
         self.details_panel.setFixedWidth(262)
@@ -521,7 +528,7 @@ class MainWindow(QMainWindow):
                 text += " " + tr('在“配置设备”启用本次需要的模块，再选择模块启动。')
             self.retry_backend_button.setEnabled(not runtime_busy(runtime))
         self.setup_callout.setText(text)
-        self.setup_callout.setToolTip(text + tr('\n相机标定在本窗口内进行；关闭旧手套标定窗口可能停止其解算。'))
+        self.setup_callout.setToolTip(text + tr('\n相机与手部标定在本窗口内进行；关闭页面不会停止后台采集。'))
 
     def _navigate(self, index):
         archive_playing = index == 1 and hasattr(self, "archive_replay") and not self.archive_replay.isHidden()
@@ -637,6 +644,11 @@ class MainWindow(QMainWindow):
         card = self.cards.get(identifier)
         if card is not None:
             self.capture_stage.set_source(card.preview, card.device_snapshot)
+            device = card.device_snapshot
+            if device.get("managed_hand"):
+                self._show_hand_preview(device["side"], navigate=False)
+            else:
+                self.preview_stack.setCurrentWidget(self.capture_stage)
             self.scroll.ensureWidgetVisible(card, 12, 0)
         for key, card in self.cards.items():
             card.setProperty("selected", key == identifier)
@@ -965,42 +977,32 @@ class MainWindow(QMainWindow):
             return tr('演示批次')
         return batch.get("label", batch["id"])
 
+    def _show_hand_preview(self, hand, *, calibration=None, navigate=True):
+        if hand not in ("left", "right") or self.demo:
+            return
+        from .hand.managed_panel import ManagedHandPane
+        pane = self.hand_panes.get(hand)
+        if pane is None:
+            pane = ManagedHandPane(hand, self.backend)
+            self.hand_panes[hand] = pane
+            self.preview_stack.addWidget(pane)
+        pane.update_manager(self.last_snapshot or self.backend.snapshot())
+        if calibration is not None:
+            pane.set_calibration_visible(calibration)
+        self.preview_stack.setCurrentWidget(pane)
+        if navigate:
+            self.navigation.button(0).setChecked(True)
+            self._navigate(0)
+
     def open_glove_calibration(self, hand):
-        """Reuse the managed glove group, never launch a competing serial owner."""
-        if hand not in ("right", "left") or self.demo:
-            self.statusBar().showMessage(tr('演示模式不启动真实标定工具。'), 8000)
-            return
-        snapshot = self.backend.snapshot()
-        status = glove_status(snapshot, hand)
-        if status["can_focus"]:
-            _, message = focus_owned_calibration(status["group"], hand)
-            self.statusBar().showMessage(str(diagnostic(message)), 10000)
-            return
-        if not status["can_start"]:
-            self.statusBar().showMessage(str(diagnostic(status["message"])), 10000)
-            return
-        runtime = getattr(self.backend, "runtime", None)
-        if runtime is None:
-            self.statusBar().showMessage(tr('请从桌面工作台打开标定；只读连接不会自行启动手套窗口。'), 10000)
-            return
-        group = status["group"]
-        profile = next((g for g in runtime.configuration.get("process_groups", ()) if g["id"] == group["id"]), None)
-        parameters = profile.get("parameters", {}) if profile else {}
-        if parameters.get("hand") != hand or str(parameters.get("launch_gui", "true")).lower() != "true":
-            self.statusBar().showMessage(tr('请在配置设备中确认手别，并启用标定窗口；不会另起串口程序。'), 10000)
-            return
-        self.device_controls.refresh(snapshot)
-        self.device_controls.selected_id = group["id"]
-        pending_before = self.device_controls.pending_request
-        self.device_controls.submit("start")
-        accepted = self.device_controls.pending_request and self.device_controls.pending_request != pending_before
-        message = (tr('已请求打开本手原标定窗口。请在窗口中连接 IMU 并标定；不会自动标定。') if accepted
-                   else self.device_controls.operation_notice.text() or tr('当前无法提交启动请求，请核对进程状态。'))
-        self.statusBar().showMessage(str(diagnostic(message)), 10000)
+        """Expand the shared hand panel inside the existing preview page."""
+        self._show_hand_preview(hand, calibration=True)
 
     def refresh(self):
         snapshot = self.backend.snapshot()
         self.last_snapshot = snapshot
+        for pane in self.hand_panes.values():
+            pane.update_manager(snapshot)
         self.scene_backend.set_manager_instance(snapshot.get("instance_id"))
         self._refresh_management(snapshot)
         self.device_controls.refresh(snapshot)
@@ -1010,11 +1012,17 @@ class MainWindow(QMainWindow):
         self.devices = {device["id"]: {**device, "label": device_label(device, demo=self.demo)}
                         for device in snapshot["devices"]}
         for identifier, device in tuple(self.devices.items()):
+            managed = (not self.demo and device["kind"] in ("glove", "tactile")
+                       and device.get("side") in snapshot.get("hand_sessions", {}))
+            if managed:
+                device = {**device, "managed_hand": True}
+                self.devices[identifier] = device
             if device["kind"] == "glove" and device.get("side") in ("right", "left"):
                 status = glove_status(snapshot, device["side"])
                 self.devices[identifier] = {**device, "glove_state": status["state"],
-                    "glove_hint": tr('演示手势 · 不连接硬件') if self.demo else status["message"],
-                    "glove_action_enabled": bool(not self.demo and (status["can_start"] or status["can_focus"]))}
+                    "glove_hint": (tr('演示手势 · 不连接硬件') if self.demo else
+                                   snapshot.get("hand_sessions", {}).get(device["side"], {}).get("detail", status["message"])),
+                    "glove_action_enabled": bool(not self.demo and (managed or status["can_start"] or status["can_open"]))}
         online = sum(device["status"] == "online" for device in self.devices.values())
         self.stream_count.setText(tr('{v0} / {v1} 路在线', v0=online, v1=len(self.devices)))
         for index, title in enumerate(self.segment_titles):
@@ -1040,6 +1048,7 @@ class MainWindow(QMainWindow):
                     card = DeviceCard(device, compact=True)
                     card.selected.connect(self._select)
                     card.calibration_requested.connect(self.open_glove_calibration)
+                    card.hand_preview_requested.connect(self._show_hand_preview)
                     self.cards[device["id"]] = card
                 card = self.cards[device["id"]]
                 self.grid.addWidget(card, 0, index)
@@ -1059,6 +1068,7 @@ class MainWindow(QMainWindow):
         elif not shown:
             self.selected_id = None
             self.capture_stage.clear_source()
+            self.preview_stack.setCurrentWidget(self.capture_stage)
         if self.selected_id in self.cards and self.selected_id in self.devices:
             selected = self.cards[self.selected_id]
             self.capture_stage.set_source(selected.preview, selected.device_snapshot)
@@ -1197,6 +1207,8 @@ class MainWindow(QMainWindow):
         if self.spatial_settings_dialog is not None:
             self.spatial_settings_dialog.close()
         self.scene_backend.close()
+        for pane in self.hand_panes.values():
+            pane.shutdown()
         for card in self.cards.values():
             card.close_details()
         if self.details_dialog is not None:

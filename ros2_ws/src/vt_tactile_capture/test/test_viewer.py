@@ -12,13 +12,13 @@ from vt_tactile_capture.viewer import ViewerModel, create_window, normalize_rang
 
 def state():
     return SimpleNamespace(
-        schema_version=2, rows=20, cols=20, hand="right", session_id="test", stream_epoch=1,
+        schema_version=3, rows=20, cols=20, layout_id="row20_col20_v3", hand="right", session_id="test", stream_epoch=1,
         header=SimpleNamespace(stamp=SimpleNamespace(sec=10, nanosec=0)),
         host_realtime_ns=10_000_000_000, host_monotonic_ns=8_000_000_000,
         snapshot_monotonic_ns=8_000_000_000,
         source_sequence=3, adc=[0] * 400, valid_mask=[False] * 400,
-        updated_mask=[False] * 400, block_realtime_ns=[0] * 160,
-        block_monotonic_ns=[0] * 160, connected=True, time_valid=True,
+        updated_mask=[False] * 400, row_realtime_ns=[0] * 20,
+        row_monotonic_ns=[0] * 20, connected=True, time_valid=True,
         reason="ok", max_age_ns=0, producer_dropped_total=0,
     )
 
@@ -29,37 +29,24 @@ def test_range_inclusive_sentinel_and_reversed_bounds():
     assert normalize_range(-1, 999) == (0, 19)
 
 
-def test_legacy_ros_state_is_cropped_for_view_and_csv_without_restamping(tmp_path):
+def test_old_ros_state_is_rejected_without_changing_view():
     message = state()
     message.schema_version, message.rows, message.cols = 1, 80, 80
-    message.adc = list(range(6400))
-    message.valid_mask = [True] * 6400
-    message.updated_mask = [True] * 6400
-    message.block_realtime_ns = list(range(640))
-    message.block_monotonic_ns = list(range(640))
     model = ViewerModel()
-    assert model.observe(message)
-    assert len(model.data) == 400 and model.data[20] == 80
-    assert model.data[-1] == 1539
-    assert model.message.schema_version == 2
-    assert model.message.header.stamp == message.header.stamp
-    assert len(model.display_block_monotonic_ns) == 160
-    model.save_csv(tmp_path / "legacy_cropped.csv")
-    model.save_metadata(tmp_path / "legacy_cropped.json")
-    metadata = json.loads((tmp_path / "legacy_cropped.json").read_text())
-    assert (metadata["rows"], metadata["cols"]) == (20, 20)
-    assert len(metadata["current_valid_mask"]) == 400
+    assert not model.observe(message)
+    assert model.message is None
+    assert all(math.isnan(value) for value in model.data)
 
 
 def test_missing_is_not_zero_and_valid_zero_is_displayed():
     model = ViewerModel()
     message = state()
     message.valid_mask[8] = True
-    message.block_realtime_ns[0] = 10_000_000_000
+    message.row_realtime_ns[0] = 10_000_000_000
     assert model.observe(message)
     assert math.isnan(model.data[0])
     assert model.data[8] == 0
-    assert model.display_block_realtime_ns[0] == 10_000_000_000
+    assert model.display_row_realtime_ns[0] == 10_000_000_000
     assert "LIVE" in model.status(10_000_000_000)
 
 
@@ -127,8 +114,8 @@ def test_csv_and_metadata_preserve_missing_zero_and_historical_provenance(tmp_pa
     model = ViewerModel()
     message = state()
     message.valid_mask[8] = True
-    message.block_realtime_ns[0] = 10_000_000_000
-    message.block_monotonic_ns[0] = 8_000_000_000
+    message.row_realtime_ns[0] = 10_000_000_000
+    message.row_monotonic_ns[0] = 8_000_000_000
     model.observe(message)
     model.save_csv(tmp_path / "grid.csv")
     model.save_metadata(tmp_path / "grid.json")
@@ -139,7 +126,7 @@ def test_csv_and_metadata_preserve_missing_zero_and_historical_provenance(tmp_pa
     assert rows[1][1] == ""
     assert rows[1][9] == "0"
     assert metadata["current_valid_mask"][8]
-    assert metadata["display_block_realtime_ns"][0] == 10_000_000_000
+    assert metadata["display_row_realtime_ns"][0] == 10_000_000_000
 
 
 def test_offscreen_window_range_and_png_csv_export(tmp_path):
@@ -163,7 +150,7 @@ def test_offscreen_window_range_and_png_csv_export(tmp_path):
         window.apply_range()
         assert window.view_range == (4, 10, 0, 19)
         assert window.image.axisOrder == "row-major"
-        assert tuple(window.image.getLevels()) == (20000, 24000)
+        assert tuple(window.image.getLevels()) == (0, 65535)
         window.full_range()
         window.export(tmp_path / "snapshot.png")
         assert (tmp_path / "snapshot.png").read_bytes().startswith(b"\x89PNG")
@@ -187,7 +174,7 @@ def test_hand_view_signed_reference_mapping_and_raw_export(tmp_path):
     reference = tmp_path / "baseline.npz"
     np.savez(reference, adc=np.full((12, 20, 20), 18000, dtype=np.uint16),
              valid_mask=np.ones((12, 20, 20), dtype=bool))
-    reference.with_suffix(".json").write_text(json.dumps({"session_epoch_frame_counts": {"test:1": 12}}))
+    reference.with_suffix(".json").write_text(json.dumps({"session_epoch_frame_counts": {"test:1": 12}, "protocol": "vt_tactile_row44_v1", "layout_id": "row20_col20_v3", "state_schema_version": 3}))
     model = ViewerModel()
     message = state()
     message.adc = [18000] * 400

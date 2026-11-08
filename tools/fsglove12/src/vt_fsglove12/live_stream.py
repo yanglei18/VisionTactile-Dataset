@@ -21,7 +21,9 @@ import time
 
 import numpy as np
 
-from .replay import _configuration, _node_key, _record_gap, _WARNINGS
+from . import host_clock
+from .arrival_gaps import ArrivalGapMonitor, REFERENCE_LOSS_EVENTS
+from .replay import _configuration, _node_key, _WARNINGS
 from .sensor_quality import GyroNearRailMonitor, quality_warnings
 from .input_contract import effective_input_scales, raw_to_si, validate_input_contract
 from .input_diagnostics import InputObservationMonitor, describe_filter_state
@@ -121,7 +123,7 @@ class ImuParser:
     def feed(self, data, host_monotonic_s=None, host_wall_s=None, *,
              host_monotonic_ns=None, host_realtime_ns=None):
         stamp, monotonic_ns = _timestamp_pair(host_monotonic_s, host_monotonic_ns,
-                                             "host_monotonic_s", "host_monotonic_ns", time.monotonic_ns)
+                                             "host_monotonic_s", "host_monotonic_ns", host_clock.monotonic_ns)
         wall, realtime_ns = _timestamp_pair(host_wall_s, host_realtime_ns,
                                            "host_wall_s", "host_realtime_ns", time.time_ns)
         if not isinstance(data, (bytes, bytearray, memoryview)):
@@ -274,7 +276,7 @@ class SerialSource:
             data = self._serial.read(min(MAX_READ_BYTES, max(1, waiting)))
             # Capture the two host clocks after read completion, before waiting
             # for the diagnostics lock. These are not simultaneous IMU times.
-            monotonic_ns, realtime_ns = time.monotonic_ns(), time.time_ns()
+            monotonic_ns, realtime_ns = host_clock.monotonic_ns(), time.time_ns()
         except (OSError, _serial_module().SerialException) as exc:
             raise StreamError(f"Serial read failed for {self.port!r}: {exc}") from exc
         # The sole reader performs all I/O outside the snapshot/parse lock.
@@ -299,7 +301,7 @@ class SerialSource:
         Counts and ages remain available after close until the next real open.
         """
         with self._diagnostics_lock:
-            stamp = _timestamp(time.monotonic() if now is None else now, "host_monotonic_s")
+            stamp = _timestamp(host_clock.monotonic() if now is None else now, "host_monotonic_s")
             return dict(source_kind="raw_serial", opened=self._opened,
                         bytes_received=self._bytes_received,
                         frames_decoded=self.parser.frames_ok,
@@ -387,8 +389,8 @@ class RawRecorder:
 class OnlineFusion:
     """One independent VQF per node; snapshot never advances/resets a filter.
 
-    Only gaps above filter_reset_gap_s reset the returning node; shorter gaps
-    preserve its VQF and nominal-sample integration while reporting uncertainty.
+    Shared transport delays preserve nominal-sample integration. A long gap
+    or a persistent peer-relative sampling deficit invalidates the node epoch.
     Backward input host time resets all epochs as in offline replay. UI snapshots omit stale or
     future-dated states, including while the device is silent. Frame indices
     count emitted snapshots; sample indices count actual raw node samples.
@@ -404,12 +406,14 @@ class OnlineFusion:
         self.scales, self.accel_scales = effective_input_scales(config)
         self.period = 1. / self.settings["sample_rate_hz"]
         self.states = {}
+        self._pending_calibration_bias = {}
         self.epochs = {str(n): 0 for n in range(1, 13)}
         self.counts = {str(n): 0 for n in range(1, 13)}
         self.last_input = None
         self.frame_index = 0
         self._pending_warnings = set()
-        self.gap_diagnostics = {}
+        self._arrival_gaps = ArrivalGapMonitor(self.settings)
+        self.gap_diagnostics = self._arrival_gaps.diagnostics
         self.sensor_quality = GyroNearRailMonitor()
         self.input_observation = InputObservationMonitor(self.settings["sample_rate_hz"])
         self.input_guard = ImuInputGuard(config)
@@ -424,8 +428,9 @@ class OnlineFusion:
         nodes currently absent after a prior reset; unseen nodes keep theirs.
         VQF instances, quaternions, cached SI inputs and all guard baselines,
         candidates, rejection runs and per-epoch guard counters are discarded.
-        Filters are recreated lazily on the next sample, so an intervening
-        snapshot has no old or invented fresh orientation.
+        A fresh healthy resting node's learned gyro bias can seed its next
+        real sample in this connection. Orientation is always reconstructed.
+        An intervening snapshot has no old or invented fresh orientation.
 
         Counts/sample indices, frame index, session-wide rejection count,
         input clock, passive observations, boundary history and gap history
@@ -434,13 +439,41 @@ class OnlineFusion:
         The caller must invalidate its own cached pose/calibration snapshots.
         Return the affected node IDs and new epochs for the caller's event log.
         """
+        self._pending_calibration_bias.clear()
+        now = host_clock.monotonic()
+        for key, state in self.states.items():
+            estimator = state["filter"]
+            guard = state.get("input_filter", {})
+            if (not 0 <= now - state["stamp"] <= self.settings["stale_after_s"]
+                    or self.input_health.node_status(key, now)["state"] != "healthy"
+                    or self._arrival_gaps.is_pending(key)
+                    or guard.get("gyro_rejected") or guard.get("accel_rejected")
+                    or not estimator.getRestDetected()):
+                continue
+            bias, sigma = estimator.getBiasEstimate()
+            if (np.isfinite(bias).all() and np.max(np.abs(bias)) <= math.radians(estimator.params["biasClip"])
+                    and 0 < sigma < math.radians(estimator.params["biasSigmaInit"])):
+                self._pending_calibration_bias[key] = (bias.copy(), sigma, state["stamp"], now)
         nodes = [key for key in self.epochs if self.counts[key] or key in self.states]
         for key in nodes:
             self.epochs[key] += 1
         self.states.clear()
         self.input_guard.reset()
+        self._arrival_gaps.clear_reference()
         self._pending_warnings.add("calibration_reset_filters_reinitialized")
-        return dict(reset_nodes=nodes, epochs={key: self.epochs[key] for key in nodes})
+        result = dict(reset_nodes=nodes, epochs={key: self.epochs[key] for key in nodes})
+        if self._pending_calibration_bias:
+            result["bias_seed_nodes"] = list(self._pending_calibration_bias)
+        return result
+
+    def _seed_calibration_bias(self, key, stamp, estimator, guard):
+        bias, sigma, last_sample, reset_at = self._pending_calibration_bias.pop(key)
+        now = host_clock.monotonic()
+        if (last_sample <= reset_at <= stamp <= now
+                and now - last_sample <= self.settings["stale_after_s"]
+                and self.input_health.node_status(key, now)["state"] == "healthy"
+                and not guard["gyro_rejected"] and not guard["accel_rejected"]):
+            estimator.setBiasEstimate(bias, sigma)
 
     def update(self, samples):
         for sample in samples:
@@ -453,33 +486,27 @@ class OnlineFusion:
                 for node in self.epochs:
                     self.epochs[node] += 1
                 self.states.clear()
+                self._pending_calibration_bias.clear()
                 self.input_guard.reset()
                 self.input_health.reset_clock()
+                self._arrival_gaps.clear_reference()
                 self._pending_warnings.add("host_clock_reset_filters_reinitialized")
             previous = self.states.get(key)
-            if previous is not None and stamp - previous["stamp"] > self.settings["stale_after_s"]:
-                gap = stamp - previous["stamp"]
-                # A confirmed health fault already invalidated this epoch.
-                # Repeated long gaps must not churn paused filters/epochs;
-                # sustained recovery will create exactly one fresh filter.
-                paused = not self.input_health.integration_allowed(key)
-                reset = gap > self.settings["filter_reset_gap_s"] and not paused
-                _record_gap(self.gap_diagnostics, key, gap, stamp, reset=reset)
-                if reset:
+            gap_event = self._arrival_gaps.observe(key, stamp,
+                paused=not self.input_health.integration_allowed(key))
+            if gap_event:
+                self._pending_warnings.add(f"node_{key}_{gap_event}")
+                if gap_event in REFERENCE_LOSS_EVENTS:
                     self.epochs[key] += 1
-                    self._pending_warnings.add(f"node_{key}_gap_filter_reinitialized")
                     previous = None
                     self.input_guard.reset(key)
-                elif paused:
-                    self._pending_warnings.add(f"node_{key}_gap_input_health_paused")
-                else:
-                    self._pending_warnings.add(f"node_{key}_short_gap_filter_preserved")
             if previous is None:
                 previous = dict(filter=self._factory(self.period, **self._vqf_parameters), stamp=stamp)
                 self.states[key] = previous
             transitions = self.input_health.observe(key, sample.values, sample.status, stamp,
                                                     np.rad2deg(gyro))
             for event, affected in transitions:
+                self._pending_calibration_bias.pop(affected, None)
                 if event == "fault":
                     self.epochs[affected] += 1
                     self._pending_warnings.add(f"node_{affected}_input_health_fault")
@@ -493,6 +520,8 @@ class OnlineFusion:
             used_gyro, used_accel, protection = self.input_guard.process(
                 key, sample.values, gyro, accel,
                 gyro_bias_rad_s=previous["filter"].getBiasEstimate()[0])
+            if key in self._pending_calibration_bias:
+                self._seed_calibration_bias(key, stamp, previous["filter"], protection)
             if protection["gyro_rejected"] or protection["accel_rejected"]:
                 self.input_guard_rejections += 1
             integration_allowed = self.input_health.integration_allowed(key)
@@ -525,7 +554,7 @@ class OnlineFusion:
         return self.snapshot(now, consume=False)
 
     def snapshot(self, now=None, *, consume=True):
-        stamp = _timestamp(time.monotonic() if now is None else now, "host_monotonic_s")
+        stamp = _timestamp(host_clock.monotonic() if now is None else now, "host_monotonic_s")
         nodes = {}
         quality = self.sensor_quality.snapshot(stamp)
         health = self.input_health.snapshot(stamp) if self.input_health.settings["enabled"] else None
@@ -556,6 +585,8 @@ class OnlineFusion:
                 status = health["nodes"][key]
                 nodes[key].update(input_health=deepcopy(status),
                     orientation_valid=nodes[key].get("orientation_valid", True) and status["healthy"])
+            if self._arrival_gaps.is_pending(key):
+                nodes[key].update(orientation_valid=False, continuity="awaiting_backlog")
         frame = dict(schema_version=1, frame_index=self.frame_index, timestamp_s=stamp,
                      orientation_source="vqf_6d", orientation_frame="independent_initial_heading",
                      nodes=nodes, warnings=warnings,

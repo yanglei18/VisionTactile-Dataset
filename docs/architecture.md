@@ -30,73 +30,29 @@ described separately below.
 
 ## Glove calibration and presentation ownership
 
-Hardware node IDs enter through the configured `node_to_slot` mapping and input
-unit contract. `layout_capabilities` derives observable joint pairs, calibration
-targets and action guidance from that mapping. GUI demonstrations use those
-targets; they do not maintain another numbering table or alter measured angles.
-`upstream_functional` fits the observable pairs. `middle_prior` owns estimates
-for missing segments; its inferred values are not independent measurements.
+The active workbench hand path uses the tested standalone implementation through
+one headless `ProcessLiveController` service per hand. Installation mapping,
+fusion, functional calibration, shape/contact fitting, and MANO inference remain
+owned by `tools/fsglove12`; the Qt workbench does not introduce another solver.
+The standalone application and the existing workbench preview embed the same
+`vt_capture_console.ui.hand` components. No additional hand workspace is created.
 
-`FusionEngine` owns integration and filter state. `input_timing` distinguishes
-arrival cadence from orientation continuity. The buffered continuity policy
-temporarily withholds measurement validity while completed arrival groups are
-accounted for; it never changes integration dt or invents missing samples.
-An unresolved or interrupted reference requires an explicit new reference.
-Historical recordings retain their saved policies and event boundaries.
-Fusion bias contributions are recorded as diagnostics, not physical truth or
-an instruction for the renderer to compensate the pose.
+The manager owns device process groups and admits all mutations against the
+recorder state. IPC v7 binds commands to manager, service, input session and
+calibration version. A separate, read-only stream supplies display snapshots.
+Service readiness, input freshness, calibration readiness and measured pose
+validity are distinct. Teaching geometry and display holding never become
+recorded measurements. Closing a preview detaches its consumers only.
 
-`StationaryPreparation` owns the measured baseline and its statistical evidence.
-The opt-in offline `prepared_uncertainty_v3` policy also transfers a conservative
-uncertainty prior into native VQF at filter creation. It uses the norm of the
-three simultaneous confidence bounds as an intentionally broad isotropic sigma,
-then propagates age with the unchanged VQF process noise. This is not an exact
-standard-error claim. Reference rebuilds do not rejuvenate old evidence, and a
-changed host clock epoch prevents reuse of its confidence. Live defaults and
-historical replay remain unchanged: recorded whole-hand refits still contain
-per-joint regressions, so this candidate is not a completed drift repair.
+The row44 tactile reader publishes separate versioned ROS message types while
+legacy message definitions remain frozen for archived recordings. The shared
+managed tactile display consumes full row-timed states. Capture plan v3 uses
+the new types; historical plan v1/v2 fingerprints retain their old contracts.
 
-The live controller transfers completed, no-longer-mutated capture documents
-to a background job. Basic and functional fits share `CalibrationFitJob`, while
-`IsolatedJob` owns process startup, cancellation, deadlines and reaping.
-`CalibrationIO` serializes bounded artifact writes through the same execution
-primitive. Numerical workers and storage workers cannot activate profiles.
-Custom `calibration_fn` callbacks run through the same isolated task and must be
-importable and serializable by Python's spawn mechanism; isolation failures are
-reported instead of silently substituting the built-in algorithm. An injected
-job factory is the explicit extension seam for a different execution backend.
-The controller alone admits a candidate after its durable write receipt and
-checks the session, calibration reference and input epochs again. Cancellation
-revokes pending application; already submitted evidence may still finish saving.
-Waiting for buffered input is bounded and never bypasses a health or epoch fault.
-
-`kinematic_quality` produces per-joint quality and `joint_quality` defines its
-shared interpretation. Display, capture and export consume that contract.
-Current producers explicitly select
-`joint_quality_revision=local_joint_geometry_v2`: `valid_hidden=(true,false)`
-means the local joint estimate passed its own checks while mesh ancestry is
-unavailable. `kinematic_rejections` records local-model and inference-dependency
-failures; `joint_display_rejections` records unavailable parent geometry.
-An observed segment's global rotation is not invalidated merely by rejection of
-its own local joint model. Missing input dependencies and coupled-prior final
-model checks still apply. Unversioned results retain the v1 three-state meaning;
-unknown declared revisions fail closed. Complete `pose_valid` requires all local
-validity and display-availability flags, plus the existing input/time conditions.
-Neither local validity nor displaying a local angle establishes independent
-measurement or whole-hand anatomical accuracy.
-`display_pose` manages source-timed local history and a separate display-only
-partial-mesh contract. Unknown regions and their descendants are hidden by the
-renderer; placeholders needed to evaluate MANO never enter pose measurements or
-ROS. A `valid_hidden` local estimate can update a display-only composition when
-its missing ancestors still have unexpired display history; it cannot refresh
-those ancestors' source times or make the measured chain valid. Source
-timestamps, numerical validity and calibration are not repaired by GUI
-refreshes. A missing root still expires the complete display.
-
-Regression coverage must include raw/replay equivalence, complete and incomplete
-USB bursts, cancellation across fitting and saving, obsolete session results,
-and actual MANO partial rendering. These checks establish software behavior;
-anatomical accuracy and hardware signal consistency require separate evidence.
+See [hand integration](workbench-hand-integration.md) for ownership boundaries,
+resource configuration, provenance compatibility and replay verification. Older
+experimental solver modules remain available for explicit historical/offline
+use; their policies are not silently substituted for the tested hand service.
 
 ## Shared capture and archive presentation
 

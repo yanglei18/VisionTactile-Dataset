@@ -17,7 +17,8 @@ def bundled_model_path():
 
 
 class TactileSettings:
-    def __init__(self, settings=None, *, glove_python=None, mano_assets=None, model_bundle=None):
+    def __init__(self, settings=None, *, glove_python=None, mano_assets=None, model_bundle=None,
+                 response_profile=None):
         self.store = settings if settings is not None else QSettings(
             QSettings.Format.IniFormat, QSettings.Scope.UserScope, "visiontactile", "tactile-3d")
         self.glove_python = str(glove_python if glove_python is not None
@@ -26,6 +27,8 @@ class TactileSettings:
                               else self.store.value("model/assets", ""))
         self.model_bundle = (str(Path(model_bundle).expanduser().absolute()) if model_bundle is not None
                              else bundled_model_path())
+        self.response_profile = (Path(response_profile).expanduser().absolute() if response_profile is not None
+                                 else Path(__file__).resolve().parents[1] / "assets/tactile/default_response.json")
 
     @property
     def uses_static_model(self):
@@ -39,6 +42,12 @@ class TactileSettings:
         if self.uses_static_model:
             parameters["preview_bundle"] = self.model_bundle
         return {"process_groups": [{"id": "right_glove", "parameters": parameters}]}
+
+    def reference_store(self):
+        from .tactile_reference_store import TactileReferenceStore
+
+        directory = Path(self.store.fileName()).parent / "tactile-references"
+        return TactileReferenceStore(directory, preset_path=self.response_profile)
 
     def save_model(self, glove_python, mano_assets):
         if not glove_python.strip() or not mano_assets.strip():

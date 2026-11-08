@@ -60,14 +60,14 @@ def wire_state(stamp_ns, sequence, *, pressed=False):
     adc = np.full((20, 20), 20_000, dtype=np.uint16)
     if pressed:
         adc[8:20, 12:16] += 4000  # actual index candidate addresses, not rescaled
-    return SimpleNamespace(schema_version=2, rows=20, cols=20, hand="right",
+    return SimpleNamespace(schema_version=3, rows=20, cols=20, hand="right", layout_id="row20_col20_v3",
         session_id="synthetic-tactile", stream_epoch=0, source_sequence=sequence,
         host_realtime_ns=1_700_000_000 * NS + stamp_ns,
         host_monotonic_ns=stamp_ns, snapshot_monotonic_ns=stamp_ns,
         clock_domain="CLOCK_MONOTONIC", timing_source="host_receive",
         connected=True, time_valid=True, max_age_ns=250_000_000,
         adc=adc.reshape(-1), valid_mask=np.ones(400, dtype=bool),
-        block_monotonic_ns=np.full(160, stamp_ns, dtype=np.uint64))
+        row_monotonic_ns=np.full(20, stamp_ns, dtype=np.uint64))
 
 
 def publish_pose(worker, stamp_ns, geometry, *, index=1):

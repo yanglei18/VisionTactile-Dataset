@@ -128,6 +128,9 @@ class SnapshotServer:
             from vt_capture_core.calibration_protocol import empty_calibration
             result["capabilities"]["calibration"] = False
             result["calibration"] = empty_calibration()
+        if version >= 7:
+            result["capabilities"]["hand_control"] = False
+            result["hand_sessions"] = {}
         return result
 
     def _run(self):

@@ -17,7 +17,7 @@ import numpy as np
 DEFAULTS = dict(enabled=True, boundary_lsb=32760, gyro_jump_dps=120.0,
                 accel_jump_g=1.5, confirmation_samples=2, max_hold_samples=2,
                 max_invalid_s=0.25)
-REVISION = "per_axis_gyro_continuity_v2"
+REVISION = "per_axis_gyro_continuity_v3"
 _GRAVITY = 9.80665
 _MIN_ACCEL_NORM_M_S2 = 1e-6
 _AXES = ("x", "y", "z")
@@ -36,8 +36,9 @@ def _positive_number(value):
 def guard_settings(config):
     """Return independent, validated effective ``input_filter`` settings.
 
-    ``confirmation_samples`` is deliberately fixed at two: a first candidate
-    is rejected and a consistent next finite sample confirms a reported step.
+    ``confirmation_samples`` is deliberately fixed at two. A rate outside
+    both the constant-speed and constant-acceleration tolerances is held
+    pending a consistent next finite sample.
     A gyro coding boundary is diagnostic evidence, not proof of a corrupt value
     or zero angular velocity. Smoothly approaching it retains the reported rate.
     ``max_hold_samples`` may be zero to disable gyro hold-last fallback.
@@ -98,6 +99,7 @@ class _VectorState:
 @dataclass
 class _AxisState:
     accepted: float | None = None
+    previous_step: float = 0.
     candidate: float | None = None
     invalid_run: int = 0
     rejected_samples: int = 0
@@ -105,6 +107,19 @@ class _AxisState:
     zero_motion_samples: int = 0
     boundary_samples: int = 0
     boundary_now: bool = False
+
+    def continuous(self, value, tolerance):
+        if self.accepted is None:
+            return not self.boundary_now
+        step = value - self.accepted
+        # The sample can agree with constant speed OR continue the acceleration
+        # between the last two accepted samples. Only the actual value is used.
+        return abs(step) <= tolerance or abs(step - self.previous_step) <= tolerance
+
+    def accept(self, value):
+        # Held, nonfinite and unconfirmed samples cannot establish acceleration.
+        self.previous_step = value - self.accepted if self.accepted is not None and not self.invalid_run else 0.
+        self.accepted, self.candidate, self.invalid_run = value, None, 0
 
 
 @dataclass
@@ -191,12 +206,10 @@ class ImuInputGuard:
         # The common all-good case avoids candidate/fallback allocations and
         # NumPy reductions. A continuous approach to a boundary is not a spike.
         # An initial boundary with no accepted baseline still needs confirmation.
-        if all(math.isfinite(value)
-               and ((axis.accepted is None and not axis.boundary_now)
-                    or axis.accepted is not None and abs(value - axis.accepted) <= threshold)
+        if all(math.isfinite(value) and axis.continuous(value, threshold)
                for axis, value in zip(state.axes, values)):
             for axis, value in zip(state.axes, values):
-                axis.accepted, axis.candidate, axis.invalid_run = value, None, 0
+                axis.accept(value)
             state.invalid_run = 0
             return _NO_REASONS
         reasons = []
@@ -205,8 +218,7 @@ class ImuInputGuard:
             if not math.isfinite(value):
                 reason = "gyro_nonfinite"
                 axis.candidate = None
-            elif ((axis.accepted is None and axis.boundary_now)
-                  or axis.accepted is not None and abs(value - axis.accepted) > threshold):
+            elif not axis.continuous(value, threshold):
                 if (axis.candidate is None or abs(value - axis.candidate) > threshold
                         or axis.boundary_now and value * axis.candidate <= 0.):
                     axis.candidate = value
@@ -215,8 +227,9 @@ class ImuInputGuard:
                 # reported rate, NOT absence of saturation. Do not erase a
                 # sustained rotation by replacing its boundary plateau with bias.
             if reason is None:
-                axis.accepted, axis.candidate, axis.invalid_run = value, None, 0
+                axis.accept(value)
             else:
+                axis.previous_step = 0.
                 axis.invalid_run += 1
                 axis.rejected_samples += 1
             reasons.append(reason)

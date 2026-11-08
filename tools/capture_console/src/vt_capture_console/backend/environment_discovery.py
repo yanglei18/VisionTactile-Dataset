@@ -250,19 +250,37 @@ class _Discovery:
         return python, source
 
     def glove(self, parameters, group_id, hand, data):
+        # A hand bundle is one checked unit: model, installation mapping, rest
+        # pose and tactile layout must come from the same tested application.
+        # An explicit legacy configuration remains explicit; never mix its
+        # calibrated inputs with an automatically discovered bundle.
+        if hand in {"left", "right"} and (parameters.get("resources") or not any(
+                parameters.get(key) for key in ("config", "fsglove_source", "mano_assets"))):
+            self.select(parameters, group_id, "resources",
+                predicate=_markers(("manifest.json", "config.json", "rest.json", "hand.json")),
+                environment=(f"VT_{hand.upper()}_HAND_RESOURCES",), candidates=(
+                    self.root / ".runtime" / ("left-hand" if hand == "left" else "oct29-right"),))
+        selected_bundle = parameters.get("resources")
+        hand_python = self.root / f".venv-{hand}-hand/bin/python"
         self.select(parameters, group_id, "glove_python", predicate=_python, repair=True,
-                    environment=("VT_FSGLOVE_PYTHON",), candidates=(
+                    environment=(f"VT_{str(hand).upper()}_HAND_PYTHON", "VT_FSGLOVE_PYTHON"), candidates=(
+                        (hand_python,) if selected_bundle and _matches(hand_python, _python) else (
                         self.root / ".venv-fsglove-120hz/bin/python",
                         self.root / ".venv-fsglove/bin/python",
                         self.root / ".venv-glove/bin/python",
                         self.root / "tools/fsglove12/.venv/bin/python",
                         self.home / ".venvs/vt-fsglove/bin/python",
-                    ))
+                    )))
+        if selected_bundle:
+            return
         self.select(parameters, group_id, "fsglove_source", predicate=_markers(_FSGLOVE_MARKERS),
                     repair=True, environment=("VT_FSGLOVE_SOURCE", "FSGLOVE12_UPSTREAM_CHECKOUT", "FSGLOVE_SOURCE"),
                     candidates=(self.root / "external/FSGlove", self.home / "visiontactile-deps/FSGlove",
                                 self.home / ".local/share/visiontactile/fsglove"))
         if hand in {"left", "right"}:
+            config = "left_from_right_initial.json" if hand == "left" else "right_current.json"
+            self.select(parameters, group_id, "config", manual=True, candidates=(
+                self.root / "tools/fsglove12/src/vt_fsglove12/configs" / config,))
             self.select(parameters, group_id, "mano_assets",
                         predicate=_markers((f"models/MANO_{hand.upper()}.pkl",)), repair=True,
                         environment=("VT_MANO_ASSETS", "FSGLOVE12_MANO_ASSETS", "MANO_ASSETS"),

@@ -55,18 +55,36 @@ def _surface_shader():
 class HandView(gl.GLViewWidget):
     """Real MANO surface with persistent palmar/dorsal colors and proper basis."""
 
-    def __init__(self, neutral_geometry, model_axes, parent=None):
+    def __init__(self, neutral_geometry, model_axes, parent=None, *, base_rgb8=None):
+        self.hand = model_axes.get("hand", "right")
+        if self.hand not in ("right", "left"):
+            raise ValueError("hand must be right or left")
+        provenance = neutral_geometry.get("provenance", {})
+        if not isinstance(provenance, dict) or provenance.get("hand", "right") != self.hand:
+            raise ValueError("model axes and neutral geometry must belong to the same hand")
+        basis = display_basis(model_axes)
+        if (not np.isfinite(basis).all() or not np.allclose(basis @ basis.T, np.eye(3), atol=1e-5)
+                or not np.isclose(np.linalg.det(basis), 1., atol=1e-5)
+                or not np.allclose(basis[2], model_axes["palm_up_axis"], atol=1e-5)):
+            raise ValueError("model axes must define a proper rotation and matching palm normal")
         super().__init__(parent)
         self.setMinimumSize(500, 430)
         self.setBackgroundColor(CANVAS_BACKGROUND)
-        self.basis = display_basis(model_axes)
+        self.basis = basis
         self.faces = np.asarray(neutral_geometry["faces"], dtype=int)
         original = np.asarray(neutral_geometry["vertices_m"])
-        normals = gl.MeshData(vertexes=original, faces=self.faces).vertexNormals()
-        normals = normals / np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
-        dorsal = .5 + .5 * np.clip(normals @ np.asarray(model_axes["palm_up_axis"]) / .4, -1, 1)
-        self.colors = (dorsal[:, None] * np.array([.25, .62, .57, 1.])
-                       + (1 - dorsal[:, None]) * np.array([.71, .91, .86, 1.]))
+        if base_rgb8 is None:
+            normals = gl.MeshData(vertexes=original, faces=self.faces).vertexNormals()
+            normals = normals / np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+            dorsal = .5 + .5 * np.clip(normals @ np.asarray(model_axes["palm_up_axis"]) / .4, -1, 1)
+            self.colors = (dorsal[:, None] * np.array([.25, .62, .57, 1.])
+                           + (1 - dorsal[:, None]) * np.array([.71, .91, .86, 1.]))
+        else:
+            rgb = np.asarray(base_rgb8)
+            if rgb.shape != (3,) or rgb.dtype.kind not in "ui" or np.any(rgb < 0) or np.any(rgb > 255):
+                raise ValueError("base_rgb8 must contain three integers in 0..255")
+            rgba = np.array([*rgb, 255], dtype=np.float32) / 255.
+            self.colors = np.tile(rgba, (len(original), 1))
         self.vertex_slots, self.joint_slots = neutral_geometry_slot_map(neutral_geometry)
         self.tactile_binding = None
         self._surface_colors = self.colors.copy()
@@ -130,6 +148,9 @@ class HandView(gl.GLViewWidget):
     def set_geometry(self, geometry):
         # Validate the complete candidate before replacing any previously good
         # geometry. A partial/NaN update must never corrupt the frozen view.
+        provenance = geometry.get("provenance", {})
+        if not isinstance(provenance, dict) or provenance.get("hand", "right") != self.hand:
+            raise ValueError("display geometry must belong to the configured hand")
         vertices = np.asarray(geometry["vertices_m"], dtype=float)
         joints = np.asarray(geometry["joints_m"], dtype=float)
         if (vertices.shape != (len(self.vertex_slots), 3) or joints.shape != (21, 3)

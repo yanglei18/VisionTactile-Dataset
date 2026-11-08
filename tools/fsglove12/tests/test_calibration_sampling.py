@@ -246,6 +246,31 @@ def test_fault_and_recovery_during_fit_cannot_save_old_epoch_profile():
     assert owner.events[-1][1]["nodes"] == {"12": "filter_epoch_changed_during_capture"}
 
 
+def test_partial_mounting_fit_checks_only_bound_epochs_and_still_requires_healthy_inputs():
+    owner = controller(health=True)
+    owner.config["node_to_slot"]["9"] = 15
+    current = frame(10., state="healthy")
+    current["nodes"]["9"] = dict(current["nodes"]["12"], epoch=3)
+    current["input_health"]["nodes"]["9"] = dict(state="healthy", healthy=True)
+    session = SimpleNamespace(lock=threading.Lock(), fusion=SimpleNamespace(snapshot=lambda now: current))
+    partial = dict(nodes={"12": {"epoch": 0}}, rejected_nodes={"9": "inconsistent tilt"})
+    assert owner._capture_save_healthy(session, partial)
+    assert not owner.events
+    current["input_health"]["nodes"]["9"].update(state="faulted", healthy=False)
+    assert not owner._capture_save_healthy(session, partial)
+    assert owner.events[-1][1]["nodes"] == {"9": "faulted"}
+
+
+def test_finger_capture_epoch_remains_bound_for_nodes_missing_from_the_mounting_profile():
+    owner = controller(whole_hand(), health=True)
+    owner.config["node_to_slot"]["9"] = 15
+    owner._active["health_epochs"] = {"12": 0, "9": 2}
+    current = frame(10., state="healthy")
+    current["nodes"]["9"] = dict(current["nodes"]["12"], epoch=3)
+    current["input_health"]["nodes"]["9"] = dict(state="healthy", healthy=True)
+    assert owner._capture_health(current, epochs={"12": 0}) == {"9": "filter_epoch_changed_during_capture"}
+
+
 def test_full_hand_cancellation_discards_binned_capture_without_fitting():
     active = whole_hand()
     owner = controller(active)

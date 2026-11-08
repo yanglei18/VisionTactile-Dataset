@@ -71,6 +71,51 @@ def test_normal_input_and_exact_jump_threshold_pass_without_smoothing_or_delay()
         assert status["reasons"] == [] and status["rejected_samples"] == 0
 
 
+@pytest.mark.parametrize("direction", [-1, 1])
+def test_smooth_fast_close_and_slower_release_preserve_the_measured_angle(direction):
+    # A minimum-jerk 90-degree close in 173 ms, then a slow return. The
+    # reported peak stays below 1000 deg/s while adjacent rates differ by
+    # more than 120 deg/s. Rejecting this acceleration loses rotation even
+    # though no measurement is missing or near the coding boundary.
+    hz = 104.
+
+    def movement(samples, angle):
+        phase = np.linspace(0., 1., samples + 1)
+        position = angle * phase**3 * (10. - 15. * phase + 6. * phase**2)
+        return np.diff(position) * hz
+
+    rates = direction * np.r_[0., movement(18, 90.), np.zeros(5), movement(70, -90.), 0.]
+    counts = np.rint(rates / .035).astype(int)
+    assert np.abs(counts).max() < 32760
+    assert np.abs(np.diff(counts * .035)).max() > DEFAULTS["gyro_jump_dps"]
+    instance = ImuInputGuard(dict(sample_rate_hz=hz, input_filter={}))
+    angles = []
+    total = 0.
+    for code in counts:
+        rate = math.radians(code * .035)
+        used, _, status = feed(instance, raw=(int(code), 0, 0, 0, 0, 4098), gyro=(rate, 0., 0.))
+        assert not status["gyro_rejected"]
+        total += math.degrees(used[0]) / hz
+        angles.append(total)
+    assert angles[18] == pytest.approx(direction * 90., abs=.01)
+    assert angles[-1] == pytest.approx(0., abs=.01)
+
+
+@pytest.mark.parametrize("bad", [math.nan, 1000.])
+def test_continuity_prediction_does_not_bridge_a_rejected_sample(bad):
+    instance = guard()
+    # Accelerating through the threshold is valid until a sample is lost.
+    for rate in (0., 80., 220.):
+        assert not feed(instance, gyro=(math.radians(rate), 0., 0.))[2]["gyro_rejected"]
+    for rate in (bad, 390.):
+        used, _, status = feed(instance, gyro=(math.radians(rate), 0., 0.))
+        assert status["gyro_rejected_axes"] == ["x"]
+        assert math.degrees(used[0]) == pytest.approx(220.)
+    # Confirmation can establish a new baseline, never a slope from the gap.
+    assert not feed(instance, gyro=(math.radians(400.), 0., 0.))[2]["gyro_rejected"]
+    assert feed(instance, gyro=(math.radians(560.), 0., 0.))[2]["gyro_rejected"]
+
+
 def test_isolated_subboundary_spike_holds_then_baseline_returns_immediately():
     instance = guard()
     feed(instance, gyro=(.1, .2, .3))

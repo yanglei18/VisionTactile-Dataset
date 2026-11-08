@@ -1,7 +1,7 @@
 """Official FSGlove inference with an explicitly labelled sparse-input adapter.
 
-Installation calibration and anatomical FK use the unmodified upstream
-Raw2MANOCalibrator. MANO composition reuses its original AxisLayerFK with the
+Installation calibration and anatomical FK use the pinned Raw2MANOCalibrator,
+with a directed installation frame for the left hand. MANO composition reuses its original AxisLayerFK with the
 same conversion/root operations, avoiding a second identical FK pass. Missing
 IMUs are NOT observations: their virtual inputs algebraically invert that
 calibrator so the missing anatomical local rotation equals a declared prior.
@@ -18,7 +18,9 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from .calibration import quat, validate_rest
-from .config import check_proposed_mount, digest, validate_config
+from .config import FINGER_DIPS, check_proposed_mount, digest, validate_config
+from .installation_frame import REVISION as LEFT_INSTALLATION_POLICY
+from .neutral_heading import apply_heading, fit_confirmed_heading
 from .upstream_inference import (
     CalibrationRotationCache, EXECUTION_REVISION, calibration_rotations, official_pose_outputs,
 )
@@ -33,6 +35,8 @@ OFFICIAL_STEPS = (
      "instruction": "五指保持伸直，沿同一转轴使指尖向下倾约 50°，静止 2 秒；不是拇指侧上抬，不要勉强到疼痛。"},
 )
 STEP_KEYS = tuple(step["key"] for step in OFFICIAL_STEPS)
+MIN_PALM_TILT_DEG = 10.
+MAX_RIGID_RESIDUAL_DEG = 15.
 LEGACY_ALGORITHM = "official_fsglove_raw2mano_with_explicit_sparse_adapter_v1"
 ALGORITHM = "official_fsglove_raw2mano_with_explicit_sparse_adapter_v2"
 FUNCTIONAL_ALGORITHM = "official_fsglove_with_qmt_functional_adapter_v1"
@@ -43,6 +47,9 @@ _STATE_SHAPES = {
     "_global_installation_error": (16, 3), "_local_installation_error": (16, 3),
     "_joint_fa": (16,), "_fk_seq": (15,),
 }
+
+
+RIGHT_INSTALLATION_POLICY = "upstream_original_frame_v1"
 
 
 class OfficialCalibrationError(ValueError):
@@ -103,7 +110,8 @@ def _capture_node(captures, node, stale_after, session_id):
             if not isinstance(data, dict):
                 continue
             protection = data.get("input_filter", {})
-            if (data.get("orientation_valid") is False or protection.get("gyro_rejected")
+            if (data.get("orientation_valid") is False or data.get("input_health", {}).get("healthy") is False
+                    or protection.get("gyro_rejected")
                     or protection.get("accel_rejected")):
                 continue
             age, epoch, index = data.get("age_s"), data.get("epoch"), data.get("sample_index")
@@ -118,19 +126,24 @@ def _capture_node(captures, node, stale_after, session_id):
             values.append(quat(data.get("quat_xyzw"), f"node {node}").as_quat())
             epochs.add(epoch)
         if len(values) < 3:
-            raise ValueError(f"{key} requires at least 3 fresh unique samples")
-        # Same normalized component-wise mean used in official get_average_rotation.
+            raise OfficialCalibrationError(f"{key} requires at least 3 fresh unique samples", redo_steps=(key,))
+        # q and -q encode the same orientation. Preserve the first sample's
+        # sign so same-hemisphere archives reproduce the upstream mean exactly.
+        values = np.asarray(values)
+        values[values @ values[0] < 0.] *= -1.
         mean = np.mean(values, axis=0)
         if np.linalg.norm(mean) < 1e-8:
             raise ValueError("quaternion average is degenerate; recapture the held pose")
         means.append(mean / np.linalg.norm(mean))
         counts.append(len(values))
     if len(epochs) != 1:
-        raise ValueError("filter epoch changed during calibration; recapture all three poses")
+        raise OfficialCalibrationError("filter epoch changed during calibration; recapture all three poses",
+                                       redo_steps=STEP_KEYS)
     # These are numerical singularity checks, not a claimed anatomical validation.
     rotation = (Rotation.from_quat(means[2]) * Rotation.from_quat(means[1]).inv()).as_rotvec()
     if np.linalg.norm(rotation) < 1e-6 or np.linalg.norm(rotation[:2]) < 1e-6:
-        raise ValueError("official calibration rotation axis is degenerate or parallel to gravity")
+        raise OfficialCalibrationError("official calibration rotation axis is degenerate or parallel to gravity",
+                                       redo_steps=STEP_KEYS[1:])
     return means, next(iter(epochs)), counts
 
 
@@ -138,17 +151,29 @@ def _serialize_calibrator(calibrator):
     return {name: np.asarray(getattr(calibrator, name)).tolist() for name in _STATE_SHAPES}
 
 
-def calibration_motion_diagnostics(calibration_inputs, measured_slots, root_node):
-    """Explain the public core's rigid, opposite-axis pose assumption.
+def _rigid_motion_residuals(palm_turns, node_turns):
+    """Compare both measured rotations using one shared yaw offset.
 
-    These are capture consistency diagnostics, not ground-truth accuracy, a
-    different calibration algorithm, or an extra pass/fail gate. Independent
-    IMU yaw gauges cancel in each node's angular self-consistency measures.
+    Sensor mount rotations cancel in each change from the flat pose. The
+    six-axis filters can still differ by a constant world-Z heading. Align
+    the horizontal components of the two rotation vectors jointly; fitting a
+    different offset at each pose would conceal inconsistent sensor motion.
     """
+    px, py = palm_turns[:, 0], palm_turns[:, 1]
+    nx, ny = node_turns[:, 0], node_turns[:, 1]
+    yaw = np.arctan2(nx @ py - ny @ px, nx @ px + ny @ py)
+    aligned = Rotation.from_rotvec(Rotation.from_euler("z", yaw).apply(node_turns))
+    errors = (Rotation.from_rotvec(palm_turns).inv() * aligned).magnitude()
+    return dict(zip(STEP_KEYS[1:], np.rad2deg(errors).tolist()))
+
+
+def calibration_motion_diagnostics(calibration_inputs, measured_slots, root_node):
+    """Check observability of the palm tilt and finger-to-palm rigid motion."""
     rotations = [Rotation.from_quat(calibration_inputs[key]) for key in STEP_KEYS]
     up = (rotations[1] * rotations[0].inv()).as_rotvec()
     down = (rotations[2] * rotations[0].inv()).as_rotvec()
     transition = (rotations[2] * rotations[1].inv()).as_rotvec()
+    palm_turns = np.array([up[0], down[0]])
     entries = {}
     for slot in measured_slots:
         first, second, total = map(float, (np.linalg.norm(up[slot]), np.linalg.norm(down[slot]),
@@ -161,9 +186,21 @@ def calibration_motion_diagnostics(calibration_inputs, measured_slots, root_node
         entries[str(slot)] = dict(up_from_base_deg=float(np.rad2deg(first)),
             down_from_base_deg=float(np.rad2deg(second)), opposite_axis_error_deg=opposite,
             up_to_down_deg=float(np.rad2deg(total)),
-            rotation_axis_gravity_tilt_deg=gravity_tilt)
+            rotation_axis_gravity_tilt_deg=gravity_tilt,
+            rigid_residual_deg=_rigid_motion_residuals(palm_turns, np.array([up[slot], down[slot]])))
     root = entries["0"]
     messages = []
+    # Q_base Q_hold^-1 maps the up vector observed in each hold into the
+    # same flat-pose frame. World yaw at the hold cannot change that vector.
+    directions = Rotation.from_rotvec(palm_turns).apply([0., 0., 1.], inverse=True)
+    tilts = np.rad2deg(np.arctan2(np.linalg.norm(directions[:, :2], axis=1), directions[:, 2]))
+    root["gravity_excursion_deg"] = dict(zip(STEP_KEYS[1:], tilts.tolist()))
+    retry = [key for key, tilt in root["gravity_excursion_deg"].items() if tilt < MIN_PALM_TILT_DEG]
+    if not retry:
+        horizontal = directions[:, :2]
+        if horizontal[0] @ horizontal[1] > .5 * np.prod(np.linalg.norm(horizontal, axis=1)):
+            # Both captures tilted to substantially the same side (within 60 degrees).
+            retry = list(STEP_KEYS[1:])
     if root["opposite_axis_error_deg"] is not None and root["opposite_axis_error_deg"] > 15.:
         messages.append(f"上倾/下倾不是反向同轴：手掌 {root_node} 偏差 {root['opposite_axis_error_deg']:.1f}°；"
                         "可能把弯曲混成侧摆。结果保留，建议保持五指伸直、同一手腕轴，只重采第 2/3 步。")
@@ -176,7 +213,8 @@ def calibration_motion_diagnostics(calibration_inputs, measured_slots, root_node
         messages.append(f"转掌轴偏离水平约 {root['rotation_axis_gravity_tilt_deg']:.1f}°；"
                         "请避免同时侧翻或改变初始掌面。此提示不是实物角度精度评价。")
     return dict(kind="three_pose_motion_consistency_not_accuracy", root_node=root_node,
-                root=root, by_slot=entries, warnings=messages, blocking=False,
+                root=root, by_slot=entries, warnings=messages, blocking=bool(retry), redo_steps=retry,
+                min_palm_tilt_deg=MIN_PALM_TILT_DEG, max_rigid_residual_deg=MAX_RIGID_RESIDUAL_DEG,
                 thresholds_are_capture_guidance_not_anatomical_limits=True)
 
 
@@ -185,7 +223,7 @@ class OfficialFSGloveBackend:
 
     def __init__(self, config, rest, *, checkout, mano_assets_root, core=None):
         self.config = validate_config(deepcopy(config))
-        validate_rest(rest)
+        self._anatomical_root_in_mano = Rotation.from_quat(validate_rest(rest)[0])
         self.rest = deepcopy(rest)
         self._missing_policy = self.config.get("upstream_missing_slot_policy", COUPLED_POLICY)
         if self._missing_policy not in (ZERO_POLICY, COUPLED_POLICY):
@@ -210,12 +248,16 @@ class OfficialFSGloveBackend:
             from .upstream_core import load_upstream_core
             core = load_upstream_core(checkout, mano_assets_root)
         self.core = core
+        self._installation_policy = (LEFT_INSTALLATION_POLICY if self.config["hand"] == "left"
+                                     else RIGHT_INSTALLATION_POLICY)
         self._config_sha, self._rest_sha = digest(self.config), digest(self.rest)
         self._root_node = next(n for n, slot in self.config["node_to_slot"].items() if slot == 0)
+        self._configured_slots = frozenset(self.config["node_to_slot"].values())
         self._cached_key, self._cached_calibrator = None, None
         self._rotation_cache = CalibrationRotationCache()
         from .functional_pose import FunctionalPosePipeline
         self._functional_pipeline = FunctionalPosePipeline(self.config)
+        self._live_heading = None
 
     def with_config(self, config):
         """Return an uncalibrated owner for new input semantics, sharing only core.
@@ -250,6 +292,7 @@ class OfficialFSGloveBackend:
         self._cached_key, self._cached_calibrator = None, None
         self._rotation_cache.clear()
         self._functional_pipeline.reset()
+        self._live_heading = None
 
     def reset(self):
         """Alias for explicitly clearing calibration-dependent runtime state."""
@@ -265,16 +308,38 @@ class OfficialFSGloveBackend:
         # Its arbitrary gauge cancels in complete_missing_quaternions().
         canonical = Rotation.from_rotvec([[0., 0., 0.], [.6, 0., 0.], [-.6, 0., 0.]]).as_quat()
         arrays = np.repeat(canonical[:, None, :], 16, axis=1)
-        nodes, rejected = {}, {}
+        nodes, rejected, retry = {}, {}, set()
         for node, slot in self.config["node_to_slot"].items():
             try:
                 means, epoch, counts = _capture_node(captures, node, self.config["stale_after_s"], session_id)
                 arrays[:, slot] = means
                 nodes[node] = {"slot": slot, "epoch": epoch, "frames_per_pose": counts}
             except (ValueError, TypeError, KeyError) as exc:
+                steps = getattr(exc, "redo_steps", STEP_KEYS)
+                if node == self._root_node:
+                    raise OfficialCalibrationError(f"官方手掌标定失败：{exc}", redo_steps=steps) from exc
                 rejected[node] = str(exc)
-        if self._root_node not in nodes:
-            raise OfficialCalibrationError(f"官方手掌标定失败：{rejected.get(self._root_node)}", redo_steps=STEP_KEYS)
+                retry.update(steps)
+        calibration_inputs = dict(zip(STEP_KEYS, arrays.tolist()))
+        motion_quality = calibration_motion_diagnostics(
+            calibration_inputs, [entry["slot"] for entry in nodes.values()], self._root_node)
+        if motion_quality["blocking"]:
+            raise OfficialCalibrationError("手掌没有提供可用的相反倾转；平掌记录已保留。"
+                "五指伸直，分别向上、向下倾转手腕，重采提示的姿势。",
+                redo_steps=motion_quality["redo_steps"])
+        rigid_rejections = {}
+        for node, entry in list(nodes.items()):
+            slot = entry["slot"]
+            residuals = motion_quality["by_slot"][str(slot)]["rigid_residual_deg"]
+            bad = {step: error for step, error in residuals.items() if error > MAX_RIGID_RESIDUAL_DEG}
+            if bad:
+                rigid_rejections[node] = list(bad)
+                rejected[node] = f"节点 {node} 的倾转与手掌不一致（最大差 {max(bad.values()):.1f}°）；请保持手指伸直后重采。"
+                retry.update(bad)
+                arrays[:, slot] = canonical
+                del nodes[node]
+        motion_quality["rigid_rejections"] = rigid_rejections
+        motion_quality["redo_steps"] = [key for key in STEP_KEYS if key in retry]
         calibration_inputs = dict(zip(STEP_KEYS, arrays.tolist()))
         calibrator = self.core.create_calibrator(**calibration_inputs, side=self.config["hand"], seed=0)
         state = _serialize_calibrator(calibrator)
@@ -282,7 +347,6 @@ class OfficialFSGloveBackend:
             _array(state[name], shape, name)
         measured_slots = sorted(entry["slot"] for entry in nodes.values())
         virtual_slots = [slot for slot in range(16) if slot not in measured_slots]
-        motion_quality = calibration_motion_diagnostics(calibration_inputs, measured_slots, self._root_node)
         profile = {
             "schema_version": 1, "method": ALGORITHM, "status": "official_core_sparse_adapter_not_accuracy_validated",
             "session_id": session_id, "hand": self.config["hand"], "config_sha256": self._config_sha,
@@ -290,6 +354,7 @@ class OfficialFSGloveBackend:
             "nodes": nodes, "rejected_nodes": rejected, "calibration_inputs": calibration_inputs,
             "upstream_state": state, "upstream_state_sha256": digest(state),
             "upstream_provenance": deepcopy(self.core.provenance),
+            "installation_coordinate_policy": self._installation_policy,
             "calibration_seed": 0, "measured_calibration_slots": measured_slots,
             "virtual_calibration_slots": virtual_slots,
             "virtual_calibration_kind": "explicit_synthetic_canonical_gauge_not_observation",
@@ -322,7 +387,13 @@ class OfficialFSGloveBackend:
             raise ValueError("profile is not an official FSGlove sparse-adapter profile")
         if profile.get("config_sha256") != self._config_sha or profile.get("rest_sha256") != self._rest_sha:
             raise ValueError("profile configuration or MANO model digest does not match")
-        if profile.get("upstream_provenance") != self.core.provenance:
+        # The original right-hand frame is compatible with its historical profiles.
+        # Legacy left-hand matrices cannot be converted by relabelling their axes.
+        legacy_policy = RIGHT_INSTALLATION_POLICY if self.config["hand"] == "right" else None
+        if profile.get("installation_coordinate_policy", legacy_policy) != self._installation_policy:
+            raise ValueError("Installation coordinate policy changed; repeat the three mounting poses")
+        from .upstream_core import upstream_provenance_matches
+        if not upstream_provenance_matches(profile.get("upstream_provenance"), self.core.provenance):
             raise ValueError("profile upstream source provenance does not match")
         if profile["method"] == LEGACY_ALGORITHM:
             if profile.get("missing_slot_policy") != ZERO_POLICY:
@@ -359,15 +430,19 @@ class OfficialFSGloveBackend:
 
     def _functional_binding(self, profile):
         """Tie each manual joint correction to the unchanged installation fit."""
-        from .config import PARENTS
-        inverse = {slot: node for node, slot in self.config["node_to_slot"].items()}
+        from .upstream_functional import functional_dependencies
         return dict(session_id=profile["session_id"],
                     upstream_state_sha256=profile["upstream_state_sha256"],
                     config_sha256=self._config_sha, rest_sha256=self._rest_sha,
                     nodes_epochs={node: data["epoch"] for node, data in profile["nodes"].items()},
-                    dependency_nodes_by_slot={str(slot): [inverse[PARENTS[slot]], inverse[slot]]
-                        for slot in (1, 2, 4, 5, 7, 8, 10, 11, 15)
-                        if slot in inverse and PARENTS[slot] in inverse})
+                    dependency_nodes_by_slot=functional_dependencies(self.config, profile))
+
+    def reanchor_heading(self, rows, profile, *, session_id):
+        """Fit an explicit straight-hand heading observation without altering live state."""
+        if not profile or session_id != profile.get("session_id"):
+            raise ValueError("伸直航向参考需要本次会话已生效的标定。")
+        return fit_confirmed_heading(rows, profile, self._calibrator(profile), self._functional_binding(profile),
+                                     self.config["stale_after_s"])
 
     def _functional_capture_results(self, capture_groups, profile, *, session_id, reference_selection=None):
         """Run each captured frame through the original solver exactly once.
@@ -426,6 +501,7 @@ class OfficialFSGloveBackend:
         if frame.get("session_id") != profile.get("session_id"):
             return {}
         calibrator = self._calibrator(profile)
+        frame = apply_heading(frame, profile)
         transforms = calibration_rotations(calibrator, cache=self._rotation_cache)
         binding = self._functional_binding(profile)
         result = {}
@@ -515,7 +591,35 @@ class OfficialFSGloveBackend:
             algorithm=FUNCTIONAL_ALGORITHM)
 
     def solve(self, frame, profile, *, timestamp_s=None):
-        return self._solve_frame(frame, profile, timestamp_s=timestamp_s, functional=True)
+        result = self._solve_frame(frame, profile, timestamp_s=timestamp_s, functional=True)
+        if result["pose_available"]:
+            # Upstream returns the root delta in anatomical axes. MANO takes a
+            # global rotation in its native axes. Rotating the axis-angle vector
+            # changes basis (C R C^-1), so a flat hand remains flat. The left
+            # model's rest root is a half-turn about Y; the right's is identity.
+            pose = result["mano_pose_rotvec"]
+            root = self._anatomical_root_in_mano.apply(pose[0])
+            result["mano_pose_rotvec"] = [root.tolist(), *pose[1:]]
+            result["root_quat_xyzw"] = Rotation.from_rotvec(root).as_quat().tolist()
+            result["mano_root_frame"] = "model_native_from_anatomical_rest_v1"
+        return result
+
+    def _base_joint_availability(self, rejected, parents, prior_diagnostic):
+        """An absent configured segment invalidates its own and its child's local rotation."""
+        missing = {self.config["node_to_slot"][node] for node in rejected}
+        unavailable = set(missing)
+        for slot in self._configured_slots - {0}:
+            # For a parent with no IMU by design, the upstream fixed prior is
+            # relative to the nearest instrumented ancestor.
+            parent = int(parents[slot])
+            while parent not in self._configured_slots:
+                parent = int(parents[parent])
+            if parent in missing:
+                unavailable.add(slot)
+        for finger, prior in prior_diagnostic.get("dip_by_finger", {}).items():
+            if missing.intersection(prior.get("missing_dependency_slots", [])):
+                unavailable.add(FINGER_DIPS[finger])
+        return [slot not in unavailable for slot in range(16)]
 
     def _solve_frame(self, frame, profile, *, timestamp_s=None, functional):
         timestamp = frame.get("timestamp_s") if timestamp_s is None else timestamp_s
@@ -540,8 +644,17 @@ class OfficialFSGloveBackend:
             result["reason"] = "calibration_session_mismatch"
             return result
         calibrator = self._calibrator(profile)
-        # Never pre-correct measured quaternions and then correct the hinge a
-        # second time. The functional pipeline is the sole heading owner.
+        # The explicit neutral observation changes the heading origin. Live
+        # hinge estimators now estimate residual heading in that new origin.
+        frame = apply_heading(frame, profile)
+        heading = profile.get("neutral_heading")
+        if heading is not None:
+            result["neutral_heading_applied"] = True
+        if functional:
+            key = (heading["binding"]["session_id"], tuple(sorted(heading["offsets_rad_by_node"].items()))) if heading else None
+            if key != self._live_heading:
+                self._functional_pipeline.reset()
+                self._live_heading = key
         if "relative_heading_correction" in self.config:
             result["relative_heading_correction"] = dict(enabled=False,
                 reason="superseded_by_unified_continuous_functional_hinges", applied_slots=[])
@@ -561,11 +674,12 @@ class OfficialFSGloveBackend:
             if data.get("input_health", {}).get("healthy") is False:
                 rejected[node] = "input_health_invalid"
                 continue
-            if data.get("orientation_valid") is False:
-                rejected[node] = "input_filter_prolonged_invalid"
-                continue
             if data.get("epoch") != binding["epoch"]:
                 rejected[node] = "filter_epoch_changed_recalibration_required"
+                continue
+            if data.get("orientation_valid") is False:
+                rejected[node] = ("waiting_for_backlog" if data.get("continuity") == "awaiting_backlog"
+                                  else "input_filter_prolonged_invalid")
                 continue
             age = data.get("age_s", math.inf)
             if (isinstance(age, bool) or not isinstance(age, (int, float)) or not math.isfinite(age)
@@ -586,7 +700,7 @@ class OfficialFSGloveBackend:
             # epoch and binding when observations resume. Resetting here on
             # every stale tick allowed an unconstrained first-frame yaw update
             # repeatedly at high solve rates. Real reference faults still reset.
-            if functional and rejected.get(self._root_node) != "missing_or_stale_node":
+            if functional and rejected.get(self._root_node) not in ("missing_or_stale_node", "waiting_for_backlog"):
                 self._functional_pipeline.reset()
             result["reason"] = ("calibration_epoch_changed" if rejected.get(self._root_node)
                                 == "filter_epoch_changed_recalibration_required" else
@@ -626,7 +740,6 @@ class OfficialFSGloveBackend:
                           sparse_rotation_cache="calibrator_identity_and_state_content"),
                       upstream_commit=self.core.provenance["upstream_commit"],
                       anatomical_euler_rad=euler.tolist(), mano_pose_rotvec=mano_pose.tolist(),
-                      root_quat_xyzw=Rotation.from_rotvec(mano_pose[0]).as_quat().tolist(),
                       joint_observed_mask=joint_observed.tolist(), inferred_mask=(~joint_observed).tolist(),
                       source_labels=sources, virtual_input_slots=virtual_slots,
                       virtual_input_kind="algebraic_completion_for_declared_prior_not_observation",
@@ -634,4 +747,8 @@ class OfficialFSGloveBackend:
                       missing_slot_policy=profile["missing_slot_policy"],
                       sparse_prior=prior_diagnostic,
                       upstream_state_sha256=profile["upstream_state_sha256"])
+        if rejected:
+            available = self._base_joint_availability(rejected, parents, prior_diagnostic)
+            result.update(joint_valid_mask=available, joint_display_available_mask=available.copy(),
+                          joint_quality=["valid" if good else "unavailable" for good in available])
         return self._apply_functional(result, profile, calibrator, frame) if functional else result

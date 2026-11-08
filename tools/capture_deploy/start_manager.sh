@@ -15,5 +15,5 @@ if [[ ! -r /opt/ros/jazzy/setup.bash || ! -r "$ROOT/ros2_ws/install/setup.bash" 
 fi
 source /opt/ros/jazzy/setup.bash
 source "$ROOT/ros2_ws/install/setup.bash"
-export PYTHONPATH="$ROOT/ros2_ws/src/vt_capture_core:$ROOT/ros2_ws/src/vt_capture_manager:$ROOT/tools/multisensor_alignment/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$ROOT/ros2_ws/src/vt_capture_core:$ROOT/ros2_ws/src/vt_capture_manager:$ROOT/tools/multisensor_alignment/src:$ROOT/tools/fsglove12/src${PYTHONPATH:+:$PYTHONPATH}"
 exec /usr/bin/python3 -m vt_capture_manager.node "$@"

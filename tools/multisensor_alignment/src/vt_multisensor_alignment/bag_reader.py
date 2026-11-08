@@ -10,7 +10,7 @@ import numpy as np
 from .bag_input import read_metadata
 from .config import AlignmentConfig
 from .glove_adapter import GLOVE_STATE_TYPE, GloveStateAdapter
-from .tactile_adapter import TACTILE_SAMPLE_TYPE, TactileSampleAdapter
+from .tactile_adapter import TACTILE_SAMPLE_TYPE, TACTILE_SAMPLE_TYPES, TactileSampleAdapter, validate_serialized_schema
 from .model import (
     BagDataset,
     CameraFrame,
@@ -190,7 +190,10 @@ def _deserializer(type_name: str) -> Callable[[bytes], object]:
             "workspace setups"
         ) from error
     message_type = get_message(type_name)
-    return lambda payload: deserialize_message(payload, message_type)
+    def decode(payload):
+        validate_serialized_schema(type_name, payload)
+        return deserialize_message(payload, message_type)
+    return decode
 
 
 def _insert_unique(
@@ -296,16 +299,17 @@ def read_unified_bag(
             stream.name,
             max_clock_step_ns=round(config.thresholds.max_clock_step_ms * 1_000_000),
             expected_hand=stream.identity[0], expected_frame_id=stream.identity[1],
+            source_type=stream.type_name,
         )
         for stream in config.additional_streams
-        if stream.type_name == TACTILE_SAMPLE_TYPE
+        if stream.type_name in TACTILE_SAMPLE_TYPES
     }
     for stream in config.additional_streams:
         if stream.type_name == GLOVE_STATE_TYPE and stream.timestamp_field not in {
             "host_realtime_ns", "header.stamp"
         }:
             raise ValueError("GloveState time field must be host_realtime_ns or header.stamp")
-        if stream.type_name == TACTILE_SAMPLE_TYPE:
+        if stream.type_name in TACTILE_SAMPLE_TYPES:
             if stream.timestamp_field not in {"host_realtime_ns", "header.stamp"}:
                 raise ValueError("TactileSampleArray time field must be host_realtime_ns or header.stamp")
             if stream.strategy != "previous":

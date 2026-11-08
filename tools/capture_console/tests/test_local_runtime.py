@@ -1122,3 +1122,32 @@ done = False''')
     eventually(lambda: runtime.log_path.stat().st_size == 4096)
     assert len(runtime_factory.children) == 1
     assert runtime_factory.children[0].poll() is None
+
+
+def test_hand_calibration_prevents_desktop_configuration_restart():
+    snapshot = idle_snapshot()
+    snapshot["hand_sessions"] = {"left": {"busy": True}}
+    assert "手部标定" in _snapshot_problem(snapshot)
+    snapshot["hand_sessions"]["left"]["busy"] = False
+    assert _snapshot_problem(snapshot) is None
+
+
+def test_desktop_probes_hand_protocol_before_explicit_legacy_fallback(monkeypatch):
+    runtime = object.__new__(DesktopRuntime)
+    versions = []
+    def probe(version):
+        versions.append(version)
+        if version != 4:
+            raise local_runtime._UnsupportedManagerProtocol("old manager")
+        return "legacy", 123
+    monkeypatch.setattr(runtime, "_probe_version", probe)
+    assert runtime._probe() == ("legacy", 123)
+    assert versions == [7, 6, 4]
+    versions.clear()
+    def timeout(version):
+        versions.append(version)
+        raise TimeoutError("unknown hand state")
+    monkeypatch.setattr(runtime, "_probe_version", timeout)
+    with pytest.raises(TimeoutError):
+        runtime._probe()
+    assert versions == [7]

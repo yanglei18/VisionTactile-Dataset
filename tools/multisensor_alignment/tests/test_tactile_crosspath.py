@@ -24,13 +24,12 @@ class TactileCrossPathTests(unittest.TestCase):
     def compare(self, batches, *, queries=None, max_age_ns=100):
         live = Assembler()
         offline = TactileGrid()
-        continuity = TactileContinuity()
+        continuity = TactileContinuity(source_type="vt_tactile_msgs/msg/TactileRow44Array")
         for index, batch in enumerate(batches):
             live.apply(batch)
             message = NS(**{field.name: getattr(batch, field.name) for field in fields(Batch)})
-            # Match generated uint16[10] ROS arrays at the decoder boundary.
-            message.blocks = [NS(row=block.row, column_group=block.column_group,
-                                 status_raw=block.status_raw, adc=np.asarray(block.adc, dtype=np.uint16))
+            # Match generated uint16[20] ROS arrays at the decoder boundary.
+            message.blocks = [NS(row=block.row, adc=np.asarray(block.adc, dtype=np.uint16))
                               for block in batch.blocks]
             event = continuity.decode(message, MessageRef("/test/tactile", index, 1000 + index,
                                                           batch.host_realtime_ns),
@@ -39,54 +38,55 @@ class TactileCrossPathTests(unittest.TestCase):
             delay_ns = queries[index] if queries else 0
             snapshot = live.snapshot(batch.host_monotonic_ns + delay_ns, max_age_ns)
             grid = offline.snapshot(batch.host_realtime_ns + delay_ns, max_age_ns)
-            self.assertEqual((snapshot.rows, snapshot.cols, snapshot.schema_version), (20, 20, 2))
+            self.assertEqual((snapshot.rows, snapshot.cols, snapshot.schema_version), (20, 20, 3))
             np.testing.assert_array_equal(np.asarray(snapshot.adc).reshape(20, 20), grid["adc"])
             np.testing.assert_array_equal(np.asarray(snapshot.valid_mask).reshape(20, 20), grid["valid_mask"])
-            np.testing.assert_array_equal(np.asarray(snapshot.block_realtime_ns).reshape(20, 8),
-                                          grid["block_realtime_ns"])
+            np.testing.assert_array_equal(np.asarray(snapshot.row_realtime_ns),
+                                          grid["row_realtime_ns"])
         return live, offline
 
     def batch(self, time_ns, sequence, *, blocks=None, **updates):
         values = dict(session_id="cross-test", connected=True, time_valid=True,
                       stream_epoch=1, sequence=sequence, first_packet_index=sequence,
                       host_realtime_ns=time_ns, host_monotonic_ns=time_ns + 1000,
-                      blocks=tuple(blocks if blocks is not None else [Block(2, 3, 201, tuple(range(10)))]))
+                      blocks=tuple(blocks if blocks is not None else [Block(2, tuple(range(20)))]))
         values.update(updates)
         return Batch(**values)
 
     def test_multiple_host_reads_partial_coverage_age_and_valid_zero(self):
         live, offline = self.compare([
             self.batch(100, 0),
-            self.batch(180, 1, blocks=[Block(79, 7, 255, (65535,) * 10)]),
-            self.batch(210, 2, blocks=[Block(0, 0, 0, (0,) * 10)]),
+            self.batch(180, 1, blocks=[Block(19, (65535,) * 20)]),
+            self.batch(210, 2, blocks=[Block(0, (0,) * 20)]),
         ], queries=[5, 5, 0], max_age_ns=100)
         grid = offline.snapshot(210, 100)
-        self.assertEqual(grid["valid_mask"].sum(), 3)
+        self.assertEqual(grid["valid_mask"].sum(), 40)
         self.assertFalse(grid["valid_mask"][2, 3])
         self.assertTrue(grid["valid_mask"][0, 0])
         self.assertEqual(grid["adc"][0, 0], 0)
 
-    def test_full_legacy_scan_and_outside_roi_only_batch(self):
-        scan = [Block(row, group, 255,
-                      tuple(row * 80 + group + 8 * k for k in range(10)))
-                for row in range(80) for group in range(8)]
+    def test_full_scan_and_single_row_update_keep_distinct_source_clocks(self):
+        scan = [Block(row, tuple(row * 20 + column for column in range(20)))
+                for row in range(20)]
         _, offline = self.compare([
             self.batch(100, 0, blocks=scan),
-            self.batch(140, 1, first_packet_index=640,
-                       blocks=[Block(79, 7, 255, (65535,) * 10)]),
+            self.batch(140, 1, first_packet_index=20,
+                       blocks=[Block(19, (65535,) * 20)]),
         ], queries=[0, 0], max_age_ns=100)
         grid = offline.snapshot(140, 100)
+        expected = np.arange(400).reshape(20, 20)
+        expected[19] = 65535
         self.assertEqual(grid["valid_mask"].sum(), 400)
-        np.testing.assert_array_equal(grid["adc"],
-                                      np.arange(6400).reshape(80, 80)[:20, :20])
-        np.testing.assert_array_equal(grid["block_realtime_ns"], np.full((20, 8), 100))
+        np.testing.assert_array_equal(grid["adc"], expected)
+        np.testing.assert_array_equal(grid["row_realtime_ns"], [100] * 19 + [140])
+        np.testing.assert_array_equal(grid["row_packet_index"], list(range(19)) + [20])
 
-    def test_epoch_and_transport_loss_boundaries_clear_old_groups(self):
+    def test_epoch_and_transport_loss_boundaries_clear_old_rows(self):
         for updates in ({"stream_epoch": 2}, {"sequence": 4},
                         {"first_packet_index": 9}, {"producer_dropped_total": 1},
                         {"discarded_bytes_total": 5}, {"malformed_packets_total": 1}):
             with self.subTest(updates=updates):
-                values = dict(blocks=[Block(3, 4, 0, (42,) * 10)])
+                values = dict(blocks=[Block(3, (42,) * 20)])
                 values.update(updates)
                 sequence = values.pop("sequence", 1)
                 self.compare([self.batch(100, 0), self.batch(200, sequence, **values)])
@@ -99,15 +99,15 @@ class TactileCrossPathTests(unittest.TestCase):
         ])
 
     def test_arbitrarily_split_protocol_packets_keep_one_read_completion_clock(self):
-        wire = b"\xa5\x5a" + struct.pack(">HBB10H", 19, 173, 7, *range(10))
+        wire = b"\xa5\x5a" + struct.pack(">21H", 19, *range(20))
         parser = Parser()
         self.assertEqual(parser.feed(wire[:19]), ())
         decoded = parser.feed(wire[19:] + wire)
         self.assertEqual(len(decoded), 2)
-        self.assertEqual(decoded[0].status_raw, 173)
+        self.assertEqual(decoded[0].row, 19)
         _, offline = self.compare([self.batch(100, 0, blocks=decoded)])
-        self.assertEqual(offline.block_realtime_ns[19, 7], 100)
-        np.testing.assert_array_equal(offline.adc[19, 7::8], np.arange(2))
+        self.assertEqual(offline.row_realtime_ns[19], 100)
+        np.testing.assert_array_equal(offline.adc[19], np.arange(20))
 
     def test_new_session_and_epoch_can_restart_monotonic_origin(self):
         for updates in ({"session_id": "new-session"}, {"stream_epoch": 2}):

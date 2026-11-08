@@ -184,6 +184,23 @@ def test_missing_required_fields_reports_actionable_error_without_submission(set
     assert dialog.apply_button.isEnabled()
 
 
+@pytest.mark.parametrize("hand", ["left", "right"])
+def test_managed_hand_bundle_needs_no_source_checkout_or_separate_model(settings, hand):
+    dialog, runtime, _ = settings
+    identifier = f"{hand}_glove"
+    dialog.enabled_checks[identifier].setChecked(True)
+    for key in ("glove_python", "port", "resources"):
+        fill(dialog, identifier, key, f"/configured/{hand}/{key}")
+    for key in ("fsglove_source", "mano_assets", "config"):
+        assert not dialog.fields[(identifier, key)].isEnabled()
+    dialog.apply()
+    assert len(runtime.applications) == 1
+    group = next(g for g in runtime.applications[0][0]["process_groups"] if g["id"] == identifier)
+    assert group["parameters"]["launch_gui"] == "false"
+    assert group["parameters"]["resources"] == f"/configured/{hand}/resources"
+    assert all(not group["parameters"].get(key) for key in ("fsglove_source", "mano_assets", "config"))
+
+
 def test_disabled_empty_groups_can_be_saved(settings):
     dialog, runtime, _ = settings
     dialog.apply()

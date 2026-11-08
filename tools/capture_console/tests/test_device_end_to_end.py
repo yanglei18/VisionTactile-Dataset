@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from vt_capture_console.backend.ipc_client import IpcBackend, fetch_snapshot
-from vt_capture_core.protocol import CALIBRATION_PROTOCOL_VERSION
+from vt_capture_core.protocol import HAND_PROTOCOL_VERSION
 from vt_capture_manager.config import ManagerConfig
 from vt_capture_manager.device_processes import ProcessSpec, ProcessSupervisor
 from vt_capture_manager.management import ManagementService
@@ -101,11 +101,11 @@ def test_current_ipc_device_lifecycle_dedup_external_guard_and_close_detaches(tm
         server.start()
         backend = IpcBackend(server.path)
         _wait(lambda: backend.supports_device_control, "negotiated current device capability")
-        assert backend._version == CALIBRATION_PROTOCOL_VERSION
+        assert backend._version == HAND_PROTOCOL_VERSION
         initial = backend.snapshot()
         assert initial["instance_id"] == params["expected_manager_instance_id"]
         assert initial["capabilities"] == {"record": False, "device_control": True,
-                                           "capture_plan": False, "calibration": False}
+                                           "capture_plan": False, "calibration": False, "hand_control": False}
         assert not initial["management"]["enabled"] and initial["management"]["controller"] is None
         assert initial["devices"] == [] and service.store is None and service._quality is None
         assert _group(backend, "STOPPED")["can_start"]

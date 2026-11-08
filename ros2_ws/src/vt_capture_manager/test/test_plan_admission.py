@@ -256,7 +256,7 @@ def test_absent_trackers_do_not_block_and_are_optional_in_frozen_plan(planned, a
     assert result["ok"]
     details = service.store.details(result["operation"]["trial_id"])
     plan = validate_capture_plan(details["metadata"]["start"]["capture_plan"])
-    assert plan.version == 2
+    assert plan.version == 3
     assert plan.optional_topics() == tuple(topic for topic in recipe.record_topics() if topic.startswith("/vive/"))
     assert len(plan.required_topics()) == 18
     execute(service)

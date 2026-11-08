@@ -83,7 +83,7 @@ def test_new_machine_suggests_output_without_creating_it_and_preserves_structure
     ]
     assert finding(result, "my_right", "port").status == "manual"
     assert finding(result, "touch", "port").status == "manual"
-    assert not any(item.key == "config" for item in result.findings)
+    assert finding(result, "my_right", "config").status == "manual"
 
 
 def test_data_root_accepts_explicit_absolute_path_and_tilde_without_shell_expansion(tmp_path):
@@ -264,14 +264,15 @@ def test_explicit_tracker_paths_never_read_capture_or_private_file_contents(tmp_
     assert parameters(result, "my_trackers")["pyvut_site_packages"] == str(site)
 
 
-def test_empty_optional_config_and_unknown_parameters_are_not_rewritten(tmp_path):
+def test_missing_config_is_reported_without_rewriting_explicit_socket(tmp_path):
     source = configuration()
     source["process_groups"][2]["parameters"].update(socket_path="/unavailable/socket", launch_gui="false")
     result = run(tmp_path, source)
     assert parameters(result, "my_right")["socket_path"] == "/unavailable/socket"
     assert parameters(result, "my_right")["config"] == ""
     assert parameters(result, "my_right")["launch_gui"] == "false"
-    assert not any(item.key in {"config", "socket_path"} for item in result.findings)
+    assert not any(item.key == "socket_path" for item in result.findings)
+    assert finding(result, "my_right", "config").status == "manual"
 
 
 def test_detection_does_not_add_profiles_to_empty_configuration(tmp_path):
@@ -379,3 +380,28 @@ def test_permission_errors_are_reported_as_missing_candidates(tmp_path, monkeypa
         return original(path)
     monkeypatch.setattr(Path, "is_file", inaccessible)
     assert finding(run(tmp_path), "my_cameras", "config_path").status == "missing"
+
+
+def test_hand_bundle_discovery_keeps_left_and_right_source_units_together(tmp_path):
+    root = tmp_path / "repo"
+    for hand, folder in (("left", "left-hand"), ("right", "oct29-right")):
+        files(root / ".runtime" / folder, ("manifest.json", "config.json", "rest.json", "hand.json"))
+        interpreter(root / f".venv-{hand}-hand/bin/python")
+    result = run(tmp_path)
+    for group, hand, folder in (("my_left", "left", "left-hand"), ("my_right", "right", "oct29-right")):
+        params = parameters(result, group)
+        assert params["resources"] == str(root / ".runtime" / folder)
+        assert params["glove_python"] == str(root / f".venv-{hand}-hand/bin/python")
+        assert "mano_assets" not in params
+        assert "fsglove_source" not in params
+
+
+def test_explicit_installation_config_prevents_automatic_hand_bundle_mix(tmp_path):
+    root = tmp_path / "repo"
+    files(root / ".runtime/oct29-right", ("manifest.json", "config.json", "rest.json", "hand.json"))
+    value = configuration()
+    selected = value["process_groups"][2]["parameters"]
+    selected["config"] = str(tmp_path / "previous-calibrated-config.json")
+    result = run(tmp_path, value, replace_missing=True)
+    assert "resources" not in parameters(result, "my_right")
+    assert parameters(result, "my_right")["config"] == selected["config"]

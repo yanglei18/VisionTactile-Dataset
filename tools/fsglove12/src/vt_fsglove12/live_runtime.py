@@ -21,6 +21,7 @@ import time
 from typing import Any
 from uuid import uuid4
 
+from . import host_clock
 from .calibration import apply_calibration, validate_rest
 from .calibration_artifacts import artifact_size, resume_artifact, write_artifact
 from .config import digest, validate_config
@@ -32,9 +33,10 @@ from .live_shape import ShapeCalibrationMixin, SHAPE_COMMANDS, valid_shape_comma
 from .scale_capture_buffer import ScaleCaptureBuffer, ScaleHistoryEvictedError
 from .live_stream import OnlineFusion as _OnlineFusion
 from .neutral_reference import reanchor_neutral_reference
+from .palm_inclination import capture_up_reference
 from .functional_axes import apply_functional_axes, fit_functional_finger
 from .functional_capture import FunctionalReferenceCapture
-from .upstream_functional import FINGER_SLOTS as OFFICIAL_FUNCTIONAL_SLOTS
+from .upstream_functional import FINGER_SLOTS as OFFICIAL_FUNCTIONAL_SLOTS, functional_dependencies
 from .solver import SparseHandSolver
 
 STEP_KEYS = ("neutral", "fingers_down", "thumb_up")
@@ -287,13 +289,19 @@ class LiveController(ShapeCalibrationMixin):
     Optional factories are dependency-injection seams, not alternate synthetic
     models. ``join`` returns True only when processing and reader threads ended.
     A timed-out reader is never killed, and blocks any subsequent connection.
+    ``record_streams=False`` keeps configuration, bounded calibration evidence
+    and events, without creating raw/pose/orientation continuous recorders.
     """
 
     def __init__(self, config, rest, model_axes, *, output_root,
-                 source_factory=None, clock=time.monotonic, fusion_factory=None,
+                 source_factory=None, clock=host_clock.monotonic, fusion_factory=None,
                  solver_factory=None, recorder_factory=None, calibration_fn=None,
                  geometry_backend=None, pose_backend=None, pose_exporter=None,
-                 result_recorder_factory=None, input_scale_job_factory=None, shape_job_factory=None):
+                 result_recorder_factory=None, input_scale_job_factory=None, shape_job_factory=None,
+                 record_streams=True):
+        if type(record_streams) is not bool:
+            raise ValueError("record_streams must be a boolean")
+        self.record_streams = record_streams
         self.config = validate_config(deepcopy(config))
         ResultRecordingPolicy(self.config)  # Validate logging settings before opening hardware.
         validate_rest(rest)
@@ -326,8 +334,11 @@ class LiveController(ShapeCalibrationMixin):
         self._readers = []
         self._writers = []
         self._captures, self._active, self._profile = {}, None, None
+        self._palm_tilt_references = {}
+        self._heading_reference_status = None
         self._functional_hand_cancel, self._functional_hand_result = None, None
         self._profile_status, self._warnings, self._rejected = "not_calibrated", [], {}
+        self._mounting_retry_steps = []
         self._clear_generation = 0
         self._input_scale_generation = 0
         self._scale_token = 0
@@ -346,6 +357,8 @@ class LiveController(ShapeCalibrationMixin):
                          input_diagnostics=None,
                          active_input_contract=describe_input_contract(self.config),
                          input_scale_generation=0,
+                         command_completed_generation=0, last_command_name=None,
+                         last_command_error=None,
                          shape_command_generation=0, shape_command_error=None,
                          calibration_storage=self._calibration_storage_status(None),
                          last_sample_age_s=None, published_monotonic_s=self._clock(),
@@ -364,10 +377,23 @@ class LiveController(ShapeCalibrationMixin):
         return self
 
     def submit(self, name, **args) -> bool:
+        return self._submit(name, args)
+
+    def submit_bound(self, name, args, *, expected_session_id, expected_profile_version):
+        binding = dict(session_id=expected_session_id, profile_version=expected_profile_version)
+        return self._submit(name, args, binding=binding)
+
+    def _check_command_binding(self, binding):
+        session = self._session.session_id if self._session is not None else None
+        version = (self._profile or {}).get("profile_version")
+        if binding != dict(session_id=session, profile_version=version):
+            raise ValueError("手套会话或标定版本已经变化，本次命令未执行。")
+
+    def _submit(self, name, args, *, binding=None):
         valid = {"connect": {"port"}, "disconnect": set(), "capture": {"step"},
                  "cancel_capture": set(), "clear_calibration": set(), "reanchor_neutral": set(),
                  "capture_functional": {"finger"}, "set_functional_enabled": {"enabled"},
-                 "capture_functional_hand": set(), "use_input_scale_candidate": set()}
+                 "capture_functional_hand": set(), "capture_heading_reference": set(), "use_input_scale_candidate": set()}
         valid.update(SHAPE_COMMANDS)
         if name not in valid or set(args) != valid[name] or self._stop.is_set():
             return False
@@ -379,6 +405,8 @@ class LiveController(ShapeCalibrationMixin):
             return False
         if name == "capture_functional_hand" and self._pose_backend is None:
             return False
+        if name == "capture_heading_reference" and not callable(getattr(self._pose_backend, "reanchor_heading", None)):
+            return False
         if name == "connect" and (not isinstance(args["port"], str) or not args["port"].strip()):
             return False
         if name == "capture" and args["step"] not in STEP_KEYS:
@@ -386,8 +414,14 @@ class LiveController(ShapeCalibrationMixin):
         supported_fingers = OFFICIAL_FUNCTIONAL_FINGERS if self._pose_backend is not None else FUNCTIONAL_FINGERS
         if name == "capture_functional" and args["finger"] not in supported_fingers:
             return False
+        if binding is not None:
+            try:
+                self._check_command_binding(binding)
+            except ValueError:
+                return False
         try:
-            self._commands.put_nowait((name, deepcopy(args)))
+            command = (name, deepcopy(args)) if binding is None else (name, deepcopy(args), deepcopy(binding))
+            self._commands.put_nowait(command)
         except queue.Full:
             return False
         if name in {"cancel_capture", "clear_calibration", "disconnect"}:
@@ -434,6 +468,7 @@ class LiveController(ShapeCalibrationMixin):
             # headers while locked, then copy potentially large geometry and
             # diagnostics without blocking reader counters or worker commits.
             result = {**self._snapshot, "runtime": dict(self._snapshot["runtime"])}
+            result["runtime"]["calibration_activity"] = self._calibration_activity(now)
             session = self._session
             last = session.last_sample if session else None
         runtime = result["runtime"]
@@ -453,7 +488,8 @@ class LiveController(ShapeCalibrationMixin):
             reason = "disconnected" if disconnected else "missing_or_stale_root"
             metadata = {key: value for key, value in (result.get("pose") or {}).items()
                         if key in {"schema_version", "session_id", "frame_index", "config_sha256",
-                                   "model_rest_sha256", "profile_version", "input_kind", "hardware_accessed"}}
+                                   "model_rest_sha256", "profile_version", "input_kind", "hardware_accessed",
+                                   "source_monotonic_ns", "source_reference_node"}}
             result["pose"] = {**metadata, **_unavailable(reason, now)}
             result["geometry"] = None
             if reason == "disconnected":
@@ -478,6 +514,7 @@ class LiveController(ShapeCalibrationMixin):
             session = self._session
             runtime = {key: value for key, value in self._snapshot["runtime"].items()
                        if key not in {"timing_ms", "ros_export"}}
+            runtime["calibration_activity"] = self._calibration_activity(now)
             # This cache and its runtime header are replaced, never modified.
             # A successful fusion read need not copy the unused old frame.
             cached = self._input_snapshot
@@ -551,6 +588,22 @@ class LiveController(ShapeCalibrationMixin):
                 result["runtime"].update(connected=False, message="输入会话正在切换。")
         return result
 
+    def _calibration_activity(self, now):
+        """Small, atomic activity/command binding for both IPC mailboxes.
+
+        The caller holds _state_lock. Commands publish calibration before their
+        completion counter, so a newer input acknowledgement cannot expose an
+        older idle state while the full mesh mailbox is behind.
+        """
+        calibration = self._snapshot["calibration"]
+        runtime = self._snapshot["runtime"]
+        busy = bool(calibration.get("active")
+                    or str(calibration.get("profile_status", "")).startswith("fitting")
+                    or (calibration.get("shape_calibration") or {}).get("busy"))
+        return dict(busy=busy, observed_monotonic_s=now,
+                    command_completed_generation=runtime.get("command_completed_generation", 0),
+                    session_id=runtime.get("session_id"), profile_version=calibration.get("profile_version"))
+
     def snapshot_revision(self):
         """Cheap display-state token; raw receive counters piggyback on frames.
 
@@ -573,50 +626,87 @@ class LiveController(ShapeCalibrationMixin):
         self._invalidate("控制器停止中。")
 
     def join(self, timeout=None) -> bool:
-        deadline = None if timeout is None else time.monotonic() + max(0., timeout)
+        deadline = None if timeout is None else host_clock.monotonic() + max(0., timeout)
         # The processor may still be registering a job when stop() arrives.
         # Join it first, then inventory workers; a pre-join snapshot can omit
         # exactly the child we need to drain before reporting shutdown success.
         if self._thread is not None and self._thread is not threading.current_thread():
-            self._thread.join(None if deadline is None else max(0., deadline - time.monotonic()))
+            self._thread.join(None if deadline is None else max(0., deadline - host_clock.monotonic()))
         workers = [self._thread, *self._readers, *self._writers, self._scale_job, self._shape_job]
         for thread in workers:
             if thread is not None and thread is not threading.current_thread():
-                remaining = None if deadline is None else max(0., deadline - time.monotonic())
+                remaining = None if deadline is None else max(0., deadline - host_clock.monotonic())
                 thread.join(remaining)
         return not any(thread and thread.is_alive() for thread in workers)
 
+    def _functional_slots_by_finger(self):
+        if self._profile is None or self._pose_backend is None:
+            return {}
+        dependencies = functional_dependencies(self.config, self._profile)
+        return {finger: [slot for slot in slots if str(slot) in dependencies]
+                for finger, slots in OFFICIAL_FUNCTIONAL_SLOTS.items()}
+
+    def _heading_reference_available(self):
+        if not self._profile or not callable(getattr(self._pose_backend, "reanchor_heading", None)):
+            return False
+        fingers = self._profile.get("functional_fingers", {})
+        return self._profile.get("functional_enabled", True) and all(
+            all(str(slot) in fingers.get(finger, {}).get("slot_refs", {}) for slot in slots)
+            for finger, slots in OFFICIAL_FUNCTIONAL_SLOTS.items())
+
     def _calibration_state(self, now):
+        """Publish phase timing; ``None`` progress means an event-gated wait.
+
+        Timed progress describes the capture window, not calibration success.
+        Completion remains owned by captured steps and the resulting profile.
+        """
         active = None
         if self._active is not None:
             preparing = now < self._active["collect_at"]
+            phase_start = self._active["collect_at"] - PREPARE_SECONDS if preparing else self._active["collect_at"]
+            phase_end = self._active["collect_at"] if preparing else self._active["end_at"]
             active = dict(step=self._active["step"], phase="preparing" if preparing else "collecting",
-                          kind=self._active.get("kind", "mounting"),
-                          remaining_s=max(0., (self._active["collect_at"] if preparing else self._active["end_at"]) - now))
+                          kind=self._active.get("kind", "mounting"))
             if self._active.get("kind") == "functional":
                 moving = now >= self._active["neutral_end_at"]
                 active.update(finger=self._active["finger"],
-                              phase="preparing" if preparing else "moving" if moving else "collecting_neutral",
-                              remaining_s=max(0., (self._active["collect_at"] if preparing else
-                                                  self._active["end_at"] if moving else self._active["neutral_end_at"]) - now))
+                              phase="preparing" if preparing else "moving" if moving else "collecting_neutral")
+                if not preparing:
+                    phase_start = self._active["neutral_end_at"] if moving else self._active["collect_at"]
+                    phase_end = self._active["end_at"] if moving else self._active["neutral_end_at"]
             elif self._active.get("kind") == "functional_hand":
-                phase, boundary = self._functional_hand_phase(self._active, now)
-                active.update(phase=phase, remaining_s=max(0., boundary - now))
+                phase, phase_end = self._functional_hand_phase(self._active, now)
+                active.update(phase=phase)
+                phase_start = {
+                    "preparing": self._active["collect_at"] - PREPARE_SECONDS,
+                    "collecting_neutral": self._active["collect_at"],
+                    "moving_fingers": self._active["neutral_end_at"],
+                    "preparing_thumb": self._active["fingers_end_at"],
+                    "moving_thumb": self._active["thumb_start_at"],
+                }[phase]
+            active.update(remaining_s=max(0., phase_end - now),
+                          phase_progress=max(0., min(1., (now - phase_start) / (phase_end - phase_start))))
             reference = self._active.get("reference_capture")
             if reference is not None and reference.selected is None and not preparing:
                 status = reference.summary(now)
-                active.update(phase="collecting_neutral", reference_waiting=True,
+                active.update(phase="collecting_neutral", reference_waiting=True, phase_progress=None,
                     remaining_s=max(0., reference.deadline_s - now),
                     reference_wait_elapsed_s=status["wait_elapsed_s"],
                     reference_wait_limit_s=status["wait_limit_s"],
                     reference_status=status["status"], unstable_slots=status["unstable_slots"])
         return dict(active=active, captured_steps=[key for key in STEP_KEYS if key in self._captures],
+                    profile_version=(self._profile or {}).get("profile_version"),
+                    palm_tilt_references=deepcopy(self._palm_tilt_references),
+                    retry_steps=list(self._mounting_retry_steps),
                     shape_calibration=self._shape_state(now),
                     clear_generation=self._clear_generation,
                     input_scale_check=deepcopy(self._scale_state),
                     functional_fingers=sorted((self._profile or {}).get("functional_fingers", {})),
+                    functional_slots_by_finger=self._functional_slots_by_finger(),
                     functional_enabled=(self._profile or {}).get("functional_enabled", True),
                     functional_hand_result=deepcopy(self._functional_hand_result),
+                    heading_reference_available=self._heading_reference_available(),
+                    heading_reference_status=deepcopy(self._heading_reference_status),
                     functional_diagnostics={finger: deepcopy(entry.get("diagnostics", {}))
                                             for finger, entry in (self._profile or {}).get("functional_fingers", {}).items()},
                     profile_status=self._profile_status,
@@ -649,9 +739,11 @@ class LiveController(ShapeCalibrationMixin):
     def _local_recording_status(self, session):
         with session.recording_lock:
             errors = list(session.recording_errors)
-            enabled = not session.recording_disabled.is_set()
-        return dict(enabled=enabled, errors=errors,
-            warning=("" if enabled else "本地记录已暂停；实时采集、解算和 ROS 发布继续，"
+            failed = session.recording_disabled.is_set()
+            enabled = self.record_streams and not failed
+        return dict(enabled=enabled, requested=self.record_streams,
+            mode="streams" if self.record_streams else "calibration_only", errors=errors,
+            warning=("" if not failed else "本地记录已暂停；实时采集、解算和 ROS 发布继续，"
                      "暂停后的数据未写入本地文件。原因：" + "；".join(errors)),
             received_samples=session.received, recorded_samples=session.recorded,
             profile_saved=session.profile_saved,
@@ -857,7 +949,8 @@ class LiveController(ShapeCalibrationMixin):
             config_sha256=self._config_sha, model_rest_sha256=self._rest_sha,
             startup_gc_policy=deepcopy(self._snapshot["runtime"].get("startup_gc_policy")),
             result_recording_mode=(session.result_recorder.snapshot()["mode"]
-                                   if session.result_recorder is not None else "synchronous")))
+                                   if session.result_recorder is not None else
+                                   "synchronous" if self.record_streams else "calibration_only")))
         session.metadata_written = True
 
     @staticmethod
@@ -1025,7 +1118,10 @@ class LiveController(ShapeCalibrationMixin):
             self._functional_hand_cancel.set()
         self._functional_hand_cancel, self._functional_hand_result = None, None
         self._captures, self._active, self._profile = {}, None, None
+        self._palm_tilt_references = {}
+        self._heading_reference_status = None
         self._profile_status, self._warnings, self._rejected = "not_calibrated", [], {}
+        self._mounting_retry_steps = []
         reset = getattr(self._pose_backend, "reset_calibration", None)
         if callable(reset):
             reset()
@@ -1086,25 +1182,28 @@ class LiveController(ShapeCalibrationMixin):
         directory = self.output_root / session_id
         directory.mkdir(parents=True, exist_ok=False)
         session = _Session(session_id, directory, port, self._source_factory(port),
-                           self._fusion_factory(self.config), self._recorder_factory(directory / "raw.csv"), self._clock())
+                           self._fusion_factory(self.config),
+                           self._recorder_factory(directory / "raw.csv") if self.record_streams else None,
+                           self._clock())
         session.recording_policy = ResultRecordingPolicy(self.config)
         session.storage_budget = SessionStorageBudget(directory, self.config.get("local_recording"))
         self._session = session
         self._reset_calibration()
         try:
-            names = (("events",) if self._result_recorder_factory is not None
+            names = (("events",) if not self.record_streams or self._result_recorder_factory is not None
                      else ("orientations", "poses", "events"))
             for name in names:
                 session.streams[name] = (directory / f"{name}.jsonl").open("x", encoding="utf-8")
-            if self._result_recorder_factory is None:
-                session.result_recorder = AsyncResultRecorder(session.streams)
-            else:
-                session.result_recorder = self._result_recorder_factory(
-                    {name: directory / f"{name}.jsonl" for name in ("orientations", "poses")})
-            self._writers.append(session.result_recorder.worker)
-            # Track a possibly timed-out process before testing readiness:
-            # setup failures cannot orphan it or open a serial source first.
-            session.result_recorder.check()
+            if self.record_streams:
+                if self._result_recorder_factory is None:
+                    session.result_recorder = AsyncResultRecorder(session.streams)
+                else:
+                    session.result_recorder = self._result_recorder_factory(
+                        {name: directory / f"{name}.jsonl" for name in ("orientations", "poses")})
+                self._writers.append(session.result_recorder.worker)
+                # Track a possibly timed-out process before testing readiness:
+                # setup failures cannot orphan it or open a serial source first.
+                session.result_recorder.check()
             _write_json(directory / "config.json", self.config)
             _write_json(directory / "input_contract.json", describe_input_contract(self.config))
             _write_json(directory / "rest.json", self.rest)
@@ -1134,7 +1233,7 @@ class LiveController(ShapeCalibrationMixin):
                 return
             session.source.open()
             session.source_opened = True
-            if not session.recording_disabled.is_set():
+            if session.recorder is not None and not session.recording_disabled.is_set():
                 try:
                     session.recorder.open()
                     raw_open = True
@@ -1183,7 +1282,8 @@ class LiveController(ShapeCalibrationMixin):
         finally:
             session.opened = False
             try:
-                session.recorder.close()
+                if session.recorder is not None:
+                    session.recorder.close()
             except OSError as exc:
                 self._disable_recording(session, "raw_recording_close_failed", str(exc))
             for resource in (session.source,):
@@ -1236,7 +1336,9 @@ class LiveController(ShapeCalibrationMixin):
                        **self._source_tags(session),
                        source_provenance=deepcopy(getattr(session.source, "provenance", {})),
                        started_monotonic_s=session.started, ended_monotonic_s=self._clock(),
-                       stop_reason=reason, recording_complete=reader_done and not errors,
+                       stop_reason=reason, recording_requested=self.record_streams,
+                       session_complete=reader_done and not errors,
+                       recording_complete=self.record_streams and reader_done and not errors,
                        reader_stopped=reader_done, errors=errors, received_samples=session.received,
                        recorded_samples=session.recorded, samples_per_node=dict(session.node_counts),
                        output_frames=session.frames, available_poses=session.available_poses,
@@ -1246,7 +1348,7 @@ class LiveController(ShapeCalibrationMixin):
                        result_recording=result_recording,
                        local_recording=self._local_recording_status(session),
                        calibration_storage=self._calibration_storage_status(session),
-                       raw_recording_complete=reader_done and session.received == session.recorded
+                       raw_recording_complete=self.record_streams and reader_done and session.received == session.recorded
                            and not session.recording_disabled.is_set(),
                        processing=self._processing_status(session),
                        input_contract=describe_input_contract(self.config),
@@ -1271,7 +1373,7 @@ class LiveController(ShapeCalibrationMixin):
         if name in SHAPE_COMMANDS:
             self._shape_command(name, args)
             return
-        if name in {"capture", "reanchor_neutral", "capture_functional", "capture_functional_hand",
+        if name in {"capture", "reanchor_neutral", "capture_heading_reference", "capture_functional", "capture_functional_hand",
                     "set_functional_enabled", "use_input_scale_candidate"} and self._shape_busy():
             raise ValueError("触指采集或手形优化正在进行，请先完成或取消本次手形操作。")
         if name == "use_input_scale_candidate":
@@ -1300,7 +1402,7 @@ class LiveController(ShapeCalibrationMixin):
         if session is None or not session.opened or session.done.is_set():
             raise ValueError("请先手动连接有效数据源。")
         capture_epochs = None
-        if name in {"capture", "reanchor_neutral", "capture_functional", "capture_functional_hand"}:
+        if name in {"capture", "reanchor_neutral", "capture_heading_reference", "capture_functional", "capture_functional_hand"}:
             failures = {}
             if self.config.get("input_health", {}).get("enabled", False):
                 with session.lock:
@@ -1329,21 +1431,29 @@ class LiveController(ShapeCalibrationMixin):
                 self._save_profile(session, profile, event="functional_enabled_changed")
             self._message("已启用单指轴校正 + 关节约束；非实测精度。" if args["enabled"] else
                           "已关闭单指轴校正，显示官方原始输出作对比；基础标定与单指参数保留。")
-        elif name == "reanchor_neutral":
+        elif name in {"reanchor_neutral", "capture_heading_reference"}:
             if self._active is not None:
                 raise ValueError("正在采集；请先取消或等待完成。")
             if self._profile is None:
                 raise ValueError("请先完成三步安装标定，再重设伸直参考。")
+            if name == "capture_heading_reference" and not self._heading_reference_available():
+                raise ValueError("请先完成五指弯曲标定，再平掌校正偏移。")
+            kind = "heading_reference" if name == "capture_heading_reference" else "neutral_reference"
+            self._heading_reference_status = None
             now = self._clock()
-            self._active = dict(step="neutral", kind="neutral_reference", collect_at=now + PREPARE_SECONDS,
+            self._active = dict(step="neutral", kind=kind, collect_at=now + PREPARE_SECONDS,
                                 end_at=now + PREPARE_SECONDS + CAPTURE_SECONDS, seen=None, rows=[])
-            self._profile_status = "collecting_neutral_reference"
+            self._profile_status = "collecting_" + kind
             self._message("准备 3 秒：五指自然伸直，再静止 2 秒；保留安装轴和手掌朝向，不重启滤波器。")
         elif name == "capture_functional":
             if self._active is not None:
                 raise ValueError("正在采集；请先取消或等待完成。")
             if self._profile is None:
                 raise ValueError("请先完成三步安装标定，再校准手指弯曲方向。")
+            if self._pose_backend is not None:
+                slots = self._functional_slots_by_finger()[args["finger"]]
+                if not slots:
+                    raise ValueError("该手指缺少通过基础标定的相邻传感器，请先补采提示的姿势。")
             now = self._clock()
             neutral_end = now + PREPARE_SECONDS + CAPTURE_SECONDS
             self._active = dict(step="neutral", kind="functional", finger=args["finger"],
@@ -1351,8 +1461,7 @@ class LiveController(ShapeCalibrationMixin):
                                 end_at=neutral_end + FUNCTIONAL_MOTION_SECONDS,
                                 seen=None, rows=[], motion_rows=[])
             if self._pose_backend is not None:
-                self._active["reference_capture"] = FunctionalReferenceCapture(
-                    OFFICIAL_FUNCTIONAL_SLOTS[args["finger"]], now + PREPARE_SECONDS)
+                self._active["reference_capture"] = FunctionalReferenceCapture(slots, now + PREPARE_SECONDS)
             self._profile_status = "collecting_functional_axis"
             self._message("先自然张手：准备 3 秒后等待取得连续 2 秒稳定参考；看到“现在弯伸”后，再弯伸所选手指 2–3 次。")
         elif name == "capture_functional_hand":
@@ -1362,23 +1471,20 @@ class LiveController(ShapeCalibrationMixin):
                 raise ValueError("正在采集；请先取消或等待完成。")
             if self._profile is None:
                 raise ValueError("请先完成三姿势基础标定，再开始全手功能轴采集。")
+            slots_by_finger = self._functional_slots_by_finger()
+            slots = [slot for finger_slots in slots_by_finger.values() for slot in finger_slots]
+            if not slots:
+                raise ValueError("没有手指具备通过基础标定的相邻传感器，请先补采提示的姿势。")
             now = self._clock()
-            neutral_end = now + PREPARE_SECONDS + CAPTURE_SECONDS
-            fingers_end = neutral_end + FUNCTIONAL_MOTION_SECONDS
-            thumb_start = fingers_end + PREPARE_SECONDS
             self._functional_hand_cancel = threading.Event()
             self._functional_hand_result = None
             self._active = dict(step="neutral", kind="functional_hand", collect_at=now + PREPARE_SECONDS,
-                                neutral_end_at=neutral_end, fingers_end_at=fingers_end,
-                                thumb_start_at=thumb_start, end_at=thumb_start + FUNCTIONAL_MOTION_SECONDS,
                                 seen=None, capture_phase=None, rows=[], finger_rows=[], thumb_rows=[],
                                 cancel=self._functional_hand_cancel)
-            self._active["reference_capture"] = FunctionalReferenceCapture(
-                [slot for slots in OFFICIAL_FUNCTIONAL_SLOTS.values() for slot in slots],
-                now + PREPARE_SECONDS)
+            self._active["reference_capture"] = FunctionalReferenceCapture(slots, now + PREPARE_SECONDS)
+            self._schedule_finger_motion(self._active, now + PREPARE_SECONDS + CAPTURE_SECONDS, slots)
             self._profile_status = "collecting_functional_hand"
-            self._message("全手通常约 24 秒，等待稳定时延长：准备 3 秒、取得伸直参考、四指慢弯伸 8 秒；"
-                          "再准备 3 秒、仅拇指 IP 慢弯伸 8 秒。按当前提示动作，不必逐指点击。")
+            self._message("先伸直五指并保持稳定，再按提示弯伸本轮可测的手指。每段弯伸约 8 秒。")
         elif name == "capture":
             if self._active is not None:
                 raise ValueError("正在采集一个步骤；请先取消或等待完成。")
@@ -1392,10 +1498,12 @@ class LiveController(ShapeCalibrationMixin):
             self._active = dict(step=args["step"], collect_at=now + PREPARE_SECONDS,
                                 end_at=now + PREPARE_SECONDS + CAPTURE_SECONDS, seen=None, rows=[])
             self._profile = None
+            self._heading_reference_status = None
             self._shape_invalidate()
             self._functional_hand_result = None
             self._profile_status = "collecting"
             self._warnings, self._rejected = [], {}
+            self._mounting_retry_steps = []
             self._message("准备 3 秒后采集 2 秒；保持张手，按当前步骤整体转动手掌。")
         if capture_epochs is not None and self._active is not None:
             self._active["health_epochs"] = capture_epochs
@@ -1424,6 +1532,8 @@ class LiveController(ShapeCalibrationMixin):
         if now >= active["end_at"]:
             self._active = None
             if not active["rows"]:
+                if active.get("kind") == "heading_reference":
+                    self._heading_reference_status = dict(status="rejected", message="没有收到新的姿态样本。")
                 self._profile_status = self._profile["status"] if self._profile is not None else "capture_failed"
                 self._message("本步骤没有新的有效样本，请检查数据流后单独重采。", "采集失败：没有新增 sample_index。")
                 self._event(session, "capture_failed", step=active["step"], reason="no_new_samples")
@@ -1431,11 +1541,23 @@ class LiveController(ShapeCalibrationMixin):
             if active.get("kind") == "neutral_reference":
                 self._reanchor_profile(session, active["rows"])
                 return
+            if active.get("kind") == "heading_reference":
+                self._update_heading_reference(session, active["rows"])
+                return
             if active.get("kind") == "functional":
                 self._fit_functional_profile(session, active)
                 return
             self._captures[active["step"]] = active["rows"]
             capture_id = uuid4().hex
+            if self._pose_backend is not None and active["step"] in ("neutral", "fingers_down"):
+                # The official protocol's second hold means fingertips UP.
+                reference = capture_up_reference(active["rows"], self._root_node, self.config["stale_after_s"])
+                if reference is None:
+                    self._palm_tilt_references.pop(active["step"], None)
+                else:
+                    self._palm_tilt_references[active["step"]] = dict(reference, node=self._root_node,
+                        session_id=session.session_id, hand=self.config["hand"], capture_id=capture_id,
+                        clear_generation=self._clear_generation, config_sha256=self._config_sha)
             self._persist_calibration_artifact(session,
                 session.directory / "calibration" / f"capture.{active['step']}.{capture_id}.json",
                 dict(schema_version=1, artifact_type="mounting_capture", capture_id=capture_id,
@@ -1470,8 +1592,10 @@ class LiveController(ShapeCalibrationMixin):
         if not health.get("enabled", False):
             return {node: "missing_input_health" for node in self.config["node_to_slot"]}
         active = self._active
-        if epochs is None and active is not None:
-            epochs = active.get("health_epochs")
+        # A mounting fit can reject individual sensors. Its epoch map binds
+        # only accepted nodes; an ongoing capture also has its own epoch map.
+        capture_epochs = (active or {}).get("health_epochs") or {}
+        bound_epochs = epochs if epochs is not None else {}
         failures = {}
         for node in self.config["node_to_slot"]:
             data = frame.get("nodes", {}).get(node)
@@ -1483,7 +1607,9 @@ class LiveController(ShapeCalibrationMixin):
                 failures[node] = state or "missing_input_health"
             elif state not in {"healthy", "warming_up", "stale"}:
                 failures[node] = "missing_input_health"
-            elif isinstance(data, dict) and epochs is not None and data.get("epoch") != epochs.get(node):
+            elif isinstance(data, dict) and (
+                    (node in capture_epochs and data.get("epoch") != capture_epochs[node])
+                    or (node in bound_epochs and data.get("epoch") != bound_epochs[node])):
                 failures[node] = "filter_epoch_changed_during_capture"
             elif strict and not isinstance(data, dict):
                 failures[node] = "missing_or_stale_node"
@@ -1512,6 +1638,8 @@ class LiveController(ShapeCalibrationMixin):
 
     def _fail_capture_health(self, session, failures):
         active = self._active
+        if active is not None and active.get("kind") == "heading_reference":
+            self._heading_reference_status = dict(status="rejected", message=self._capture_health_text(failures))
         if self._functional_hand_cancel is not None:
             self._functional_hand_cancel.set()
         if active is not None and active.get("kind") == "functional_hand":
@@ -1536,6 +1664,17 @@ class LiveController(ShapeCalibrationMixin):
         return True
 
     @staticmethod
+    def _schedule_finger_motion(active, start, slots):
+        """Only request movement for groups with a measured joint reference."""
+        slots = set(map(int, slots))
+        thumb = set(OFFICIAL_FUNCTIONAL_SLOTS["thumb"])
+        active["neutral_end_at"] = start
+        active["fingers_end_at"] = start + (FUNCTIONAL_MOTION_SECONDS if slots - thumb else 0.)
+        has_thumb = not slots.isdisjoint(thumb)
+        active["thumb_start_at"] = active["fingers_end_at"] + (PREPARE_SECONDS if has_thumb else 0.)
+        active["end_at"] = active["thumb_start_at"] + (FUNCTIONAL_MOTION_SECONDS if has_thumb else 0.)
+
+    @staticmethod
     def _functional_hand_phase(active, now):
         reference = active.get("reference_capture")
         if reference is not None and reference.selected is None:
@@ -1545,7 +1684,8 @@ class LiveController(ShapeCalibrationMixin):
                            ("moving_fingers", "fingers_end_at"), ("preparing_thumb", "thumb_start_at")):
             if now < active[key]:
                 return phase, active[key]
-        return "moving_thumb", active["end_at"]
+        last = "moving_thumb" if active["end_at"] > active["thumb_start_at"] else "moving_fingers"
+        return last, active["end_at"]
 
     def _capture_functional_reference(self, session, frame, now):
         """Select a real stable reference before scheduling any motion phase."""
@@ -1578,9 +1718,7 @@ class LiveController(ShapeCalibrationMixin):
         active["seen"] = {node: (data.get("epoch"), data.get("sample_index"))
                           for node, data in frame["nodes"].items()}
         if active["kind"] == "functional_hand":
-            active["fingers_end_at"] = now + FUNCTIONAL_MOTION_SECONDS
-            active["thumb_start_at"] = active["fingers_end_at"] + PREPARE_SECONDS
-            active["end_at"] = active["thumb_start_at"] + FUNCTIONAL_MOTION_SECONDS
+            self._schedule_finger_motion(active, now, reference.stable_slots)
         else:
             active["end_at"] = now + FUNCTIONAL_MOTION_SECONDS
         active["reference_selection"] = selection
@@ -1704,6 +1842,8 @@ class LiveController(ShapeCalibrationMixin):
         self._event(session, "functional_hand_result", result=report)
 
     def _fit_profile(self, session):
+        from .upstream_backend import STEP_KEYS as official_steps
+        step_ids = dict(zip(official_steps, STEP_KEYS))
         self._profile_status = "fitting"
         with self._state_lock:
             self._snapshot["calibration"] = self._calibration_state(self._clock())
@@ -1712,8 +1852,8 @@ class LiveController(ShapeCalibrationMixin):
             self._revision += 1
         try:
             if self._pose_backend is not None:
-                official_keys = dict(zip(STEP_KEYS, ("base_pose", "z_rot_pose_1", "z_rot_pose_2")))
-                captures = {official_keys[key]: deepcopy(rows) for key, rows in self._captures.items()}
+                captures = {key: deepcopy(self._captures[step]) for key, step in step_ids.items()
+                            if step in self._captures}
                 profile = self._pose_backend.fit_calibration(captures, session_id=session.session_id)
             else:
                 profile = self._calibration_fn(deepcopy(self._captures), self.rest, self.config,
@@ -1724,7 +1864,10 @@ class LiveController(ShapeCalibrationMixin):
                 raise ValueError("标定结果的配置或模型摘要不匹配，拒绝混用。")
         except ValueError as exc:
             self._profile_status = "fit_failed"
-            self._warnings = [f"建议重采：{', '.join(getattr(exc, 'redo_steps', ()))}"] if getattr(exc, "redo_steps", ()) else []
+            self._mounting_retry_steps = [step_ids.get(key, key) for key in getattr(exc, "redo_steps", ())]
+            self._warnings = [str(exc)]
+            if self._mounting_retry_steps:
+                self._warnings.append(f"建议重采：{', '.join(self._mounting_retry_steps)}")
             self._message("标定失败；已采步骤保留，可单独重采。", str(exc))
             self._event(session, "calibration_failed", error=str(exc), redo_steps=list(getattr(exc, "redo_steps", ())))
             return
@@ -1732,13 +1875,36 @@ class LiveController(ShapeCalibrationMixin):
             return
         if not self._capture_save_healthy(session, profile):
             return
+        self._mounting_retry_steps = [step_ids[key] for key in
+            profile.get("calibration_motion_diagnostics", {}).get("redo_steps", ()) if key in step_ids]
         self._save_profile(session, profile, event="calibration_fitted")
+        if self._pose_backend is not None and profile.get("rejected_nodes"):
+            self._message("部分手指标定已生效；待补采的节点：" + "、".join(profile["rejected_nodes"]))
+            return
         if self._pose_backend is not None and profile.get("calibration_motion_diagnostics", {}).get("warnings"):
             self._message("官方标定已执行，但转掌动作与算法假设存在偏差；结果保留，请看转轴提示，可单独重采第 2/3 步。")
             return
         self._message("官方 FSGlove 标定已执行；12 路适配的缺测骨段为显式先验，尚未验证实物精度。"
                       if self._pose_backend is not None else
                       "标定拟合完成（实验性，非实物精度验收）；缺失手指节点仍用显式先验。")
+
+    def _update_heading_reference(self, session, rows):
+        try:
+            profile = self._pose_backend.reanchor_heading(rows, self._profile, session_id=session.session_id)
+        except ValueError as exc:
+            self._profile_status = self._profile["status"]
+            self._heading_reference_status = dict(status="rejected", message=str(exc))
+            self._message(str(exc))
+            self._event(session, "heading_reference_rejected", reason=str(exc))
+            return
+        if self._stop.is_set() or session.stop.is_set():
+            return
+        if not self._capture_save_healthy(session, profile):
+            self._heading_reference_status = dict(status="rejected", message="采集期间姿态数据状态发生变化。")
+            return
+        self._save_profile(session, profile, event="heading_reference_updated")
+        self._heading_reference_status = dict(status="updated", message="平掌航向校正已生效。")
+        self._message("平掌航向校正已生效，现可活动五指。")
 
     def _reanchor_profile(self, session, rows):
         try:
@@ -1902,16 +2068,23 @@ class LiveController(ShapeCalibrationMixin):
                 pose["reason"] = "calibration_epoch_changed"
             pose["functional_axis_retargeting"] = functional
             timing["solve"] = (time.perf_counter() - solve_start) * 1000.
-        solve_completed_ns = time.monotonic_ns()
+        solve_completed_ns = host_clock.monotonic_ns()
         geometry, geometry_error = None, ""
         display_pose, display_geometry = None, None
         root = frame["nodes"].get(self._root_node)
+        source_stamp = root.get("host_monotonic_ns") if root is not None else None
+        if (type(source_stamp) is not int or source_stamp <= 0
+                or root.get("orientation_valid") is False):
+            source_stamp = None
 
         # Give display metadata the SAME source identity before a slow result
         # is invalidated for measurement/export below. No source time changes.
+        # timestamp_s remains the solver tick; the explicit root source time
+        # anchors display-level association and is never synthesized from it.
         pose.update(session_id=session.session_id, frame_index=session.frames,
                     config_sha256=self._config_sha, model_rest_sha256=self._rest_sha,
-                    profile_version=(self._profile or {}).get("profile_version"))
+                    profile_version=(self._profile or {}).get("profile_version"),
+                    source_monotonic_ns=source_stamp, source_reference_node=self._root_node)
         # Per-frame unavailable results may omit/change their algorithm tag.
         # Only the owning implementation/reference may invalidate this cache.
         owner = self._pose_backend if self._pose_backend is not None else self._solver
@@ -1973,6 +2146,7 @@ class LiveController(ShapeCalibrationMixin):
             geometry = None
         pose.update(schema_version=1, session_id=session.session_id, frame_index=session.frames,
                     config_sha256=self._config_sha, model_rest_sha256=self._rest_sha,
+                    source_monotonic_ns=source_stamp, source_reference_node=self._root_node,
                     **self._source_tags(session),
                     source_fresh=source_fresh, source_changed_nodes=changed_nodes,
                     profile_version=(self._profile or {}).get("profile_version"), calibration_rejections=rejected)
@@ -1991,7 +2165,7 @@ class LiveController(ShapeCalibrationMixin):
         flush = finished - session.last_flush >= 1.
         if session.recording_policy is None:
             session.recording_policy = ResultRecordingPolicy(self.config)
-        if (not session.recording_disabled.is_set() and session.recording_policy.should_record(
+        if (self.record_streams and not session.recording_disabled.is_set() and session.recording_policy.should_record(
                 frame, pose, now=finished, context=dict(clear_generation=self._clear_generation,
                     profile_status=self._profile_status, active=self._active),
                 force=self._active is not None or self._shape_capture is not None)):
@@ -2075,15 +2249,32 @@ class LiveController(ShapeCalibrationMixin):
                     if self._stop.is_set():
                         break
                     try:
-                        name, args = self._commands.get_nowait()
+                        command = self._commands.get_nowait()
+                        name, args = command[:2]
+                        binding = command[2] if len(command) > 2 else None
                     except queue.Empty:
                         break
+                    command_error = None
                     try:
+                        if binding is not None:
+                            self._check_command_binding(binding)
                         self._command(name, args)
                     except ValueError as exc:
+                        command_error = str(exc)
                         self._message("操作未完成。", str(exc))
                     except Exception as exc:
+                        command_error = str(exc)
                         self._disconnect("command_failed", f"命令或记录失败：{exc}")
+                    finally:
+                        # Processing the request is distinct from receiving it
+                        # in a queue, and from finishing any asynchronous job
+                        # it starts. Rejections also release the UI request latch.
+                        with self._state_lock:
+                            runtime = self._snapshot["runtime"]
+                            runtime.update(command_completed_generation=
+                                runtime["command_completed_generation"] + 1,
+                                last_command_name=name, last_command_error=command_error)
+                            self._revision += 1
                 session = self._session
                 try:
                     self._poll_scale_check()

@@ -180,6 +180,8 @@ def test_included_tactile_launch_does_not_inherit_parent_config_or_hand(tmp_path
 
     def expand(entity):
         if isinstance(entity, Node):
+            if entity.condition is not None and not entity.condition.evaluate(context):
+                return
             nodes.append({key: context.launch_configurations[key] for key in ("config", "hand", "namespace")})
             return  # Critical: construction is safe; Node.execute would start a process.
         if isinstance(entity, ExecuteProcess):

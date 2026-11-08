@@ -97,8 +97,8 @@ ROS 保留原解算的有效性与源时间，`joint_positions_m` 为空，不�
 也不改变 FSGlove 解算、IMU 标定、串口读取、120 Hz 目标或 ROS 结果内容。
 触觉仍由独立采集节点发布；显示桥接只订阅 `/gloves/right/tactile/state`。
 该状态、二维视图和三维触觉输入统一为 **20×20 / 400 个有效物理地址**
-（`TactileState.schema_version=2`，ADC、有效掩码均为行优先 400 项，逐块时间为 160 项）。
-此范围对应原始行列 0–19，直接裁取，不缩放或重新编排地址；发布频率保持原值。
+（`TactileState.schema_version=3`，ADC、有效掩码均为行优先 400 项，逐行时间为 20 项）。
+矩阵直接对应 44 字节整行协议中的行列 0–19，不裁剪或重新编排；发布频率保持原值。
 
 ### 安装与启动
 
@@ -143,7 +143,7 @@ GUI Python 无须安装 `rclpy`，不要将 ROS 的 `PYTHONPATH` 注入手势虚
 | 颜色 | ±200 ADC 保持原掌背本色；负变化为蓝，正变化由黄到红；轻触 ±3000、强响应 ±16000 只改变色限 |
 | 映射 | 原始行列 0–19 的 20×20 有效区域；400 个三维位置仍为候选，7 区域、9 个地址锚点已核对，逐点物理位置尚未全部标定 |
 | 随动 | 中立网格一次性建立三角面 / 重心坐标绑定；颜色限制在同一手指或掌部的掌侧，不在每帧按空间邻近重绑 |
-| 时间 | 同机 `CLOCK_MONOTONIC` 源时间；选择不晚于当前展示姿态的触觉快照，时差最多 150 ms，源年龄最多 250 ms；每个块还遵守采集端有效期 |
+| 时间 | 同机 `CLOCK_MONOTONIC` 源时间；选择不晚于当前展示姿态的触觉快照，时差最多 150 ms，源年龄最多 250 ms；每行还遵守采集端有效期 |
 | 刷新 | 触觉叠加约 30 Hz，独立于姿态解算频率；不会为凑频率生成新触觉或姿态 |
 | 缺测 | 触觉过期、缺参考或无有效对应姿态时恢复原手颜色，不隐藏手；保持／未知手指不叠加新热点 |
 
@@ -151,10 +151,9 @@ GUI Python 无须安装 `rclpy`，不要将 ROS 的 `PYTHONPATH` 注入手势虚
 标定动作示意、冻结手形以及历史姿态回放不与实时触觉混画。
 触觉采集身份或健康状态发生变化后，本窗口要求重新采集触觉参考。
 二维触觉窗口和三维窗口复用相同参考算法，但各自手动采集参考，**不自动共享零点**。
-串口和 `/tactile/samples` 仍保留原始 80×80 地址协议，便于旧 bag 兼容与追溯；
-这些原始数据包并不代表存在 6400 个有效触觉单元。范围外地址不进入状态、参考或三维着色。
-显示桥接／控制器读取旧 `schema_version=1` 的 80×80 状态时会显式裁取左上 20×20，
-保持原采集时间与掩码，不把旧数据重新标记为新采集。
+串口采用 44 字节整行格式：`A5 5A + uint16 大端行号 + 20 个 uint16 大端 ADC`。
+原始样本 schema 2 每包是一整行，显示状态 schema 3 使用 20 个逐行接收时间；
+旧协议、旧状态和旧触觉参考不再读取，历史版本保存在独立分支。
 
 如果没有热点，先看该组中的状态文字：确认收到 tactile/state、有有效无载参考、
 当前展示是真实新鲜手势而非标定示意，然后查看源年龄和姿态时差。
@@ -433,6 +432,8 @@ Qt 绘制和 ROS DDS；单次平均吞吐超过 120 不能替代长时间逐帧�
 ```
 
 保护位于原始量换算后、VQF 输入前。2026-10-05 的 `per_axis_gyro_continuity_v2` 修正了两项会人为丢失转角的问题：某个陀螺分量异常不再替换另外两个正常分量；连续的编码边界报告值不再被一律当成零角速度。陀螺按 X/Y/Z 分别维护因果突变确认，正常分量原值直通；非有限值和孤立突变仍拦截，加速度仍按完整向量做原有有效性检查。
+
+从 `per_axis_gyro_continuity_v3` 起，软件也检查角速度是否沿最近两次已接受的采样连续变化。这样快速握拳时，持续加速的真实读数可以进入姿态解算。每次通过的仍是设备报告的角速度。若原始记录已出现削平的峰顶，这项处理无法恢复峰顶以外的转动。
 
 编码边界只说明报告值接近整数端点，不足以证明其无效。平滑抵达边界时继续积分报告值；突然跳到边界时，第一样本进入突变确认，下一条一致的有限值才能通过。首次输入就是边界值且尚无基线时也须确认。**保留报告值不等于证明没有物理饱和，更不能重建未被报告的超量程转角。** 这不是关闭过滤，也不会放行从正常静止值突然出现的单点边界尖峰。
 
@@ -767,7 +768,9 @@ env QT_QPA_PLATFORM=offscreen PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 
 `VERTICAL_UP/DOWN` 是官方状态名。界面上倾/下倾约 50° 的示意对应同轴相反方向；[固定版本官方说明](https://github.com/davidliyutong/fsglove/blob/a7988f051c35f5ee6157353ee4022d73aa1e4cc8/src/hand_visualiser/README.md#calibration-pose)建议两姿态总转角至少 90°。不要求精准竖直，也不要追求两姿态恰好相差 180°，以免出现转轴符号歧义。只在舒适范围内转掌，不要勉强到疼痛；这仍是硬件引导适配，不是论文实验协议已通过复现。
 
-三步采齐后调用官方安装标定与推理。新增 `calibration_motion_diagnostics` 记录各实测槽位相对平掌的转角、上下反向同轴偏差、总转角及转轴偏离水平的程度。掌部偏轴、幅度过小或总角不足时，界面显示软提示并保留结果，不因此硬停或要求重连；可保持五指伸直、避免同时侧翻，单独重采第 2/3 步。数值退化、无有效手掌或会话不匹配等原有错误检查仍然有效。**这些是采集一致性提示，不是人体角度精度指标，也不证明侧偏或持续漂移已消除。**
+三步采齐后，程序用重力方向检查手掌的上下倾转。相对平掌的倾斜不足 10°，或两次明显倾向同侧时，界面提示重采相应姿势；已采集的姿势保留。手指 IMU 与掌心允许存在各自独立的初始航向。对齐这个固定差异后，若某节点任一次倾转与手掌相差超过 15°，此次安装标定仅采用其余通过的节点。可保持手指伸直，选择提示的姿势重新采集。`calibration_motion_diagnostics` 记录倾转角度、各节点相对掌心的旋转差和重采步骤。这些数值用于判断采集动作是否提供了稳定的安装参考。舒适范围内未达到建议的 90° 总转角仍可继续。
+
+Mounting uses the two changes in palm tilt relative to the flat pose. A tilt below 10° or two clearly same-side tilts require recapturing the indicated poses. Both finger rotations are compared with the palm using one fixed heading offset per IMU. A rotation discrepancy above 15° excludes that node while retaining the others. The capture record includes per-node residuals and retry steps. These are consistency checks on mounting data. A total tilt below the suggested 90° remains advisory.
 
 不能用当前人的动作改变旧 CSV，也不能把没有这些姿态的历史录制标成已完成官方标定。官方模式不执行旧 hand-eye 拟合、`SparseHandSolver`、legacy 功能轴流程或旧“仅重设伸直参考”；legacy 算法的 profile 不能混用或失败后静默回退。下述可选功能轴适配与 v2 缺测 DIP 联动是独立的外围处理，不是 FSGlove 官方新增算法。
 
@@ -1219,10 +1222,12 @@ CSV 中超出 `−32768～32767` 的整数会直接计数，不强转为 int16�
 | 配置 / 事件 | 默认值及行为 |
 |---|---|
 | `stale_after_s` | **0.15 秒**。超过该年龄的节点不进入当前姿态；手掌过期时隐藏旧模型，不延长显示时间掩盖卡顿 |
-| `filter_reset_gap_s` | **1.0 秒**。某节点下一条原始数据的主机时间与上一条间隔超过此值，才重建该节点 VQF 并递增 epoch |
-| 150 毫秒以上、1 秒以内的接收间隔 | 保留滤波状态与 epoch，记录短间隔警告；新鲜数据恢复后可沿用同会话标定，不必仅因这次间隔重新做三步 |
+| `filter_reset_gap_s` | **1.0 秒**。超过该间隔的节点重建 VQF 并递增 epoch。已因输入故障暂停的节点按原恢复流程处理 |
+| 150 毫秒以上、1 秒以内的接收间隔 | 整条数据流一同延迟时保留原参考。如果一组节点持续到达，而某节点样本数明显落后，先积分收到的样本、暂时标记该节点姿态不可用。一个新鲜度窗口内补齐积压就恢复原参考；持续欠采时只更新该节点的 epoch，原参考失效 |
 | 主机单调时间倒退 | 仍清空滤波状态、递增 epoch，拒绝继续使用原 epoch 标定 |
 | 真正断开后重新连接 | 仍是新会话；本修复不实现跨会话标定恢复 |
+
+Live fusion and CSV replay preserve a shared USB delay. If samples from a peer span the missing interval at a sustained cadence, the returned node is withheld until its backlog catches up. A deficit persisting for a further `stale_after_s` invalidates its calibration epoch. Host-side evidence cannot detect every lost sample.
 
 两项均为秒。重置阈值必须有限且不小于新鲜度阈值；未提供重置阈值的配置补入 `max(1.0, stale_after_s)`，新会话 `config.json` 保存实际生效的值。要**仅为历史算法对照**复算旧行为，可以显式将两项设为相同值；默认不再如此。
 
@@ -1230,7 +1235,7 @@ CSV 中超出 `−32768～32767` 的整数会直接计数，不强转为 int16�
 
 界面现在区分“手掌数据暂时过期”“滤波状态已重置、标定失效”和“本次连接尚未标定”。遇到短暂过期，先保持连接等待新数据，不要反复点归零或断开。确认滤波器已重置时，仅重设伸直参考不能恢复失效的安装/航向标定；需在当前稳定会话重新做三步。
 
-`orientations.jsonl` 中的 `gap_diagnostics` 保留每节点短间隔次数、长间隔重置次数、最后间隔长度、时间和动作；`node_N_short_gap_filter_preserved` 为短间隔警告。次数按节点统计，一次全链路停顿可能计为 12 个节点事件。离线报告新增 `short_gaps`；原 `gaps` 仍指因长间隔实际重置的次数。旧录制、旧 profile 及其 epoch 不会被改写；修改间隔策略后不能把新的重算结果冒充与旧 profile 原样匹配。
+`orientations.jsonl` 中的 `gap_diagnostics` 保留每节点短间隔次数、间隔引起的滤波重置次数，以及最后的间隔长度、时间和动作。`short_gap_awaiting_backlog` 表示正在等待补齐，`peer_sample_deficit_filter_reinitialized` 表示该节点的旧参考已失效。次数按节点统计，一次全链路停顿可能计为 12 个节点事件。离线报告中的 `short_gaps` 统计保留滤波或仍在等待的短间隔，`gaps` 统计长间隔和未补齐的局部漏采引起的重置。旧录制、旧 profile 及其 epoch 不会被改写；修改间隔策略后不能把新的重算结果冒充与旧 profile 原样匹配。
 
 更新文件不会热替换已运行进程。要让新策略生效，需要正常结束旧窗口并重新启动；这次重启仍需当前会话标定一次。已经重建过的旧 VQF 状态不能靠修改阈值追溯恢复。
 
@@ -1479,3 +1484,9 @@ python tools/fsglove12/scripts/verify_mano_model.py \
 - [MANO 许可](https://mano.is.tue.mpg.de/license.html)：模型独立授权，默认非商业研究许可，不随本仓库分发。
 
 具体见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+# Managed workbench integration
+
+Version 0.1.3 provides a headless, per-hand service using the same spawned
+controller as the independent display. See [HAND_SERVICE.md](HAND_SERVICE.md)
+for startup, resource validation, command receipts, recording exclusion and
+historical profile provenance. Numerical routines remain shared.

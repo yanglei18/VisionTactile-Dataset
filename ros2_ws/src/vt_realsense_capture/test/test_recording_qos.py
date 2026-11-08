@@ -20,7 +20,7 @@ TRACKER = "/vive/torso/sample"
 EXTRINSICS = "/d405_1/extrinsics/depth_to_color"
 TOPICS = (CAMERA, TRACKER, GLOVE, TACTILE)
 TYPES = {
-    TACTILE: "vt_tactile_msgs/msg/TactileSampleArray",
+    TACTILE: "vt_tactile_msgs/msg/TactileRow44Array",
     GLOVE: "vt_glove_msgs/msg/GloveState",
 }
 
@@ -43,6 +43,11 @@ def test_type_not_topic_name_selects_default():
     )
     assert profiles[arbitrary]["depth"] == 512
     assert profiles[TACTILE]["depth"] == 30
+
+
+def test_legacy_tactile_qos_remains_supported_for_explicit_historical_configuration():
+    profiles = profiles_for_topics((TACTILE,), topic_types={TACTILE: "vt_tactile_msgs/msg/TactileSampleArray"})
+    assert profiles[TACTILE]["depth"] == 512
 
 
 def test_explicit_override_merges_with_type_defaults(tmp_path):

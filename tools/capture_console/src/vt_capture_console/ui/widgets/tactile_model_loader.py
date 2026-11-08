@@ -168,6 +168,10 @@ class TactileModelLoader(QObject):
                 raise ValueError(tr('静态手模型文件超出允许大小'))
             return _StaticFile(str(path), _file_stamp(path))
         python, assets = parameters.get("glove_python"), parameters.get("mano_assets")
+        if parameters.get("resources"):
+            # Managed bundles are the authoritative per-hand model source.
+            # Keep the existing pure display subprocess for compact ROS cards.
+            assets = str(Path(parameters["resources"]).expanduser() / "mano")
         if not isinstance(python, str) or not python:
             raise ValueError(tr('请在“配置设备 → {v0}姿态”中设置手套 Python 环境', v0=label))
         interpreter = Path(python).expanduser()

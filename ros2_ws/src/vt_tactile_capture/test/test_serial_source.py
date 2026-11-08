@@ -14,12 +14,17 @@ import pytest
 
 from vt_tactile_capture.protocol import Block
 from vt_tactile_capture import serial_source as module
-from vt_tactile_capture import host_clock
+from vt_tactile_capture import host_clock, serial_access
 from vt_tactile_capture.serial_source import MAX_READ_BYTES, SerialWorker
 
 
-def packet(row=2, group=3):
-    return b"\xa5\x5a" + struct.pack(">HBB10H", row, 0xAC, group, *range(10))
+def packet(row=2):
+    return b"\xa5\x5a" + struct.pack(">H20H", row, *range(20))
+
+
+def scan(start=0, count=8, lookahead=True):
+    data = b"".join(packet((start + i) % 20) for i in range(count))
+    return data + (packet((start + count) % 20)[:4] if lookahead else b"")
 
 
 class FakeSerial:
@@ -118,7 +123,7 @@ def collect_until(worker, predicate, timeout=2.0):
 
 
 def test_one_thread_read_cap_read_completion_timestamps_and_no_writes():
-    serial = FakeSerial([packet() * 400])
+    serial = FakeSerial([scan(count=400)])
     opened = []
 
     def factory(**kwargs):
@@ -130,7 +135,7 @@ def test_one_thread_read_cap_read_completion_timestamps_and_no_writes():
     try:
         batches = collect_until(worker, lambda items: sum(len(item.blocks) for item in items) == 400)
         samples = [item for item in batches if item.blocks]
-        assert len(samples) == 3
+        assert len(samples) == 5
         assert all(0 < count <= MAX_READ_BYTES for count in serial.read_sizes)
         assert opened[0][0] == "tactile-serial"
         assert opened[0][1]["exclusive"] is True
@@ -144,7 +149,7 @@ def test_one_thread_read_cap_read_completion_timestamps_and_no_writes():
             assert sample.time_valid and sample.connected
             assert sample.clock_domain == "CLOCK_MONOTONIC"
             assert sample.timing_source == "host_receive"
-            assert sample.blocks[0].status_raw == 0xAC
+            assert sample.blocks[0].adc == tuple(range(20))
     finally:
         assert worker.stop(timeout=1)
     assert serial.closed
@@ -152,7 +157,7 @@ def test_one_thread_read_cap_read_completion_timestamps_and_no_writes():
 
 
 def test_split_packet_uses_clock_of_completing_read():
-    wire = packet()
+    wire = scan()
     serial = FakeSerial([wire[:8], wire[8:]])
     worker = SerialWorker("fake:test", serial_factory=lambda **_: serial)
     worker.start()
@@ -161,13 +166,13 @@ def test_split_packet_uses_clock_of_completing_read():
         sample = next(item for item in batches if item.blocks)
         assert sample.host_realtime_ns >= serial.completion_clocks[1][0]
         assert sample.host_monotonic_ns >= serial.completion_clocks[1][1]
-        assert len(sample.blocks) == 1
+        assert len(sample.blocks) == 8
     finally:
         assert worker.stop()
 
 
 def test_read_target_accumulates_arrivals_in_one_actual_read():
-    wire = packet()
+    wire = scan(count=4, lookahead=False)
     serial = BlockingFakeSerial(timeout=0.1, initial=wire)
     options = []
 
@@ -176,15 +181,15 @@ def test_read_target_accumulates_arrivals_in_one_actual_read():
         return serial
 
     worker = SerialWorker("fake:test", serial_factory=factory,
-                          read_batch_bytes=2 * len(wire), read_timeout=serial.timeout)
+                          read_batch_bytes=2 * len(wire) + 4, read_timeout=serial.timeout)
     worker.start()
     try:
         assert serial.read_started.wait(1)
-        serial.push(wire)
+        serial.push(scan(start=4, count=4))
         batches = collect_until(worker, lambda items: any(item.blocks for item in items))
         samples = [item for item in batches if item.blocks]
-        assert serial.read_sizes[0] == serial.returned_sizes[0] == 2 * len(wire)
-        assert len(samples) == 1 and len(samples[0].blocks) == 2
+        assert serial.read_sizes[0] == serial.returned_sizes[0] == 2 * len(wire) + 4
+        assert len(samples) == 1 and len(samples[0].blocks) == 8
         assert samples[0].host_realtime_ns >= serial.completion_clocks[0][0]
         assert samples[0].host_monotonic_ns >= serial.completion_clocks[0][1]
         assert options[0]["timeout"] == serial.timeout
@@ -194,7 +199,7 @@ def test_read_target_accumulates_arrivals_in_one_actual_read():
 
 def test_batched_timeout_short_reads_preserve_partial_packet_and_bounded_stop():
     wire = packet()
-    serial = BlockingFakeSerial(timeout=0.002, initial=wire + wire[:8])
+    serial = BlockingFakeSerial(timeout=0.002, initial=scan(lookahead=False) + wire[:8])
     worker = SerialWorker("fake:test", serial_factory=lambda **_: serial,
                           read_batch_bytes=1024, read_timeout=serial.timeout)
     worker.start()
@@ -202,12 +207,12 @@ def test_batched_timeout_short_reads_preserve_partial_packet_and_bounded_stop():
         first = collect_until(worker, lambda items: any(item.blocks for item in items))
         first_sample = next(item for item in first if item.blocks)
         assert serial.read_sizes[0] == 1024
-        assert serial.returned_sizes[0] == len(wire) + 8
-        assert len(first_sample.blocks) == 1
-        serial.push(wire[8:])
+        assert serial.returned_sizes[0] == len(scan(lookahead=False)) + 8
+        assert len(first_sample.blocks) == 8
+        serial.push(wire[8:] + packet(3)[:4])
         second = collect_until(worker, lambda items: any(item.blocks for item in items))
         second_sample = next(item for item in second if item.blocks)
-        assert len(second_sample.blocks) == 1 and second_sample.first_packet_index == 1
+        assert len(second_sample.blocks) == 1 and second_sample.first_packet_index == 8
         assert second_sample.host_monotonic_ns > first_sample.host_monotonic_ns
         assert second_sample.producer_dropped_total == second_sample.discarded_bytes_total == 0
         assert all(size == 1024 for size in serial.read_sizes)
@@ -220,7 +225,7 @@ def test_batched_timeout_short_reads_preserve_partial_packet_and_bounded_stop():
 
 @pytest.mark.parametrize("target", [1, 1024, MAX_READ_BYTES])
 def test_batched_reads_drain_backlog_without_exceeding_cap(target):
-    serial = FakeSerial([packet() * 400])
+    serial = FakeSerial([scan(count=400)])
     worker = SerialWorker("fake:test", serial_factory=lambda **_: serial, read_batch_bytes=target)
     worker.start()
     try:
@@ -234,7 +239,7 @@ def test_batched_reads_drain_backlog_without_exceeding_cap(target):
 
 def test_queue_is_bounded_and_preserves_latest_fault_and_loss_counters():
     worker = SerialWorker("fake:test", queue_capacity=2, serial_factory=lambda **_: None)
-    block = Block(0, 0, 0, (0,) * 10)
+    block = Block(0, (0,) * 20)
     for index in range(4):
         worker._emit(connected=True, reason="ok", blocks=(block,), clocks=(100 + index, 10 + index, True))
     batches = worker.drain()
@@ -251,8 +256,8 @@ def test_queue_is_bounded_and_preserves_latest_fault_and_loss_counters():
 
 
 def test_reconnect_increments_epoch_and_discards_partial_old_packet():
-    first = FakeSerial([packet(), packet()[:12], OSError("test unplug")])
-    second = FakeSerial([packet(5, 7)])
+    first = FakeSerial([scan(lookahead=False), packet()[:12], OSError("test unplug")])
+    second = FakeSerial([scan(start=5)])
     devices = iter([first, second])
     worker = SerialWorker("fake:test", serial_factory=lambda **_: next(devices), reconnect_interval_sec=0.005)
     worker.start()
@@ -260,7 +265,7 @@ def test_reconnect_increments_epoch_and_discards_partial_old_packet():
         batches = collect_until(worker, lambda items: any(item.blocks and item.stream_epoch == 2 for item in items))
         samples = [item for item in batches if item.blocks]
         assert [item.stream_epoch for item in samples] == [1, 2]
-        assert [item.first_packet_index for item in samples] == [0, 1]
+        assert [item.first_packet_index for item in samples] == [0, 8]
         assert len({item.session_id for item in batches}) == 1
         assert any(not item.connected and "test unplug" in item.reason for item in batches)
         assert samples[-1].discarded_bytes_total == 12
@@ -289,7 +294,7 @@ def test_explicit_connection_mode_never_retries_failed_open(failure):
 
 
 def test_explicit_connection_mode_never_reopens_after_read_failure():
-    serial = FakeSerial([packet(), OSError("test unplug")])
+    serial = FakeSerial([scan(), OSError("test unplug")])
     calls = []
 
     def factory(**kwargs):
@@ -322,7 +327,7 @@ def test_no_data_fault_is_empty_and_recovers_on_real_packet():
         batches = collect_until(worker, lambda items: any(item.reason == "no_data_timeout" for item in items))
         fault = next(item for item in batches if item.reason == "no_data_timeout")
         assert fault.connected and not fault.time_valid and fault.blocks == ()
-        serial.push(packet())
+        serial.push(scan())
         recovered = collect_until(worker, lambda items: any(item.blocks for item in items))
         sample = next(item for item in recovered if item.blocks)
         assert sample.reason == "ok" and sample.time_valid
@@ -342,11 +347,11 @@ def test_no_data_fault_discards_partial_packet_before_late_tail():
         batches = collect_until(worker, lambda items: any(item.reason == "no_data_timeout" for item in items))
         fault = next(item for item in batches if item.reason == "no_data_timeout")
         assert fault.discarded_bytes_total == 8
-        serial.push(wire[8:] + packet(5, 7))
+        serial.push(wire[8:] + scan(start=5))
         batches = collect_until(worker, lambda items: any(item.blocks for item in items))
         sample = next(item for item in batches if item.blocks)
-        assert len(sample.blocks) == 1 and sample.blocks[0].row == 5
-        assert sample.discarded_bytes_total == 26
+        assert len(sample.blocks) == 8 and sample.blocks[0].row == 5
+        assert sample.discarded_bytes_total == 44
     finally:
         assert worker.stop()
 
@@ -372,7 +377,7 @@ def test_silent_read_wallclock_step_invalidates_next_completed_batch(monkeypatch
     assert not worker._clock()[2]
     good_clocks = worker._clock()
     assert good_clocks[2]
-    worker._emit(connected=True, reason="ok", blocks=(Block(0, 0, 0, (0,) * 10),), clocks=good_clocks)
+    worker._emit(connected=True, reason="ok", blocks=(Block(0, (0,) * 20),), clocks=good_clocks)
     sample = worker.get_nowait()
     assert not sample.time_valid and sample.reason == "clock_step"
 
@@ -408,9 +413,9 @@ def test_windows_native_open_close_never_imports_posix_or_inspects_proc(monkeypa
     def no_proc(*args, **kwargs):
         raise AssertionError("Windows must not inspect Linux device paths or /proc")
 
-    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(serial_access, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(serial_module, "Serial", open_device)
-    monkeypatch.setattr(module, "_assert_port_free", no_proc)
+    monkeypatch.setattr(serial_access, "_assert_port_free", no_proc)
     monkeypatch.setattr(builtins, "__import__", import_without_posix)
     worker = SerialWorker("COM12", baudrate=230400, read_timeout=.002)
     assert worker._open_serial() is device
@@ -428,7 +433,7 @@ def test_windows_native_access_denied_is_terminal_without_implicit_reconnect(mon
         attempts.append(kwargs)
         raise PermissionError(13, "Access is denied")
 
-    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(serial_access, "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(serial_module, "Serial", denied)
     worker = SerialWorker("COM3", auto_reconnect=False)
     worker.start()
@@ -452,9 +457,9 @@ def test_linux_post_open_owner_race_releases_exclusive_mode_and_closes(monkeypat
         if exclude_fd is not None:
             raise module.PortInUseError("owner appeared during open")
 
-    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(serial_access, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(serial_module, "Serial", lambda **kwargs: device)
-    monkeypatch.setattr(module, "_assert_port_free", ownership)
+    monkeypatch.setattr(serial_access, "_assert_port_free", ownership)
     monkeypatch.setattr(fcntl, "flock", lambda fd, operation: locked.append((fd, operation)))
     monkeypatch.setattr(fcntl, "ioctl", lambda fd, operation: ioctls.append((fd, operation)))
     worker = SerialWorker("/dev/fake-only")
@@ -499,10 +504,10 @@ def test_real_pyserial_private_pty_and_second_reader_rejection():
     second = None
     try:
         collect_until(worker, lambda items: any(item.connected for item in items))
-        os.write(master, packet(79, 7))
+        os.write(master, scan(start=19))
         batches = collect_until(worker, lambda items: any(item.blocks for item in items))
         sample = next(item for item in batches if item.blocks)
-        assert sample.blocks[0].row == 79 and sample.blocks[0].column_group == 7
+        assert sample.blocks[0].row == 19 and len(sample.blocks[0].adc) == 20
         second = SerialWorker(port, reconnect_interval_sec=0.1)
         second.start()
         rejected = collect_until(second, lambda items: any("already in use" in item.reason for item in items))
@@ -527,3 +532,68 @@ def test_real_pyserial_private_pty_and_second_reader_rejection():
 def test_invalid_configuration_rejected(kwargs):
     with pytest.raises(ValueError):
         SerialWorker(**kwargs)
+
+
+def test_old_wire_never_emits_tactile_measurements():
+    old = b"".join(b"\xa5\x5a" + struct.pack(">HBB10H", row, 0, 0, *range(10)) for row in range(20))
+    serial = FakeSerial([old, OSError("end")])
+    worker = SerialWorker("fake:old", serial_factory=lambda **_: serial, auto_reconnect=False)
+    worker.start()
+    events = collect_until(worker, lambda items: any(e.reason == "stopped" for e in items))
+    assert worker.stop()
+    assert not any(event.blocks for event in events)
+
+
+def test_identification_replays_original_read_timestamps_and_opens_once():
+    serial = FakeSerial([packet(row) for row in range(8)] + [packet(8)[:4]])
+    opens = []
+    def factory(**kwargs):
+        opens.append(kwargs)
+        return serial
+    worker = SerialWorker("fake:rows", serial_factory=factory)
+    worker.start()
+    try:
+        events = collect_until(worker, lambda items: sum(len(e.blocks) for e in items) == 8)
+        samples = [e for e in events if e.blocks]
+        assert len(opens) == 1 and len(samples) == 8
+        assert [e.blocks[0].row for e in samples] == list(range(8))
+        for index, event in enumerate(samples):
+            assert event.host_monotonic_ns >= serial.completion_clocks[index][1]
+            if index < 7:
+                assert event.host_monotonic_ns <= serial.completion_clocks[index + 1][1]
+        assert samples[0].host_monotonic_ns < samples[-1].host_monotonic_ns
+    finally:
+        assert worker.stop()
+
+
+def test_clock_step_during_confirmation_cannot_leak_cross_boundary_packet(monkeypatch):
+    current = [10_000_000_000 - 1_000_000, 10_000_000_000 - 1_000_000]
+    monkeypatch.setattr(host_clock, "realtime_ns", lambda: current[0])
+    monkeypatch.setattr(host_clock, "monotonic_ns", lambda: current[1])
+    reads = deque([
+        (packet(0), (10_000_000_000, 10_000_000_000)),
+        (packet(1)[:22], (10_100_000_000, 10_001_000_000)),
+        (packet(1)[22:] + scan(start=2), (10_101_000_000, 10_002_000_000)),
+    ])
+    class Device:
+        @property
+        def in_waiting(self):
+            return len(reads[0][0]) if reads else 0
+        def read(self, size):
+            if not reads:
+                raise OSError("finished")
+            data, clock = reads.popleft()
+            assert len(data) <= size
+            current[:] = clock
+            return data
+        def close(self):
+            pass
+    worker = SerialWorker("fake:clock", serial_factory=lambda **_: Device(), auto_reconnect=False)
+    worker.start()
+    events = collect_until(worker, lambda items: any(e.reason == "stopped" for e in items))
+    assert worker.stop()
+    assert any(e.reason == "clock_step" and not e.blocks for e in events)
+    samples = [e for e in events if e.blocks]
+    assert len(samples) == 1 and samples[0].time_valid
+    assert [b.row for b in samples[0].blocks] == list(range(2, 10))
+    assert samples[0].host_monotonic_ns == 10_002_000_000
