@@ -82,10 +82,11 @@ def test_v5_without_capture_plan_capability_cannot_fall_back():
 def _planned_backend():
     backend = ManagedBackend()
     backend.supports_capture_plan = True
+    backend.supports_capture_policy = True
     backend.supports_details = True
     backend.value["capabilities"]["capture_plan"] = True
     backend.value["management"]["controller"]["topics"] = list(
-        Recipe("controller-config", pose_hands=("right",)).record_topics())
+        Recipe("controller-config", pose_hands=("right",), version=3).record_topics())
     return backend
 
 
@@ -96,11 +97,12 @@ def test_start_submits_current_plan_and_configuration_fingerprint(qapp):
         window.duration.setValue(42)
         window._start_recording()
         params = backend.commands[0][2]
-        assert params["recipe"] == Recipe("controller-config", duration_s=42, pose_hands=("right",)).to_dict()
+        assert params["recipe"] == Recipe("controller-config", duration_s=42, pose_hands=("right",), version=3).to_dict()
         assert params["expected_topics_fingerprint"] == topics_fingerprint(
             backend.value["management"]["controller"]["topics"])
         assert "右手" in window.capture_plan_summary.text()
-        assert "未连接设备不阻止开始" in window.capture_plan_status.text()
+        assert "正式采集" in window.capture_plan_status.text()
+        assert params["admission_policy"] == "formal"
         assert window.capture_plan_summary.accessibleName() == "配置的数据类别"
     finally:
         window.close()
@@ -141,6 +143,59 @@ def test_demo_does_not_claim_real_plan_validation(window):
     assert "演示" in window.capture_plan_status.text()
     window._start_recording()
     assert window.backend.state == "RECORDING"
+
+
+def test_explicit_both_hand_target_does_not_shrink_to_camera_only_controller(qapp):
+    backend = _planned_backend()
+    backend.value["management"]["controller"]["topics"] = list(Recipe("controller-config").record_topics())
+    window = MainWindow(backend)
+    try:
+        for selector in window.capture_hand_modes.values():
+            selector.setCurrentIndex(selector.findData("both"))
+        assert not window.start_button.isEnabled()
+        assert all(selector.isEnabled() for selector in window.capture_hand_modes.values())
+        window._start_recording()
+        assert backend.commands == []
+        details = window.capture_plan_status.toolTip()
+        for hand in ("left", "right"):
+            for suffix in ("state", "imu/raw", "tactile/samples"):
+                assert f"/gloves/{hand}/{suffix}" in details
+        assert "cameras.formal_both_gloves_tactile.yaml" in details
+        # Repair remains possible in the same view after a rejected selection.
+        for selector in window.capture_hand_modes.values():
+            selector.setCurrentIndex(selector.findData("configured"))
+        assert window.start_button.isEnabled()
+    finally:
+        window.close()
+
+
+def test_old_backend_requires_explicit_debug_choice_without_policy_downgrade(qapp):
+    backend = _planned_backend()
+    backend.supports_capture_policy = False
+    backend.value["management"]["controller"]["topics"] = list(Recipe("controller-config").record_topics())
+    window = MainWindow(backend)
+    try:
+        assert not window.start_button.isEnabled()
+        window._start_recording()
+        assert backend.commands == []
+        assert "不支持正式采集" in window.capture_plan_status.text()
+        window.capture_policy.setCurrentIndex(window.capture_policy.findData("debug"))
+        window._start_recording()
+        assert len(backend.commands) == 1
+        assert "admission_policy" not in backend.commands[0][2]
+        assert backend.commands[0][2]["recipe"]["version"] == 2
+    finally:
+        window.close()
+
+
+def test_formal_pure_tactile_selection_has_no_implicit_pose_or_imu():
+    recipe = Recipe("controller-config", duration_s=30, cameras=(), trackers=(), tactile_hands=("left",))
+    view = capture_plan_view({"topics": list(recipe.record_topics())}, duration_s=30,
+                             supported=True, required=True, admission_policy="formal",
+                             hand_selection={"left": "tactile", "right": "none"})
+    assert not view.blocks_start
+    assert view.start_parameters()["recipe"] == recipe.to_dict()
+    assert view.plan.required_topics() == ("/gloves/left/tactile/samples",)
 
 
 @pytest.mark.parametrize("language", ["zh_CN", "en"])

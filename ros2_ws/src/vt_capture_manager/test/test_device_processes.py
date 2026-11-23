@@ -1,5 +1,5 @@
 """Hardware-free lifecycle tests. Only short-lived synthetic Python children run."""
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 import json
 import os
 from pathlib import Path
@@ -41,6 +41,15 @@ def command(supervisor, action, request_id=None, identifier="camera", **changes)
     params = dict(group_id=identifier, expected_manager_instance_id=supervisor.instance_id)
     params.update(changes)
     return supervisor.command("device." + action, params, request_id or action + "-" + identifier)
+
+
+class RuntimeEvidence:
+    def __init__(self):
+        self.current = True
+
+    def assert_current(self):
+        if not self.current:
+            raise ValueError("numerical runtime changed")
 
 
 @pytest.fixture
@@ -383,6 +392,153 @@ def test_restart_stops_then_launches_one_new_process(make_supervisor):
     replacement = supervisor._groups["camera"].process
     assert replacement.pid != original.pid and original.poll() is not None
     assert replacement.poll() is None
+
+
+def test_runtime_preflight_failure_has_no_launch_side_effects(make_supervisor):
+    def preflight(launch_spec):
+        raise ValueError("wrong hand resource bundle")
+
+    supervisor = make_supervisor(launch_preflight=preflight)
+    assert command(supervisor, "start")["code"] == "queued"
+    eventually(lambda: not supervisor.busy)
+    receipt = supervisor.operation("start-camera")
+    assert receipt["state"] == "rejected" and receipt["code"] == "runtime_preflight_failed"
+    assert "wrong hand resource bundle" in receipt["detail"]
+    assert supervisor._groups["camera"].process is None
+    assert not tuple(supervisor.logs.iterdir())
+    assert not supervisor._registry
+    assert group(supervisor)["state"] == "STOPPED"
+
+
+def test_runtime_preflight_restart_failure_preserves_owned_process_and_allows_stop(make_supervisor):
+    calls = []
+    evidence = RuntimeEvidence()
+
+    def preflight(launch_spec):
+        calls.append(launch_spec)
+        return evidence
+
+    supervisor = make_supervisor(launch_preflight=preflight)
+    command(supervisor, "start")
+    eventually(lambda: supervisor.operation("start-camera")["code"] == "started")
+    original = supervisor._groups["camera"].process
+    evidence.current = False
+    assert command(supervisor, "restart")["code"] == "queued"
+    eventually(lambda: not supervisor.busy)
+    assert supervisor.operation("restart-camera")["code"] == "runtime_preflight_failed"
+    assert supervisor._groups["camera"].process is original and original.poll() is None
+    assert group(supervisor)["state"] != "FAILED"
+    assert command(supervisor, "stop")["code"] == "queued"
+    eventually(lambda: supervisor.operation("stop-camera")["code"] == "stopped")
+    assert original.poll() is not None
+    assert len(calls) == 2  # Broken runtime evidence cannot block an owned stop.
+
+
+def test_runtime_probe_is_worker_only_and_does_not_block_snapshot(make_supervisor):
+    entered, release, observed = threading.Event(), threading.Event(), threading.Event()
+    calls = []
+
+    def preflight(launch_spec):
+        calls.append(launch_spec)
+        entered.set()
+        assert release.wait(3.), "test did not release runtime probe"
+        return RuntimeEvidence()
+
+    supervisor = make_supervisor(launch_preflight=preflight)
+    assert group(supervisor)["can_start"]
+    assert calls == []
+    command(supervisor, "start")
+    assert entered.wait(2.)
+
+    def inspect():
+        supervisor.snapshot()
+        observed.set()
+
+    reader = threading.Thread(target=inspect)
+    reader.start()
+    try:
+        assert observed.wait(1.), "runtime probe held the process snapshot lock"
+        assert supervisor.busy
+        assert len(calls) == 1
+    finally:
+        release.set()
+        reader.join(2.)
+    eventually(lambda: supervisor.operation("start-camera")["code"] == "started")
+
+
+@pytest.mark.parametrize("action", ["start", "restart"])
+def test_permission_is_rechecked_after_runtime_probe(make_supervisor, action):
+    permitted = True
+    armed = False
+
+    def preflight(launch_spec):
+        nonlocal permitted
+        if armed:
+            permitted = False
+        return RuntimeEvidence()
+
+    supervisor = make_supervisor(launch_preflight=preflight,
+                                 allowed=lambda action: (permitted, "recorder changed"))
+    original = None
+    if action == "restart":
+        command(supervisor, "start")
+        eventually(lambda: supervisor.operation("start-camera")["code"] == "started")
+        original = supervisor._groups["camera"].process
+    armed = True
+    command(supervisor, action)
+    eventually(lambda: not supervisor.busy)
+    assert supervisor.operation(action + "-camera")["code"] == "recorder_not_idle"
+    assert supervisor._groups["camera"].process is original
+    assert original is None or original.poll() is None
+
+
+def test_runtime_evidence_is_rechecked_immediately_before_launch(make_supervisor):
+    evidence = RuntimeEvidence()
+    supervisor = make_supervisor(launch_preflight=lambda launch_spec: evidence)
+
+    def guard(resources, *, refresh=False):
+        if refresh:
+            evidence.current = False
+        return None
+
+    supervisor._camera_start_problem = guard
+    command(supervisor, "start")
+    eventually(lambda: not supervisor.busy)
+    assert supervisor.operation("start-camera")["code"] == "runtime_preflight_failed"
+    assert supervisor._groups["camera"].process is None
+    assert not tuple(supervisor.logs.iterdir())
+
+
+def test_launch_binding_change_during_probe_cannot_stop_owned_process(make_supervisor):
+    armed = False
+
+    def preflight(launch_spec):
+        if armed:
+            runtime = supervisor._groups["camera"]
+            runtime.spec = replace(runtime.spec, resources=("replacement-resource",))
+        return RuntimeEvidence()
+
+    supervisor = make_supervisor(launch_preflight=preflight)
+    command(supervisor, "start")
+    eventually(lambda: supervisor.operation("start-camera")["code"] == "started")
+    original = supervisor._groups["camera"].process
+    armed = True
+    command(supervisor, "restart")
+    eventually(lambda: not supervisor.busy)
+    assert supervisor.operation("restart-camera")["code"] == "runtime_preflight_failed"
+    assert supervisor._groups["camera"].process is original and original.poll() is None
+
+
+def test_supervisor_closing_during_runtime_probe_does_not_launch(make_supervisor):
+    def preflight(launch_spec):
+        supervisor._stop.set()
+        return RuntimeEvidence()
+
+    supervisor = make_supervisor(launch_preflight=preflight)
+    command(supervisor, "start")
+    eventually(lambda: not supervisor.busy)
+    assert supervisor.operation("start-camera")["code"] == "supervisor_closed"
+    assert supervisor._groups["camera"].process is None
 
 
 def test_pid_reuse_is_never_signalled(make_supervisor, monkeypatch):

@@ -48,6 +48,8 @@ def test_v5_device_command_cannot_hide_successful_recording_receipt(qapp, monkey
     window.timer.stop()
     try:
         window.navigation.button(4).click()
+        # This case deliberately exercises the unchanged v5 debug contract.
+        window.capture_policy.setCurrentIndex(window.capture_policy.findData("debug"))
         assert window.start_button.isEnabled()
         window.start_button.click()
         assert window.pending_request

@@ -172,48 +172,14 @@ Manual CLI startup without the option keeps its existing logging behavior.
 
 ## Explicit capture plans
 
-`vt_capture_core.capture_plan` resolves Recipe v1/v2 into an immutable candidate
-allowlist of topics, declared types and device identities. Recipes can describe
-any nonempty subset of the supported cameras, Trackers and hand streams; a
-configured camera retains its complete six-topic bundle in Recipe v2. Recipe v1
-retains the original four-topic bundle and `unified-dataset-v1` schema; new v2
-recipes use `unified-dataset-v2`. Historical frozen plan versions and fingerprints
-remain unchanged. Unknown extensions
-are rejected instead of silently disappearing from the plan. The production
-Recorder still uses its configured allowlist, including late-arriving sources.
+`vt_capture_core.capture_plan` keeps device intent independent of observed availability. Historical Recipe v1/v2 camera bundles and frozen plan v1/v2/v3 fingerprints are preserved. Recipe v3 binds each selected hand pose to both `/gloves/{hand}/imu/raw` (`RawImuBatch`) and `/gloves/{hand}/state` (`GloveState`), while tactile remains independent. Its camera bundle and extensible `unified-dataset-v2` bag schema are unchanged. The default legacy Recipe constructor remains v2; formal hand capture explicitly requests v3.
 
-IPC v5 requires the Recipe and an `expected_topics_fingerprint` for
-`capture.start`. Instance, revision, duration and the exact configured allowlist
-are checked before accepting an operation. Versions 1–4 keep their schemas;
-planned operations cannot downgrade to a legacy START after a reconnect.
+IPC v9 carries an explicit `admission_policy` and creates frozen plan v4. Formal plans require every selected stream; selection is not weakened when a source is missing. Debug plans freeze the available subset as required and retain absent candidates as optional. Existing v5-v8 requests keep their old schema and debug behavior. The current UI does not advertise formal readiness against an older backend, and does not silently downgrade. Explicit per-hand targets are compared to the complete controller allowlist; mismatches identify exact missing/extra topics and leave configuration untouched.
 
-New frozen capture plans use version 2. The manager marks recently receiving
-streams as required and absent candidates as optional. At least one monitored
-source must be receiving; missing Trackers do not block a camera recording.
-Arrival activity is independent of payload validity: invalid poses, malformed
-messages and clock faults can still be recorded and inspected. CameraInfo, factory
-extrinsics and frame timing are required when an image from that camera is receiving, although
-the manager does not monitor those auxiliary topics. Tactile recording
-activity observes raw samples separately from preview state heartbeats; a
-disconnected status publisher does not establish sample availability. Runtime
-message types are not verified; storage admission remains owned by the Recorder.
+Admission and queued dispatch both check controller identity/revision, duration, the exact allowlist fingerprint and source readiness. Formal main streams must have fresh source timestamps and valid latest payloads: hand/Tracker poses must be valid, tactile must contain actual connected row samples, and raw IMU must contain timestamped samples. Per hand, raw and pose must identify the same live source mode, session and configuration; fresh but unrelated streams do not establish formal readiness. Manager subscriptions are observers, never serial owners. Legacy arrival-only debug semantics remain separate from payload health. Unbuilt raw IMU interfaces leave legacy operations available; formal hand capture fails clearly until rebuilt.
 
-`capture_plan` and `capture_preflight` are frozen with the trial outside the
-optional provenance summary's truncation. Immediately before dispatch, the
-manager rechecks the accepted required streams. A source disappearing while
-queued rejects START rather than silently weakening the saved expectation.
-Optional sources can arrive later and are still recorded. The ROS command and
-Recorder lifecycle are unchanged; unresolved outcomes remain unknown.
+Camera calibration and timing auxiliaries are not observed online. They remain required in formal intent and are checked after recording. `capture_plan` and `capture_preflight` are frozen outside optional provenance truncation. Quality uses this original required/optional split even if finish-time topics differ. Admission is not a proof of complete recording, sensor accuracy, exact replay initialization or lossless hardware transport. Formal pure tactile recording has no implicit pose, IMU or calibration requirement. Capture commands do not restart hand sources or reset calibration.
 
-Quality checks use the frozen required/optional partition. Missing optional
-streams are listed as coverage information, without a quality warning; any
-actual messages, including late optional streams, receive the usual checks.
-Required streams missing from the bag still warn. Camera rate checks remain
-30 Hz for configured image streams with data. A changed finish allowlist emits
-an advisory; corrupt plans fail the check. Historical version 1 plans retain
-their strict all-required contract, and trials without plans retain their
-original finish-context expectations. No historical metadata is rewritten.
-Archive playback continues to use the data actually present in each bag.
 
 ## Data and control flow
 

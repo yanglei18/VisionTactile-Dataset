@@ -9,6 +9,7 @@ from __future__ import annotations
 
 
 RECIPE_VERSION = 2
+RAW_IMU_RECIPE_VERSION = 3
 SUPPORTED_CAPTURE_SCHEMAS = ("unified-dataset-v1", "unified-dataset-v2")
 _LEGACY_CAMERA_STREAMS = (
     ("color/image_raw", "sensor_msgs/msg/Image"),
@@ -26,9 +27,11 @@ CAMERA_TOPIC_SUFFIXES = tuple(suffix for suffix, _type_name in CAMERA_STREAMS)
 
 def capture_schema_version(recipe_version: int = RECIPE_VERSION) -> str:
     """Map an explicit recipe version to its corresponding bag schema."""
-    if type(recipe_version) is not int or recipe_version not in (1, RECIPE_VERSION):
-        raise ValueError("unsupported recipe version; expected integer 1 or 2")
-    return SUPPORTED_CAPTURE_SCHEMAS[recipe_version - 1]
+    if type(recipe_version) is not int or recipe_version not in (1, RECIPE_VERSION, RAW_IMU_RECIPE_VERSION):
+        raise ValueError("unsupported recipe version; expected integer 1 through 3")
+    # Recipe v3 binds hand raw IMU to pose. Camera wire formats and the bag's
+    # existing extensible additional-stream schema are unchanged.
+    return SUPPORTED_CAPTURE_SCHEMAS[0 if recipe_version == 1 else 1]
 
 
 def camera_streams(recipe_version: int = RECIPE_VERSION) -> tuple[tuple[str, str], ...]:

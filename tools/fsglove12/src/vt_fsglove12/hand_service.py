@@ -57,6 +57,8 @@ class HandService:
         self._initialized = False
         self._stopping = False
         self._service_state = "starting"
+        from .hand_trial_evidence import software_binding
+        self._software_binding = software_binding(Path(__file__).parent)
 
     def refresh(self):
         with self._lock:
@@ -131,7 +133,18 @@ class HandService:
                 if document.get("hand") != self.hand:
                     raise ValueError("Hand service request belongs to another hand")
                 op = document.get("op")
-                if op == "snapshot":
+                if op == "trial_evidence":
+                    if set(document) != {"schema_version", "hand", "op", "expected_service_instance_id", "include_artifacts"}:
+                        raise ValueError("Invalid trial evidence request fields")
+                    if document["expected_service_instance_id"] != self.instance_id:
+                        raise ValueError("Hand service instance changed")
+                    if type(document["include_artifacts"]) is not bool:
+                        raise ValueError("include_artifacts must be boolean")
+                    from .hand_trial_evidence import collect_hand_evidence
+                    response["evidence"] = collect_hand_evidence(self._snapshot, hand=self.hand,
+                        service_instance_id=self.instance_id, software=self._software_binding,
+                        include_artifacts=document["include_artifacts"])
+                elif op == "snapshot":
                     if set(document) - {"schema_version", "hand", "op", "expected_service_instance_id"}:
                         raise ValueError("Unknown snapshot fields")
                     expected = document.get("expected_service_instance_id", self.instance_id)
@@ -139,6 +152,9 @@ class HandService:
                         raise ValueError("Hand service instance changed")
                     response.update(snapshot=deepcopy(self._snapshot),
                         receipts=deepcopy(list(self._receipts.values())[-VISIBLE_RECEIPTS:]))
+                    from .hand_trial_evidence import collect_hand_evidence
+                    response["trial_evidence"] = collect_hand_evidence(self._snapshot, hand=self.hand,
+                        service_instance_id=self.instance_id, software=self._software_binding, include_artifacts=False)
                 elif op in {"command", "receipt"}:
                     if document.get("expected_service_instance_id") != self.instance_id:
                         raise ValueError("Hand service instance changed; inspect status before submitting")

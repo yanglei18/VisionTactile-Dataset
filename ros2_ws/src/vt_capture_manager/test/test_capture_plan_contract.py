@@ -37,3 +37,20 @@ def test_default_recorder_and_plan_include_factory_calibration_per_camera():
         assert plan.topic_types[f"/{camera}/depth/camera_info"] == "sensor_msgs/msg/CameraInfo"
         assert plan.topic_types[f"/{camera}/extrinsics/depth_to_color"] == "realsense2_camera_msgs/msg/Extrinsics"
     assert not plan.required_topics()
+
+
+def test_formal_example_resolves_raw_pose_and_tactile_with_actual_recorder_loader():
+    from pathlib import Path
+    from vt_realsense_capture.config import load_config
+
+    source = Path(__file__).resolve().parents[2] / "vt_realsense_capture/config/cameras.formal_both_gloves_tactile.yaml"
+    config = load_config(source)
+    types = {item.topic: item.type_name for item in config.additional_streams}
+    topics = expected_topics(CAMERA_IDS, tuple(types))
+    recipe = recipe_for_topics(topics)
+    assert recipe.version == 3
+    assert recipe.pose_hands == recipe.tactile_hands == ("left", "right")
+    plan = resolve_capture_plan(recipe, admission_policy="formal")
+    assert plan.topic_types == expected_topic_types(CAMERA_IDS, types)
+    assert plan.required_topics() == topics
+    assert not plan.optional_topics()

@@ -20,6 +20,7 @@ from vt_multisensor_alignment.matcher import select_generic_sample
 from vt_multisensor_alignment.model import MessageRef
 from vt_multisensor_alignment.profiles import make_profiles, parse_hands, profile_documents, selected_streams
 from vt_multisensor_alignment.tactile_export import export_tactile, iter_tactile_events
+from vt_multisensor_alignment.tactile_adapter import TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,14 +120,16 @@ def glove(hand, time, *, node=12, **updates):
     return NS(**values)
 
 
-def tactile(hand, time, sequence, *, adc=7, **updates):
+def tactile(hand, time, sequence, *, adc=7, source_type=TACTILE_SAMPLE_TYPE, **updates):
+    row44 = source_type == TACTILE_ROW44_SAMPLE_TYPE
     values = dict(hand=hand, header=NS(stamp=stamp(time), frame_id=f"{hand}_tactile"),
-                  schema_version=1, session_id="same-session", stream_epoch=0, sequence=sequence,
+                  schema_version=2 if row44 else 1, session_id="same-session", stream_epoch=0, sequence=sequence,
                   first_packet_index=sequence, host_realtime_ns=time, host_monotonic_ns=time + 1000,
                   clock_domain="CLOCK_MONOTONIC", timing_source="host_receive", connected=True,
                   time_valid=True, reason="", producer_dropped_total=0, discarded_bytes_total=0,
                   malformed_packets_total=0,
-                  blocks=[NS(row=0, column_group=0, status_raw=0, adc=[adc] * 10)])
+                  blocks=([NS(row=0, adc=[adc] * 20)] if row44 else
+                          [NS(row=0, column_group=0, status_raw=0, adc=[adc] * 10)]))
     values.update(updates)
     return NS(**values)
 
@@ -168,16 +171,25 @@ def read_fake_bag(tmp_path, monkeypatch, config, events):
     return read_unified_bag(tmp_path, config)
 
 
-def test_two_hand_bag_uses_independent_adapters_and_accepts_left_palm_11(tmp_path, monkeypatch):
+def with_tactile_type(config, source_type):
+    return replace(config, additional_streams=tuple(
+        replace(stream, type_name=source_type) if stream.type_name in (TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE)
+        else stream for stream in config.additional_streams))
+
+
+@pytest.mark.parametrize("tactile_type", [TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE])
+def test_two_hand_bag_uses_independent_adapters_and_accepts_left_palm_11(tmp_path, monkeypatch, tactile_type):
     config = load_config(ROOT / "config/alignment.both_gloves_tactile.yaml")
+    config = with_tactile_type(config, tactile_type)
     events = core_events(config)
     for hand in ("left", "right"):
         node = 11 if hand == "left" else 12
         pose = [glove(hand, 100, node=node), glove(hand, 200, node=node)]
-        touch = [tactile(hand, 100, 0), tactile(hand, 150, 1), tactile(hand, 200, 2)]
+        touch = [tactile(hand, stamp, sequence, source_type=tactile_type)
+                 for sequence, stamp in enumerate((100, 150, 200))]
         if hand == "left":
             pose.insert(1, glove(hand, 150, node=node, pose_valid=False))
-            touch[1] = tactile(hand, 150, 1, connected=False, blocks=[])
+            touch[1] = tactile(hand, 150, 1, source_type=tactile_type, connected=False, blocks=[])
             touch[2].first_packet_index = 1
         events.extend((f"/gloves/{hand}/state", message, 1000 + i) for i, message in enumerate(pose))
         events.extend((f"/gloves/{hand}/tactile/samples", message, 2000 + i) for i, message in enumerate(touch))
@@ -190,7 +202,7 @@ def test_two_hand_bag_uses_independent_adapters_and_accepts_left_palm_11(tmp_pat
                                      strategy="previous", max_delta_ns=1000) is not None
     assert len([key for key in dataset.clock_observations if key.startswith("glove:")]) == 2
     assert len([key for key in dataset.clock_observations if key.startswith("tactile:")]) == 2
-    right_config = load_config(ROOT / "config/alignment.right_glove_tactile.yaml")
+    right_config = with_tactile_type(load_config(ROOT / "config/alignment.right_glove_tactile.yaml"), tactile_type)
     with pytest.raises(ValueError, match="unconfigured topic"):
         require_topic_types(configured_topic_types(config), right_config)
 
@@ -284,7 +296,8 @@ def test_tactile_export_rejects_crossed_topic_identity(tmp_path, monkeypatch):
         list(iter_tactile_events(tmp_path, topic=topic))
 
 
-def test_real_two_hand_mcap_roundtrip(tmp_path):
+@pytest.mark.parametrize("tactile_type", [TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE])
+def test_real_two_hand_mcap_roundtrip(tmp_path, tactile_type):
     rosbag = pytest.importorskip("rosbag2_py")
     serialization = pytest.importorskip("rclpy.serialization")
     utilities = pytest.importorskip("rosidl_runtime_py.utilities")
@@ -292,6 +305,7 @@ def test_real_two_hand_mcap_roundtrip(tmp_path):
     pytest.importorskip("vt_glove_msgs.msg")
     pytest.importorskip("vt_tactile_msgs.msg")
     config = load_config(ROOT / "config/alignment.both_gloves_tactile.yaml")
+    config = with_tactile_type(config, tactile_type)
     topic_types = configured_topic_types(config)
     bag = tmp_path / "dual"
     writer = rosbag.SequentialWriter()
@@ -302,7 +316,7 @@ def test_real_two_hand_mcap_roundtrip(tmp_path):
     for hand in ("left", "right"):
         for index, time in enumerate((100, 200)):
             events.append((f"/gloves/{hand}/state", glove(hand, time, node=11 if hand == "left" else 12), time))
-            events.append((f"/gloves/{hand}/tactile/samples", tactile(hand, time, index), time))
+            events.append((f"/gloves/{hand}/tactile/samples", tactile(hand, time, index, source_type=tactile_type), time))
 
     def fields(value):
         if isinstance(value, NS):
@@ -324,3 +338,8 @@ def test_real_two_hand_mcap_roundtrip(tmp_path):
         events = list(iter_tactile_events(bag, topic=f"/gloves/{hand}/tactile/samples"))
         assert [event.hand for event in events] == [hand, hand]
         assert [event.reference.sequence for event in events] == [0, 1]
+        assert all(event.source_type == tactile_type for event in events)
+        for event in events:
+            block, = event.blocks
+            assert len(block.adc) == (20 if tactile_type == TACTILE_ROW44_SAMPLE_TYPE else 10)
+            assert hasattr(block, "column_group") == (tactile_type == TACTILE_SAMPLE_TYPE)

@@ -1,8 +1,9 @@
 # FSGlove 解算结果接入 ROS 2
 
 保留现有 **Qt 标定界面和三维手模型**，从同一次解算直接发布
-`/gloves/right/state` 或 `/gloves/left/state`（`vt_glove_msgs/msg/GloveState`）。默认保持右手。不发布原始 IMU topic，
-不重新打开串口，不运行第二套求解器，不改变原来的本地调试记录策略。
+`/gloves/right/state` 或 `/gloves/left/state`（`vt_glove_msgs/msg/GloveState`）。同一读取者另行发布
+`/gloves/{hand}/imu/raw`（`vt_glove_msgs/msg/RawImuBatch`），保留原始六轴整数和接收时间。
+默认保持右手；不重新打开串口，不运行第二套求解器，不改变原来的本地调试记录策略。
 
 本包是 ROS 桥接层，不代表手套已完成精度、漂移或硬件量程验收。
 默认只启动窗口，**连接、静止参考、姿态和功能标定仍由用户在原界面操作**。
@@ -195,6 +196,7 @@ ros2 launch vt_glove_bridge hands.launch.py \
 | 数据 | 左手 | 右手 |
 | --- | --- | --- |
 | 解算结果 | `/gloves/left/state` | `/gloves/right/state` |
+| 原始 IMU 批次 | `/gloves/left/imu/raw` | `/gloves/right/imu/raw` |
 | 触觉采集批次 | `/gloves/left/tactile/samples` | `/gloves/right/tactile/samples` |
 | 触觉滚动显示 | `/gloves/left/tactile/state` | `/gloves/right/tactile/state` |
 
@@ -208,10 +210,11 @@ ros2 launch vt_glove_bridge hands.launch.py \
 ```bash
 ros2 bag record -s mcap -o /absolute/path/new_hands_bag \
   /gloves/left/state /gloves/right/state \
+  /gloves/left/imu/raw /gloves/right/imu/raw \
   /gloves/left/tactile/samples /gloves/right/tactile/samples
 ```
 
-按启用组合删除不需要的 Topic。触觉 `state` 是派生显示，默认录 `samples`；手势仍只录解算结果。
+按启用组合删除不需要的 Topic。触觉 `state` 是派生显示，默认录 `samples`；手势同时录原始 IMU 和解算结果。
 需要与三相机/三 Tracker 同 bag 时，使用
 [双手录包与对齐 profile 生成器](../../../tools/multisensor_alignment/README.md#117-单双手独立选择与配套配置)。
 不要用旧右手对齐 YAML 读取包含额外左手 Topic 的 bag。
@@ -342,11 +345,11 @@ bank 重复数据会触发保护；详见[接收完整性保护](../../../tools/
 最小单手录制示例：
 
 ```bash
-ros2 bag record -s mcap /gloves/right/state
+ros2 bag record -s mcap /gloves/right/state /gloves/right/imu/raw
 ```
 
-在现有多模态 Recorder 中，把 `/gloves/right/state` 作为 additional stream
-加入与相机、Tracker 相同的一次 bag。仅加入这个解算结果 topic，无需 IMU raw topic。
+在现有多模态 Recorder 中，把 `/gloves/right/state` 和 `/gloves/right/imu/raw` 作为 additional streams
+加入与相机、Tracker 相同的一次 bag。
 详见 [离线对齐工具](../../../tools/multisensor_alignment/README.md)。
 
 消息 QoS 为 reliable、volatile、depth 30，与 best-effort Recorder 订阅兼容；
@@ -354,8 +357,19 @@ ros2 bag record -s mcap /gloves/right/state
 桥接与本机 IPC 不承担无限缓存；录制后检查序号缺口、producer 丢包、有效状态比例和时间年龄。
 丢包总数是分环节诊断量，不能简单相加（同一次丢样可能同时形成序号缺口）。
 
-原始数据未进入 bag 时，bag 不能用于重跑 VQF 或重新标定。需要此类排查时仍可使用
-现有本地调试记录，与 ROS bag 策略互不影响。
+原始 IMU 批次来自唯一读取线程，每条 `RawImuSample` 保留 `node_id`、`sample_index`、
+`filter_epoch`、原始 `int16[6] raw_values`、未解释的 `status`、两个整数纳秒接收时钟和输入拒绝标志。
+`session_id` 与 `sample_index/filter_epoch` 可对应解算消息的 `source_*` 数组；清除标定不会重置节点累计序号。
+被输入保护拒绝的样本仍保留原始值；`fusion_updated` 描述是否更新滤波器，不表示输入已通过物理精度验收。
+
+原始导出不等待标定或 MANO 渲染，每批最多 64 个样本，工作队列最多 64 批。
+它使用姿态 socket 后加 `.imu` 的独立通道；队列已满或发送失败不会阻塞读取，而是在
+`producer_dropped_batches_total/producer_dropped_samples_total` 中明确累计，后续批次携带这些计数。
+这些计数跨同一生产进程的会话累计，`batch_sequence` 则每会话从 1 起。
+实时状态 `runtime.ros_raw_export` 另提供队列长度、容量、发送量和保留的最后错误；
+后台监听断流也会输出诊断。丢失计数不能与序号缺口简单相加。
+旧 CSV 回放没有整数时钟时保留零值并标记 `time_valid=false`，不会把浮点秒伪装成原始纳秒。
+录到原始 IMU 仍须同时保存对应配置及标定才能可靠复现解算；本地调试记录保持独立可用。
 
 ## 6. 可配置项与故障排查
 
@@ -405,4 +419,12 @@ domain 147，不连接串口、不启动手套窗口：
 ```bash
 VT_GLOVE_ROS_INTEGRATION=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest \
   ros2_ws/src/vt_glove_bridge/test/test_ros_integration.py -q
+```
+
+同一已安装 `vt-fsglove12` 数值依赖的 Python 环境可验证原始串口格式解析、真实 VQF、
+异步原始导出、双手桥接、生成消息序列化及 DDS；使用独立 domain 148，不需要模型或标定：
+
+```bash
+VT_GLOVE_ROS_INTEGRATION=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest \
+  ros2_ws/src/vt_glove_bridge/test/test_raw_imu_ros_integration.py -q
 ```

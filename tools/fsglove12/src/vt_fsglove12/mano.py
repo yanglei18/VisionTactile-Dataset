@@ -295,6 +295,28 @@ class ManoBackend:
             "provenance": dict(self._provenance),
         }
 
+    def measure_mano(self, mano_pose_rotvec: Any, shape_params: Any = None) -> dict[str, Any]:
+        """Same-frame wrist-relative 21 points, including skinned fingertips.
+
+        No display hold, candidate shape or asynchronous surface enters this
+        measurement. The shape cache is keyed by the explicit current betas.
+        """
+        from .mano_measurement import ManoJointEvaluator
+        pose = _checked_array(mano_pose_rotvec, (16, 3), "mano_pose_rotvec")
+        betas = _checked_array(np.zeros(10) if shape_params is None else shape_params, (10,), "shape_params")
+        self._ensure_loaded()
+        if not hasattr(self, '_joint_evaluator'):
+            self._joint_evaluator = ManoJointEvaluator(self._mano, self.hand)
+        joints = self._joint_evaluator.joints(pose, betas)
+        return dict(joints_m=joints.tolist(), mano_pose_rotvec=pose.tolist(),
+                    provenance={**self._provenance, "betas": betas.tolist(),
+                                "pose_input": "upstream_mano_axis_angle_direct",
+                                "measurement": "16_fk_joints_and_5_skinned_fingertips"})
+
+    def create_preview_renderer(self):
+        from .display_geometry import GeometryPreviewWorker
+        return GeometryPreviewWorker(self.assets_root, self.hand)
+
     def render_mano(self, mano_pose_rotvec: Any, shape_params: Any = None) -> dict[str, Any]:
         """Render official MANO parameters directly, without re-solving joints.
 

@@ -256,6 +256,18 @@ def build_record_command(
     ]
 
 
+def build_monitored_record_command(*, session_id: str, recorder_instance_id: str,
+                                   **arguments) -> list[str]:
+    """Preserve the standard recording options while observing the actual writer."""
+    command = build_record_command(**arguments)
+    if not session_id or not recorder_instance_id:
+        raise ValueError("monitored recorder needs session and instance identities")
+    metrics_path = Path(arguments["output_path"]).parent / "recorder-metrics.json"
+    return ["ros2", "run", "vt_realsense_capture", "monitored_recorder",
+            "--session-id", session_id, "--recorder-instance-id", recorder_instance_id,
+            "--metrics-file", str(metrics_path), *command[3:]]
+
+
 def _absolute_canonical_path(path: Path | str, context: str) -> Path:
     value = Path(path)
     if not value.is_absolute():

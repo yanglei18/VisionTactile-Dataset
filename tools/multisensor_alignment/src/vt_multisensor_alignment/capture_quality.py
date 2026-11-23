@@ -2,13 +2,14 @@
 
 Compact source messages and image headers are selected at the storage reader.
 Image pixels are never deserialized or decoded; only one serialized message is
-held at a time. Unknown types use metadata only. No sample histories are retained.
+held at a time. Opaque payloads can be counted and timed without decoding them.
 Rates are labelled by clock and measurement basis: image headers, timing metadata,
 a rolling state, and a physical scan are deliberately not interchangeable.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from collections.abc import Mapping, Sequence
@@ -28,6 +29,10 @@ from .camera_calibration import CALIBRATION_TYPES, CalibrationQualityAccumulator
 from .config import AlignmentConfig
 from .image_header import image_header_stamp_ns
 from .model import MessageRef
+from .hand_identity import HandStreamIdentity
+from .source_counter import SourceCounter
+from .raw_imu_quality import RAW_IMU_TYPE, RawImuQuality
+from .recorder_reconciliation import read_recorder_counters, reconcile_recorder
 from .tactile_adapter import TACTILE_SAMPLE_TYPE, TACTILE_ROW44_SAMPLE_TYPE, TACTILE_SAMPLE_TYPES, TactileContinuity
 
 
@@ -230,31 +235,6 @@ class _Sequence:
                 "basis": "software indices within session/epoch; not proof of hardware or recorder loss"}
 
 
-class _Counter:
-    def __init__(self) -> None:
-        self.context: object = None
-        self.highwater: int | None = None
-        self.increases = self.initial_values_sum = self.regressions = 0
-
-    def add(self, value: int, context: object) -> None:
-        if self.context != context or self.highwater is None:
-            self.context, self.highwater = context, value
-            # A nonzero first observation may predate this bag: never silently
-            # count it as loss that occurred during the recording.
-            self.initial_values_sum += value
-            return
-        if value < self.highwater:
-            self.regressions += 1
-        else:
-            self.increases += value - self.highwater
-            self.highwater = value
-
-    def document(self) -> dict:
-        return {"observed_increase": self.increases,
-                "initial_values_sum_not_attributed_to_recording": self.initial_values_sum,
-                "counter_regressions": self.regressions}
-
-
 class TopicQualityAccumulator:
     """Pure message accumulator; one instance per compact source topic."""
 
@@ -271,7 +251,8 @@ class TopicQualityAccumulator:
         self.source_realtime = IntervalAccumulator()
         self.receipt_minus_source = _Values()
         self.sequence = _Sequence()
-        self.counters: dict[str, _Counter] = {}
+        self.counters: dict[str, SourceCounter] = {}
+        self.hand_identity = HandStreamIdentity(pose=True) if type_name == GLOVE_TYPE else None
         self.context: object = None
         self.previous_clocks: tuple[int, int] | None = None
         self.continuity = TactileContinuity(source_type=self.type_name if self.type_name in TACTILE_SAMPLE_TYPES else TACTILE_SAMPLE_TYPE)
@@ -324,6 +305,8 @@ class TopicQualityAccumulator:
         self._begin(receipt_ns)
         try:
             self._add(message, receipt_ns)
+            if self.hand_identity is not None:
+                self.hand_identity.observe(message)
             self.decoded += 1
         except (AttributeError, TypeError, ValueError, OverflowError) as error:
             self._error(error)
@@ -382,7 +365,7 @@ class TopicQualityAccumulator:
         for name in ("producer_dropped_total", "discarded_bytes_total", "malformed_packets_total",
                      "bridge_sequence_gaps_total", "bridge_rejected_total"):
             if hasattr(message, name):
-                counter = self.counters.setdefault(name, _Counter())
+                counter = self.counters.setdefault(name, SourceCounter())
                 # These are session-cumulative, not epoch-cumulative counters.
                 counter.add(_integer(getattr(message, name), name), context[0])
 
@@ -453,6 +436,8 @@ class TopicQualityAccumulator:
             "latency_basis": "bag timestamp minus host receive clock; meaningful only with the same realtime clock; not hardware latency",
             "cumulative_counters": {name: value.document() for name, value in self.counters.items()},
         }
+        if self.hand_identity is not None:
+            result["hand_source"] = self.hand_identity.document()
         if self.type_name in {GLOVE_TYPE, *TACTILE_SAMPLE_TYPES}:
             result["software_sequence"] = self.sequence.document()
         if self.type_name in TACTILE_SAMPLE_TYPES:
@@ -614,7 +599,7 @@ def generate_capture_quality(
             deserializers[topic] = image_header_stamp_ns
             accumulators[topic] = ImageQualityAccumulator(expected_image_rates.get(topic))
             continue
-        if entry["type"] not in INSPECTED_TYPES | CALIBRATION_TYPES:
+        if entry["type"] not in INSPECTED_TYPES | CALIBRATION_TYPES | {RAW_IMU_TYPE}:
             continue
         try:
             deserializers[topic] = _deserializer(entry["type"])
@@ -622,17 +607,33 @@ def generate_capture_quality(
             entry["inspection_reason"] = f"message type unavailable: {error}"[:400]
             warn("message_support_unavailable", entry["inspection_reason"], topic)
         else:
-            accumulators[topic] = (CalibrationQualityAccumulator(entry["type"])
-                                   if entry["type"] in CALIBRATION_TYPES
-                                   else TopicQualityAccumulator(topic, entry["type"]))
-    if any(topics[topic]["recorded_message_count"] for topic in deserializers):
+            if entry["type"] == RAW_IMU_TYPE:
+                accumulators[topic] = RawImuQuality(topic)
+            elif entry["type"] in CALIBRATION_TYPES:
+                accumulators[topic] = CalibrationQualityAccumulator(entry["type"])
+            else:
+                accumulators[topic] = TopicQualityAccumulator(topic, entry["type"])
+    recorded_intervals = defaultdict(IntervalAccumulator)
+    ledger_error = None
+    try:
+        ledger = read_recorder_counters(bag)
+    except (ValueError, OSError) as exc:
+        ledger = None
+        ledger_error = str(exc)
+        warn("recorder_metrics_invalid", ledger_error)
+    # With a recorder ledger, also count opaque types without deserializing
+    # them. Do not infer a final count from metadata or the recorder itself.
+    if ledger is not None or any(topics[topic]["recorded_message_count"] for topic in deserializers):
         reader = _open_reader(bag)
         # A failed/missing filter is never silently replaced by inspecting
         # unknown topics. Images use the bounded header parser, not ROS decoding.
         try:
-            _set_filter(reader, list(deserializers))
+            if ledger is None:
+                _set_filter(reader, list(deserializers))
             while reader.has_next():
                 topic, payload, receipt_ns = reader.read_next()
+                if ledger is not None:
+                    recorded_intervals[topic].add(int(receipt_ns))
                 if topic not in deserializers:
                     continue
                 accumulator = accumulators[topic]
@@ -652,6 +653,20 @@ def generate_capture_quality(
         entry.update(accumulator.document())
         if entry["observed_messages"] != entry["recorded_message_count"]:
             warn("observed_count_mismatch", "filtered payload count differs from bag metadata", topic)
+        if entry["inspection"] == "raw_imu_samples":
+            for key in ("malformed_messages", "unknown_source_time_samples", "unobserved_batches",
+                        "repeated_or_reordered_batches"):
+                if entry[key]:
+                    warn(key, f"{key}: {entry[key]}", topic)
+            if any(node["unobserved_sample_indices"] or node["repeated_or_reordered_indices"]
+                   for node in entry["nodes"].values()):
+                warn("raw_sample_discontinuity", "Per-node sample indices are discontinuous", topic)
+            if any(node["host_timestamp_regressions"] for node in entry["nodes"].values()):
+                warn("raw_sample_clock_regression", "Node host timestamps moved backwards", topic)
+            for name, values in entry["cumulative_counters"].items():
+                if values["observed_increase"] or values["counter_regressions"]:
+                    warn("raw_transport_counter_change", f"{name}: {values}", topic)
+            continue
         if entry["inspection"] == "calibration_messages":
             for key, code, detail in (
                     ("malformed_messages", "malformed_messages", "calibration payload decode failures"),
@@ -706,13 +721,22 @@ def generate_capture_quality(
             if minimum is None or minimum < _CELLS:
                 warn("partial_tactile_snapshots", "one or more snapshots lack complete valid physical coverage", topic)
 
+    observed_counts = {topic: timing.observations for topic, timing in recorded_intervals.items()}
+    reconciliation = reconcile_recorder(ledger, observed_counts, topics)
+    if ledger is not None:
+        for topic, row in reconciliation["topics"].items():
+            row["mcap_record_timestamp_timing"] = recorded_intervals[topic].document()
+    if ledger_error:
+        reconciliation.update(reason="recorder_metrics_invalid")
+    if ledger is not None and reconciliation["status"] != "verified":
+        warn("recorder_counts_unconfirmed", "Recorder completion or write/read counts could not be confirmed")
     inspected = len(accumulators)
     result = {
         "schema_version": 1,
         "report_kind": "post_record_capture_quality",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "status": "warnings" if warnings else "ok",
-        "bag": metadata,
+        "bag": metadata, "recorder_reconciliation": reconciliation,
         "summary": {"topic_count": len(topics), "inspected_topic_count": inspected,
                     "metadata_only_topic_count": len(topics) - inspected,
                     "warning_count": len(warnings)},

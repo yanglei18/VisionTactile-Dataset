@@ -18,8 +18,16 @@ def build_node(config, *, context=None, model=None):
     from sensor_msgs.msg import Image
     from vt_tracker_msgs.msg import TrackerSample
     from vt_glove_msgs.msg import GloveState
+    try:
+        from vt_glove_msgs.msg import RawImuBatch
+    except ImportError:
+        RawImuBatch = None  # Legacy debug deployments remain usable until rebuilt.
     from vt_tactile_msgs.msg import TactileRow44Array, TactileGridState
     from vt_camera_msgs.msg import CaptureStatus
+    try:
+        from vt_camera_msgs.msg import RecorderMetrics
+    except ImportError:
+        RecorderMetrics = None
     from .image_preview import ImagePreviewWorker
 
     class CaptureManagerNode(Node):
@@ -71,12 +79,27 @@ def build_node(config, *, context=None, model=None):
             for topic in self.model.sample_activity_topics():
                 self._subscriptions_owned.append(self.create_subscription(
                     TactileRow44Array, topic,
-                    lambda _message, name=topic: self.model.observe_topic_activity(name),
+                    lambda _message, name=topic: self.model.observe_topic_activity(name, message=_message),
                     QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
-                               durability=DurabilityPolicy.VOLATILE), raw=True))
+                               durability=DurabilityPolicy.VOLATILE)))
+            if RawImuBatch is not None:
+                for topic in self.model.imu_activity_topics():
+                    self._subscriptions_owned.append(self.create_subscription(
+                        RawImuBatch, topic,
+                        lambda message, name=topic: self.model.observe_imu_activity(name, message),
+                        QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
+                                   durability=DurabilityPolicy.VOLATILE)))
+            elif self.model.imu_activity_topics():
+                self.model.event("warning", "原始 IMU 消息接口未构建；旧调试可用，正式手部采集需重建并重启后台。")
             self._subscriptions_owned.append(self.create_subscription(
                 CaptureStatus, config.capture_status_topic, self.model.observe_capture,
                 QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.VOLATILE)))
+            if RecorderMetrics is not None:
+                metrics_topic = config.capture_status_topic.rsplit("/", 1)[0] + "/recorder_metrics"
+                self._subscriptions_owned.append(self.create_subscription(
+                    RecorderMetrics, metrics_topic, self.model.observe_recorder_metrics,
+                    QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT,
+                               durability=DurabilityPolicy.VOLATILE)))
             self.model.event("info", "ROS stream monitor: no camera, tracker or serial device ownership.")
 
         def _observe(self, identity, kind, message):
@@ -128,6 +151,7 @@ def main(argv=None):
     parser.add_argument("--calibration-root", help="External directory for calibration sessions and versioned active results")
     parser.add_argument("--state-dir", help="Private management directory; recording DB and/or process journal are created only when enabled")
     parser.add_argument("--desktop-apply-lock", help="Private command-admission lock used by the desktop configuration launcher")
+    parser.add_argument("--candidate-source-root", help="Require candidate hand runtimes to import this checkout; omitted for ordinary explicit installations")
     parser.add_argument("--log-path", help="Retain the private file already receiving this process's stdout; no output redirection")
     args, ros_args = parser.parse_known_args(argv)
     from vt_capture_core.process_log import ProcessLogRetention
@@ -175,6 +199,7 @@ def _run_manager(args, ros_args):
             geometry_recorder = GeometryRecorder(node.scene_store, event=node.model.event)
             management.geometry_recorder = geometry_recorder
         if args.enable_device_control:
+            from vt_capture_core.hand_preflight import prepare_hand_runtimes
             from .device_processes import ProcessSupervisor
             from .launch_profiles import build_specs
             from .management import default_state_dir
@@ -200,9 +225,15 @@ def _run_manager(args, ros_args):
                 allowed=management.hand_calibration_allowed, admission_lock=management._mutex,
                 process_snapshot=lambda: processes.snapshot() if processes else {"groups": []})
             management.hands = hands
+
+            def launch_preflight(spec):
+                return prepare_hand_runtimes(config.process_groups,
+                    candidate_root=getattr(args, "candidate_source_root", None), target_group_id=spec.id)
+
             processes = ProcessSupervisor(specs, instance_id=node.model.instance_id,
                 state_dir=Path(args.state_dir or default_state_dir()) / "processes", observe=observe,
-                allowed=management.lifecycle_allowed, event=node.model.event, readiness=hands.ready)
+                allowed=management.lifecycle_allowed, event=node.model.event, readiness=hands.ready,
+                launch_preflight=launch_preflight)
             management.processes = processes
             hands.start()
             processes.start()

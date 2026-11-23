@@ -1,4 +1,4 @@
-"""Bounded IPC with v8 source binding and explicit legacy negotiation. No retries."""
+"""Bounded IPC with recorder metrics, source binding and explicit legacy negotiation. No retries."""
 
 from __future__ import annotations
 
@@ -15,17 +15,21 @@ from .operation_receipts import OperationReceipts
 from vt_capture_core.calibration_protocol import CALIBRATION_COMMANDS
 
 from vt_capture_core.protocol import (
-    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION, MAX_MESSAGE_BYTES, PROTOCOL_VERSION, decode_message, encode_message,
+    CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION, METRICS_PROTOCOL_VERSION, MAX_MESSAGE_BYTES, PROTOCOL_VERSION, decode_message, encode_message,
 )
 
 
 MAX_PENDING_COMMANDS = 8
 DEVICE_COMMANDS = {"device.start", "device.stop", "device.restart"}
 CONTROL_COMMANDS = {"batch.create", "capture.start", "capture.stop", "quality.retry"} | DEVICE_COMMANDS | CALIBRATION_COMMANDS | {"hand.command"}
-MANAGEMENT_VERSIONS = (CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
-DETAIL_VERSIONS = (DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
-DEVICE_VERSIONS = (DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
-PREFERRED_VERSIONS = (IDENTITY_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, CONTROL_PROTOCOL_VERSION, PROTOCOL_VERSION)
+PREFERRED_VERSIONS = tuple(range(METRICS_PROTOCOL_VERSION, PROTOCOL_VERSION - 1, -1))
+MANAGEMENT_VERSIONS = range(CONTROL_PROTOCOL_VERSION, METRICS_PROTOCOL_VERSION + 1)
+DETAIL_VERSIONS = range(DETAIL_PROTOCOL_VERSION, METRICS_PROTOCOL_VERSION + 1)
+DEVICE_VERSIONS = range(DEVICE_PROTOCOL_VERSION, METRICS_PROTOCOL_VERSION + 1)
+PLAN_VERSIONS = range(PLAN_PROTOCOL_VERSION, METRICS_PROTOCOL_VERSION + 1)
+CALIBRATION_VERSIONS = range(CALIBRATION_PROTOCOL_VERSION, METRICS_PROTOCOL_VERSION + 1)
+HAND_VERSIONS = range(HAND_PROTOCOL_VERSION, METRICS_PROTOCOL_VERSION + 1)
+VERIFIED_VERSIONS = tuple(v for v in PREFERRED_VERSIONS if v >= IDENTITY_PROTOCOL_VERSION)
 
 
 def default_socket_path():
@@ -162,20 +166,26 @@ class IpcBackend:
     @property
     def supports_capture_plan(self):
         with self._lock:
-            return bool(self._connected() and self._version in (PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
+            return bool(self._connected() and self._version in PLAN_VERSIONS
+                        and self._snapshot["capabilities"].get("capture_plan", False))
+
+    @property
+    def supports_capture_policy(self):
+        with self._lock:
+            return bool(self._connected() and self._version == METRICS_PROTOCOL_VERSION
                         and self._snapshot["capabilities"].get("capture_plan", False))
 
     @property
     def supports_calibration(self):
         with self._lock:
-            return bool(self._connected() and self._version in (CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
+            return bool(self._connected() and self._version in CALIBRATION_VERSIONS
                         and self._snapshot["capabilities"].get("calibration", False)
                         and self._snapshot.get("calibration", {}).get("enabled", False))
 
     @property
     def supports_hand_control(self):
         with self._lock:
-            return bool(self._connected() and self._version in (HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
+            return bool(self._connected() and self._version in HAND_VERSIONS
                         and self._snapshot["capabilities"].get("hand_control", False))
 
     @property
@@ -229,22 +239,22 @@ class IpcBackend:
                 or time.monotonic() - self._received > 1.0):
             return "BACKEND_UNAVAILABLE", "后台未连接或状态陈旧；未发送命令"
         if command == "hand.command":
-            if self._version not in (HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+            if self._version not in HAND_VERSIONS:
                 return "UNSUPPORTED_FEATURE", "当前后台不支持内嵌手部标定，需要 v7"
             if not self._snapshot["capabilities"].get("hand_control", False):
                 return "HAND_CONTROL_UNAVAILABLE", "手部服务当前不可控制；未发送命令"
             return None
         if command in CALIBRATION_COMMANDS:
-            if self._version not in (CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+            if self._version not in CALIBRATION_VERSIONS:
                 return "UNSUPPORTED_FEATURE", "当前后台不支持引导标定，需要 v6"
             if not self._snapshot["capabilities"].get("calibration", False):
                 return "CALIBRATION_UNAVAILABLE", "后台未启用标定服务"
             return None
         if command == "capture.start":
-            if planned_start and (self._version not in (PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
+            if planned_start and (self._version not in PLAN_VERSIONS
                     or not self._snapshot["capabilities"].get("capture_plan", False)):
                 return "UNSUPPORTED_FEATURE", "当前后台不支持采集计划校验，需要 v5；未发送命令"
-            if self._version in (PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION) and not planned_start:
+            if self._version in PLAN_VERSIONS and not planned_start:
                 return "PLAN_REQUIRED", "当前后台要求完整采集计划；未发送无计划的录制命令"
         if command in DEVICE_COMMANDS:
             if self._version not in DEVICE_VERSIONS:
@@ -331,12 +341,9 @@ class IpcBackend:
 
     def _poll(self):
         now = time.monotonic()
-        if self._version in (None, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION) or now >= self._next_v2_probe:
-            versions = PREFERRED_VERSIONS
-        else:
-            versions = tuple(version for version in PREFERRED_VERSIONS if version <= self._version)
-        if self.expected_software is not None:
-            versions = (IDENTITY_PROTOCOL_VERSION,)
+        versions = VERIFIED_VERSIONS if self.expected_software is not None else PREFERRED_VERSIONS
+        if self._version is not None and now < self._next_v2_probe:
+            versions = tuple(v for v in versions if v <= self._version)
         failure = None
         for version in versions:
             try:
@@ -469,6 +476,8 @@ class IpcBackend:
             value["capabilities"]["device_control"] = False
             process_history_reason = "协议已降级，当前设备进程状态未确认"
         if self._stop.is_set() or error or received is None or time.monotonic() - received > 1.0:
+            if "recorder_metrics" in value:
+                value["recorder_metrics"] = None
             value["resources"]["disk_free_bytes"] = None
             for device in value["devices"]:
                 device["status"] = "stale"
@@ -484,13 +493,13 @@ class IpcBackend:
             management.update(enabled=False, controller=None)
             history_reason = "后台失联，当前状态未确认"
             process_history_reason = "后台失联，当前设备进程状态未确认"
-        if "calibration" in value and (history_reason or version not in (CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)):
+        if "calibration" in value and (history_reason or version not in CALIBRATION_VERSIONS):
             value["capabilities"]["calibration"] = False
             value["calibration"]["enabled"] = False
             value["calibration"]["detail"] = history_reason or "标定协议不可用"
             if value["calibration"].get("session") is not None:
                 value["calibration"]["session"]["preview"] = None
-        if version not in (HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION) or history_reason:
+        if version not in HAND_VERSIONS or history_reason:
             value["capabilities"]["hand_control"] = False
             for session in value.get("hand_sessions", {}).values():
                 session.update(service_state="unavailable", connected=False, raw_fresh=False,

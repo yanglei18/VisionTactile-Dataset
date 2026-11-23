@@ -31,10 +31,12 @@ class PlanPreflightError(ValueError):
         self.code = code
 
 
-def check_capture_plan(params: dict, context: dict, topic_activity: dict, *, frozen_plan=None):
+def check_capture_plan(params: dict, context: dict, topic_activity: dict, *, frozen_plan=None,
+                       topic_health: dict | None = None):
     """Return the resolved plan and bounded observations, or reject admission.
 
-    Freeze receiving streams as required; absent candidates remain subscribed.
+    Formal requires selected streams and coherent live source health. Debug
+    freezes receiving streams as required; absent candidates remain subscribed.
     A dispatch recheck uses the accepted frozen plan, so a stream that disappears
     while queued cannot silently become optional. Inputs are never mutated.
     """
@@ -46,7 +48,7 @@ def check_capture_plan(params: dict, context: dict, topic_activity: dict, *, fro
         raise PlanPreflightError("active_session", "已有录制或状态未确认，未发送新的录制命令。")
     try:
         recipe = validate_recipe(params["recipe"])
-        plan = resolve_capture_plan(recipe)
+        plan = resolve_capture_plan(recipe, admission_policy=params.get("admission_policy"))
         actual_fingerprint = topics_fingerprint(context["topics"])
         comparison = compare_controller_topics(plan, context["topics"])
     except (CapturePlanError, RecipeError) as exc:
@@ -56,12 +58,20 @@ def check_capture_plan(params: dict, context: dict, topic_activity: dict, *, fro
     if params["expected_topics_fingerprint"] != actual_fingerprint:
         raise PlanPreflightError("capture_topics_changed", "当前录制清单已变化，请刷新后重新开始。")
     if not comparison.matches:
-        raise PlanPreflightError("capture_plan_mismatch", "采集计划与控制器实际录制清单不一致，请检查设备配置。")
+        details = []
+        if comparison.missing_topics:
+            details.append("缺少：" + ", ".join(comparison.missing_topics))
+        if comparison.unexpected_topics:
+            details.append("额外配置：" + ", ".join(comparison.unexpected_topics))
+        if comparison.duplicate_topics:
+            details.append("重复：" + ", ".join(comparison.duplicate_topics))
+        raise PlanPreflightError("capture_plan_mismatch", "采集目标与控制器录制清单不一致；" + "；".join(details))
 
     if frozen_plan is not None:
         try:
             accepted = validate_capture_plan(frozen_plan)
-            if accepted.recipe != recipe or not compare_controller_topics(accepted, context["topics"]).matches:
+            if (accepted.recipe != recipe or accepted.admission_policy != plan.admission_policy
+                    or not compare_controller_topics(accepted, context["topics"]).matches):
                 raise CapturePlanError("frozen plan differs from the accepted request")
         except CapturePlanError as exc:
             raise PlanPreflightError("capture_plan_invalid", "已保存的采集计划无效，未发送录制命令。") from exc
@@ -80,7 +90,18 @@ def check_capture_plan(params: dict, context: dict, topic_activity: dict, *, fro
                                  state="receiving" if active else
                                        ("not_receiving" if known else "not_observed")))
 
-    if frozen_plan is None:
+    formal = plan.admission_policy == "formal"
+    if formal:
+        missing = [stream.topic for stream in plan.streams
+                   if stream.type_name not in _AUXILIARY_TYPES and stream.topic not in receiving]
+        if missing:
+            hint = "；若缺少 IMU 数据，请确认新版手部后台运行且已重新构建消息接口。" if any(topic.endswith("/imu/raw") for topic in missing) else ""
+            raise PlanPreflightError("capture_streams_not_ready", "正式采集缺少新鲜数据：" + ", ".join(missing) + hint)
+        invalid = [stream.topic for stream in plan.streams if stream.type_name not in _AUXILIARY_TYPES
+                   and (topic_health or {}).get(stream.topic) is not True]
+        if invalid:
+            raise PlanPreflightError("capture_streams_invalid", "正式采集数据无效、源时间过期或原始 IMU 与姿态来源不一致：" + ", ".join(invalid))
+    elif frozen_plan is None:
         # Camera calibration and timing support a receiving image stream, even
         # though the manager does not subscribe to those auxiliary topics.
         active_devices = {stream.device_id for stream in plan.streams
@@ -97,11 +118,21 @@ def check_capture_plan(params: dict, context: dict, topic_activity: dict, *, fro
         if missing:
             raise PlanPreflightError("capture_streams_not_ready",
                                      "开始前已接收的数据流已中断：" + ", ".join(missing))
-    return plan, dict(version=2, checked_at=utc_now(), plan_fingerprint=plan.fingerprint,
+    result = dict(version=3 if plan.version >= 4 else 2, checked_at=utc_now(), plan_fingerprint=plan.fingerprint,
                      controller_topics_fingerprint=actual_fingerprint,
                      controller_instance_id=context["controller_instance_id"],
                      controller_state_revision=context["state_revision"],
                      observations=observations, unobserved_topics=unobserved,
                      optional_topics=list(plan.optional_topics()),
                      message_type_verification="not_observed", storage_admission="recorder_owned",
-                     scope="Recent message arrivals only; payload validity is not an admission requirement. Unobserved camera auxiliaries and recorded message coverage require post-record verification.")
+                     scope=("Formal: all selected main streams must have fresh valid samples; camera auxiliaries require post-record verification."
+                            if formal else "Recent message arrivals only; payload validity is not an admission requirement. Unobserved camera auxiliaries and recorded message coverage require post-record verification."))
+    if plan.version >= 4:
+        result.update(admission_policy=plan.admission_policy,
+                      raw_imu_coverage="required" if formal and plan.recipe.pose_hands else
+                          "configured" if plan.recipe.version >= 3 and plan.recipe.pose_hands else "not_selected",
+                      required_topics=list(plan.required_topics()),
+                      unobserved_required_auxiliaries=[stream.topic for stream in plan.streams
+                          if stream.required and stream.type_name in _AUXILIARY_TYPES and stream.topic not in receiving],
+                      limitation="Admission is not a completeness or sensor accuracy certificate. Raw IMU coverage follows the versioned recipe and must be verified after recording.")
+    return plan, result

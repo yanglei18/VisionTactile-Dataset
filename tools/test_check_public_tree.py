@@ -106,6 +106,8 @@ class AlternateIndexTests(unittest.TestCase):
             "docs/troubleshooting.md",
             "docs/user-manual.md",
             "ros2_ws/src/vt_camera_msgs/msg/CameraTrackerCalibration.msg",
+            "ros2_ws/src/vt_camera_msgs/msg/RecorderMetrics.msg",
+            "ros2_ws/src/vt_camera_msgs/msg/RecorderTopicMetrics.msg",
             "ros2_ws/src/vt_vive_tracker_gui/README.md",
             "tools/tracker_camera_calibration/README.md",
             "tools/tracker_camera_calibration/config/calibration.example.yaml",

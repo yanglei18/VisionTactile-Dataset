@@ -33,9 +33,11 @@ class HandControl:
         self._rows, self._seen, self._requests, self._pending = {}, {}, {}, set()
         self._retired = set()
         self._latest_id = None
+        self._trial_latest, self._trial_artifacts, self._trial_retry = {}, {}, {}
         tactile_profiles = {p["parameters"]["hand"]: p for p in profiles if p["preset"] == "tactile"}
         tactile = {hand: profile["parameters"] for hand, profile in tactile_profiles.items()}
         motion = {p["parameters"]["hand"]: p for p in profiles if p["preset"] == "glove"}
+        self._enabled_motion = {hand for hand, profile in motion.items() if profile.get("enabled", False)}
         if len(motion) != sum(p["preset"] == "glove" for p in profiles):
             raise ValueError("each hand must have exactly one managed motion profile")
         # Presentation exists independently of motion acquisition. A tactile-only
@@ -85,6 +87,75 @@ class HandControl:
             return None
         return any(row["group_id"] == spec.id and row["service_state"] == "ready"
                    for row in self.snapshot().values())
+
+    @staticmethod
+    def _evidence_binding(evidence):
+        return tuple(evidence.get(key) for key in ("service_instance_id", "session_id", "profile_version",
+                     "config_sha256", "rest_sha256", "profile_sha256"))
+
+    def trial_evidence(self, phase, hands=()):
+        """Read selected cached observations; START/STOP never waits on sockets.
+
+        The phase is when the manager registers evidence. The producer stamp
+        retains its asynchronous observation time, including at recorder STOP.
+        """
+        if phase not in {"before_start", "after_stop"} or set(hands) - {"left", "right"}:
+            raise ValueError("Invalid hand trial observation selection")
+        now = self._clock()
+        result = dict(schema_version=1, observation_phase=phase, observed_monotonic_ns=time.monotonic_ns(),
+                      boundary_exact=False, hands={})
+        with self._lock:
+            for hand in sorted(set(hands)):
+                current = deepcopy(self._trial_latest.get(hand, {}))
+                problem = ""
+                if hand not in self._enabled_motion:
+                    problem = "所选动捕手没有受管来源，无法确认运行配置与标定；调试录制仍可使用。"
+                elif not current or now - self._seen.get(hand, -1e30) > 1.5:
+                    problem = "所选动捕手的来源快照尚未就绪或已过期，请等待后台观察恢复。"
+                if phase == "before_start" and not problem:
+                    archived = self._trial_artifacts.get(hand, {})
+                    if self._evidence_binding(archived) != self._evidence_binding(current):
+                        problem = "当前标定的配置/参考/版本文件尚未验证，后台正在读取；无需重新标定。"
+                    else:
+                        current["artifacts"] = deepcopy(archived.get("artifacts", {}))
+                if problem:
+                    current.update(status="unavailable", hand=hand, problems=[problem])
+                result["hands"][hand] = current
+        return result
+
+    def _cache_trial_evidence(self, hand, reply):
+        """Only the observer thread fetches changed calibration originals."""
+        current = reply.get("trial_evidence")
+        if (not isinstance(current, dict) or current.get("hand") != hand
+                or current.get("service_instance_id") != reply.get("service_instance_id")):
+            current = dict(status="unavailable", hand=hand, problems=["手部服务尚未提供来源取证协议。"])
+        with self._lock:
+            self._trial_latest[hand] = deepcopy(current)
+            binding = self._evidence_binding(current)
+            cached = self._trial_artifacts.get(hand, {})
+            if (current.get("status") != "verified_snapshot" or not current.get("profile_version")
+                    or self._evidence_binding(cached) == binding):
+                return
+            previous, retry_at = self._trial_retry.get(hand, (None, 0.))
+            if previous == binding and self._clock() < retry_at:
+                return
+            self._trial_retry[hand] = (binding, self._clock() + 5.)
+            path = self._rows[hand]["control_socket"]
+        try:
+            response = self._exchange(path, dict(schema_version=1, op="trial_evidence", hand=hand,
+                expected_service_instance_id=reply["service_instance_id"], include_artifacts=True), timeout=.5)
+            evidence = response.get("evidence") or {}
+            if (response.get("ok") is not True or evidence.get("status") != "verified_snapshot"
+                    or self._evidence_binding(evidence) != binding
+                    or set(evidence.get("artifacts", {})) != {"config", "rest", "profile"}):
+                return
+            with self._lock:
+                if self._evidence_binding(self._trial_latest.get(hand, {})) == binding:
+                    self._trial_artifacts[hand] = deepcopy(evidence)
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+            # Retry only this read after a bounded interval; never reconnect,
+            # repeat calibration, or relabel the old artifact as the new one.
+            return
 
     def operation(self, request_id):
         with self._lock:
@@ -185,6 +256,7 @@ class HandControl:
                 self._seen[hand] = self._clock()
                 for receipt in reply.get("receipts", []):
                     self._update_receipt(receipt.get("request_id"), receipt)
+            self._cache_trial_evidence(hand, reply)
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
             with self._lock:
                 self._rows[hand].update(service_state="unavailable", connected=False, raw_fresh=False,

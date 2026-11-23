@@ -15,6 +15,7 @@ PLAN_PROTOCOL_VERSION = 5
 CALIBRATION_PROTOCOL_VERSION = 6
 HAND_PROTOCOL_VERSION = 7
 IDENTITY_PROTOCOL_VERSION = 8
+METRICS_PROTOCOL_VERSION = 9
 MAX_MESSAGE_BYTES = 2 * 1024 * 1024  # Includes the terminating LF on the wire.
 MAX_JSON_DEPTH = 32
 MAX_RECORDS = 200
@@ -168,9 +169,9 @@ def validate_capabilities(value, *, version=PROTOCOL_VERSION):
 
 def validate_snapshot(value, *, version=PROTOCOL_VERSION):
     required = {"mode", "instance_id", "sequence", "recording", "devices", "events", "resources", "capabilities"}
-    if version in (CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+    if CONTROL_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION:
         required.add("management")
-        if version in (DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+        if DEVICE_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION:
             required.add("process_control")
     elif version != PROTOCOL_VERSION:
         raise ProtocolError("unsupported snapshot version")
@@ -180,6 +181,8 @@ def validate_snapshot(value, *, version=PROTOCOL_VERSION):
         required.add("hand_sessions")
     if version >= IDENTITY_PROTOCOL_VERSION:
         required.add("software")
+    if version >= METRICS_PROTOCOL_VERSION:
+        required.add("recorder_metrics")
     mapping(value, required, "snapshot")
     choice(value["mode"], {"live", "demo"}, "snapshot.mode")
     text(value["instance_id"], "snapshot.instance_id", nonempty=True)
@@ -196,7 +199,7 @@ def validate_snapshot(value, *, version=PROTOCOL_VERSION):
             ids.add(item["id"])
     validate_resources(value["resources"])
     validate_capabilities(value["capabilities"], version=version)
-    if version in (CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+    if CONTROL_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION:
         limited_text(value["instance_id"], "snapshot.instance_id", nonempty=True)
         bounded_integer(value["sequence"], "snapshot.sequence", maximum=UINT64_MAX)
         for field in ("devices", "events"):
@@ -218,7 +221,7 @@ def validate_snapshot(value, *, version=PROTOCOL_VERSION):
         if value["resources"]["disk_free_bytes"] is not None:
             bounded_integer(value["resources"]["disk_free_bytes"], "resources.disk_free_bytes", maximum=UINT64_MAX)
         validate_management(value["management"])
-    if version in (DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+    if DEVICE_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION:
         validate_process_control(value["process_control"])
     if version >= CALIBRATION_PROTOCOL_VERSION:
         from .calibration_protocol import validate_calibration_snapshot
@@ -229,6 +232,9 @@ def validate_snapshot(value, *, version=PROTOCOL_VERSION):
     if version >= IDENTITY_PROTOCOL_VERSION:
         from .software_identity import validate_identity
         validate_identity(value["software"])
+    if version >= METRICS_PROTOCOL_VERSION:
+        from .recorder_metrics import validate_recorder_metrics
+        validate_recorder_metrics(value["recorder_metrics"])
 
 
 def limited_text(value, context, *, maximum=256, nonempty=False):
@@ -446,10 +452,10 @@ def validate_control_request(value):
         validate_hand_command(value["command"], value.get("params", {}))
         return
     commands = {"snapshot", "ping", "batch.create", "capture.start", "capture.stop"}
-    detailed = value["version"] in (DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION)
+    detailed = DETAIL_PROTOCOL_VERSION <= value["version"] <= METRICS_PROTOCOL_VERSION
     if detailed:
         commands |= {"trial.details", "quality.retry"}
-    if value["version"] in (DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+    if DEVICE_PROTOCOL_VERSION <= value["version"] <= METRICS_PROTOCOL_VERSION:
         commands |= {"device.start", "device.stop", "device.restart"}
     choice(value["command"], commands, "command")
     params = value.get("params", {})
@@ -464,6 +470,8 @@ def validate_control_request(value):
     planned_start = value["version"] >= PLAN_PROTOCOL_VERSION and value["command"] == "capture.start"
     if planned_start:
         required |= {"recipe", "expected_topics_fingerprint"}
+        if value["version"] >= METRICS_PROTOCOL_VERSION:
+            optional.add("admission_policy")
     mapping(params, required, "params", optional=optional)
     for key in optional & set(params):
         limited_text(params[key], f"params.{key}", maximum=512)
@@ -474,6 +482,8 @@ def validate_control_request(value):
     if "expected_state_revision" in required:
         bounded_integer(params["expected_state_revision"], "params.expected_state_revision", maximum=UINT64_MAX)
     if planned_start:
+        if "admission_policy" in params:
+            choice(params["admission_policy"], {"formal", "debug"}, "params.admission_policy")
         # Recipe depends on these primitive validators; import lazily to keep
         # its domain validation shared without introducing an import cycle.
         from .recipes import RecipeError, validate_recipe
@@ -482,6 +492,8 @@ def validate_control_request(value):
         except RecipeError as error:
             raise ProtocolError(str(error)) from error
         limited_text(recipe.name, "params.recipe.name", maximum=512, nonempty=True)
+        if recipe.version >= 3 and value["version"] < METRICS_PROTOCOL_VERSION:
+            raise ProtocolError("raw IMU recipes require protocol v9")
         if recipe.mode != "record" or recipe.duration_s != params["duration_s"]:
             raise ProtocolError("record recipe duration must match params.duration_s")
         fingerprint = params["expected_topics_fingerprint"]
@@ -492,11 +504,11 @@ def validate_control_request(value):
 def validate_message(value):
     if type(value) is not dict:
         raise ProtocolError("message must be an object")
-    if type(value.get("version")) is not int or value["version"] not in (PROTOCOL_VERSION, CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
-        raise ProtocolError("unsupported protocol version; expected integer 1 through 8")
+    if type(value.get("version")) is not int or not PROTOCOL_VERSION <= value["version"] <= METRICS_PROTOCOL_VERSION:
+        raise ProtocolError("unsupported protocol version; expected integer 1 through 9")
     text(value.get("request_id"), "request_id", nonempty=True)
     version = value["version"]
-    if version in (CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+    if CONTROL_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION:
         limited_text(value["request_id"], "request_id", nonempty=True)
     if "command" in value:
         if version == PROTOCOL_VERSION:
@@ -506,20 +518,20 @@ def validate_message(value):
             validate_control_request(value)
     else:
         optional = {"error"} if version == PROTOCOL_VERSION else {"error", "operation"}
-        if version in (DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+        if DETAIL_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION:
             optional.add("trial_details")
         mapping(value, {"version", "request_id", "ok", "snapshot"}, "response", optional=optional)
         boolean(value["ok"], "ok")
         validate_snapshot(value["snapshot"], version=version)
         if "error" in value:
             text(value["error"], "error")
-            if version in (CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION):
+            if CONTROL_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION:
                 limited_text(value["error"], "error", maximum=4096)
-        if version in (CONTROL_PROTOCOL_VERSION, DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION) and value.get("operation") is not None:
+        if CONTROL_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION and value.get("operation") is not None:
             validate_operation(value["operation"])
             if value["operation"]["request_id"] != value["request_id"]:
                 raise ProtocolError("response operation request_id mismatch")
-        if version in (DETAIL_PROTOCOL_VERSION, DEVICE_PROTOCOL_VERSION, PLAN_PROTOCOL_VERSION, CALIBRATION_PROTOCOL_VERSION, HAND_PROTOCOL_VERSION, IDENTITY_PROTOCOL_VERSION) and value.get("trial_details") is not None:
+        if DETAIL_PROTOCOL_VERSION <= version <= METRICS_PROTOCOL_VERSION and value.get("trial_details") is not None:
             validate_trial_details(value["trial_details"])
     json_value(value)
     return value

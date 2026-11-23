@@ -24,8 +24,9 @@ from vt_realsense_capture.controller import (
 )
 from vt_realsense_capture.recorder import (
     RecorderProcess,
-    build_record_command,
+    build_monitored_record_command,
 )
+from vt_realsense_capture.recorder_metrics import RecorderMetricsReader, project_recorder_metrics
 from vt_realsense_capture.session import RequestValidationError
 from vt_realsense_capture.storage import FileStorage
 from vt_realsense_capture.managed import CaptureContextFact, ManagedCommandFact
@@ -129,20 +130,31 @@ class ManagedRecorder:
         self._storage_config_path = Path(storage_config_path)
         self._process_factory = process_factory
         self._process: RecorderProcess | None = None
+        self._metrics: RecorderMetricsReader | None = None
 
     def start(self, spec: RecorderStartSpec) -> None:
         if self._process is not None:
             raise RuntimeError("managed Recorder may start only once")
-        command = build_record_command(
+        instance_id = uuid.uuid4().hex
+        command = build_monitored_record_command(
+            session_id=spec.session_id,
+            recorder_instance_id=instance_id,
             output_path=spec.output_path,
             storage_config_path=self._storage_config_path,
             qos_overrides_path=spec.qos_overrides_path,
             topics=spec.topics,
         )
+        self._metrics = RecorderMetricsReader(
+            session_id=spec.session_id, bag_path=spec.output_path,
+            instance_id=instance_id, topics=spec.topics,
+        )
         process = self._process_factory(command, session_parent=spec.session_dir)
         # Retain the process owner even when start raises after spawning.
         self._process = process
         process.start()
+
+    def metrics(self) -> dict | None:
+        return self._metrics.read() if self._metrics is not None else None
 
     def health(self) -> RecorderHealth:
         if self._process is None:
@@ -204,6 +216,8 @@ def build_controller_node(*, context=None, config=None, output_root=None,
         CaptureContext,
         CaptureEvent,
         CaptureStatus,
+        RecorderMetrics,
+        RecorderTopicMetrics,
         SessionInfo,
     )
     from vt_camera_msgs.srv import GetCaptureSnapshot, ManagedCaptureCommand
@@ -252,19 +266,24 @@ def build_controller_node(*, context=None, config=None, output_root=None,
             self._status_publisher = self.create_publisher(
                 CaptureStatus, "/capture/status", reliable
             )
+            self._metrics_publisher = self.create_publisher(
+                RecorderMetrics, "/capture/recorder_metrics", reliable
+            )
             self._event_publisher = self.create_publisher(
                 CaptureEvent, "/capture/event", reliable
             )
             self._session_publisher = self.create_publisher(
                 SessionInfo, "/capture/session_info", session_qos
             )
+            # A colcon symlink-install links this packaged, fixed-name resource
+            # back to the checkout. Pass its canonical file to the recorder.
             storage_config = capture_share / "config" / "mcap_writer_options.yaml"
             self._controller = CaptureController(
                 config=self._config,
                 output_root=Path(output_root) if output_root is not None else Path(output_root_text),
                 clock=clock if clock is not None else SystemClock(),
                 storage=storage if storage is not None else FileStorage(),
-                recorder_factory=recorder_factory if recorder_factory is not None else lambda: ManagedRecorder(storage_config),
+                recorder_factory=recorder_factory if recorder_factory is not None else lambda: ManagedRecorder(storage_config.resolve(strict=True)),
                 event_sink=self._publish_event,
                 status_sink=self._publish_status,
                 session_sink=self._publish_session,
@@ -378,6 +397,10 @@ def build_controller_node(*, context=None, config=None, output_root=None,
                 CaptureStatus(), fact, self.get_clock().now().to_msg()
             )
             self._status_publisher.publish(message)
+            self._metrics_publisher.publish(project_recorder_metrics(
+                RecorderMetrics(), fact.recorder_metrics, self.get_clock().now().to_msg(),
+                RecorderTopicMetrics, session_id=fact.session_id,
+            ))
 
         def _publish_session(self, fact: SessionInfoFact) -> None:
             message = project_session_info(
@@ -411,23 +434,40 @@ def build_controller_node(*, context=None, config=None, output_root=None,
 
 def main() -> None:
     """Run all services, legacy commands and ticks on one serialized worker."""
+    import signal
+    from threading import Event
+
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
+    from rclpy.signals import SignalHandlerOptions
 
-    rclpy.init()
-    node = build_controller_node()
-    executor = MultiThreadedExecutor(num_threads=2)
-    executor.add_node(node)
+    # launch and its process group can deliver SIGINT more than once. Treat all
+    # signals as one close request so a second KeyboardInterrupt cannot abandon
+    # the owned recorder while the worker is draining it.
+    stopping = Event()
+    previous = {value: signal.getsignal(value) for value in (signal.SIGINT, signal.SIGTERM)}
+    for value in previous:
+        signal.signal(value, lambda _number, _frame: stopping.set())
+    node = executor = None
     try:
-        executor.spin()
-    except KeyboardInterrupt:
-        pass
+        rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+        node = build_controller_node()
+        executor = MultiThreadedExecutor(num_threads=2)
+        executor.add_node(node)
+        while rclpy.ok() and not stopping.is_set():
+            executor.spin_once(timeout_sec=0.1)
     finally:
-        executor.shutdown(timeout_sec=5.0)
-        node.close()
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        try:
+            if executor is not None:
+                executor.shutdown(timeout_sec=5.0)
+            if node is not None:
+                node.close()
+                node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
+        finally:
+            for value, handler in previous.items():
+                signal.signal(value, handler)
 
 
 if __name__ == "__main__":

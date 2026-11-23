@@ -5,6 +5,7 @@ import threading
 from vt_capture_core.capture_plan import compare_controller_topics, validate_capture_plan
 from vt_capture_core.camera_streams import SUPPORTED_CAPTURE_SCHEMAS
 
+from .hand_quality import frozen_hand_expectations
 from .metadata import bounded_document
 
 
@@ -103,8 +104,14 @@ class QualityScheduler:
         expected_topics = list(finish["controller"]["topics"])
         expected_image_rates = {}
         optional_topics = []
+        recorder_options = {}
         if frozen_plan is not None:
             plan = validate_capture_plan(frozen_plan)
+            if plan.admission_policy == "formal":
+                recorder_options["require_recorder_counts"] = True
+                if plan.recipe.pose_hands:
+                    recorder_options["hand_expectations"] = frozen_hand_expectations(
+                        plan.recipe.pose_hands, details["metadata"]["start"], finish)
             expected_topics = list(plan.required_topics())
             optional_topics = list(plan.optional_topics())
             # Both dataset schemas fix camera streams to 1280x720 at 30 Hz.
@@ -124,7 +131,7 @@ class QualityScheduler:
             expected_topics=expected_topics, optional_topics=optional_topics,
             expected_image_rates_hz=expected_image_rates,
             alignment_config=alignment["path"] if alignment else None,
-            advisories=advisories,
+            advisories=advisories, **recorder_options,
             cancel=lambda: self._cancel.is_set() or self._stop.is_set() or not self.can_run())
         if self._cancel.is_set() or self._stop.is_set() or not self.can_run():
             # The child may finish while START arrives. Do not consume a

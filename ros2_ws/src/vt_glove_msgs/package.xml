@@ -2,7 +2,7 @@
 <package format="3">
   <name>vt_glove_msgs</name>
   <version>0.1.0</version>
-  <description>Timestamped solved glove pose interfaces, without raw IMU samples.</description>
+  <description>Separate timestamped solved glove pose and original raw IMU interfaces.</description>
   <maintainer email="vision-tactile@example.com">Vision Tactile Team</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

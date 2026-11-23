@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from vt_capture_console.backend import hand_runtime_probe as module
+from vt_capture_core import hand_runtime_probe as module
 
 
 def test_probe_uses_isolated_interpreter_and_no_device_command(tmp_path, monkeypatch):
@@ -40,7 +40,7 @@ def test_probe_rejects_unconfirmed_or_foreign_runtime(tmp_path, monkeypatch, mod
         if mode == "failure":
             kwargs["stderr"].write(b"wrong source installed")
             return SimpleNamespace(returncode=1)
-        payload = b"x" * 16385 if mode == "oversized" else b"no json" if mode == "invalid" else json.dumps(evidence).encode()
+        payload = b"x" * (1024 * 1024 + 1) if mode == "oversized" else b"no json" if mode == "invalid" else json.dumps(evidence).encode()
         kwargs["stdout"].write(payload)
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(module.subprocess, "run", run)

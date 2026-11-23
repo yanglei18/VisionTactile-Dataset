@@ -26,6 +26,7 @@ from .widgets.workstation_settings import BackendLogDialog, WorkstationSettingsD
 from .icons import icon
 from .presentation_settings import presentation_settings as _presentation_settings
 from ..viewmodels.recording import TRIAL_LABELS, owned_active_trial, recording_access
+from ..viewmodels.recorder_metrics import recorder_readout
 from ..viewmodels.capture_plan import capture_plan_view
 from ..viewmodels.operations import OperationCoordinator, OperationUpdate
 
@@ -768,6 +769,10 @@ class MainWindow(QMainWindow):
             self.management.get("controller"), duration_s=self.duration.value(),
             supported=supported, required=supported or "capture_plan" in capabilities,
             demo=self.demo,
+            admission_policy=self.capture_policy.currentData() if supported else None,
+            policy_supported=bool(getattr(self.backend, "supports_capture_policy", False)),
+            hand_selection={hand: selector.currentData() for hand, selector in self.capture_hand_modes.items()}
+                           if supported else None,
         )
 
     def _refresh_capture_plan(self):
@@ -1074,6 +1079,10 @@ class MainWindow(QMainWindow):
             self.capture_stage.set_source(selected.preview, selected.device_snapshot)
         self._update_details()
         recording = snapshot["recording"]
+        write_summary, write_details = recorder_readout(snapshot)
+        self.write_metrics.setVisible(bool(write_summary) and not self.demo)
+        self.write_metrics.setText(write_summary)
+        self.write_metrics.setToolTip(write_details)
         state = recording["state"]
         prefix = tr('模拟 · ') if self.demo else tr('录制 · ')
         self.record_state.setText(prefix + RECORDING.get(state, state))
@@ -1088,6 +1097,7 @@ class MainWindow(QMainWindow):
         if self.demo:
             can_start = state != "RECORDING" and not self.pending_request
             can_stop = state == "RECORDING" and not self.pending_request
+        can_edit_plan = can_start
         plan_view = self._refresh_capture_plan()
         can_start = can_start and not plan_view.blocks_start
         duration = self.duration.value() if state == "IDLE" and can_start else recording["duration_s"]
@@ -1101,6 +1111,10 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(can_start)
         self.stop_button.setEnabled(can_stop)
         self.duration.setEnabled(can_start)
+        plan_supported = bool(getattr(self.backend, "supports_capture_plan", False)) and not self.demo
+        self.capture_policy.setEnabled(can_edit_plan and plan_supported)
+        for selector in self.capture_hand_modes.values():
+            selector.setEnabled(can_edit_plan and plan_supported)
         self._refresh_recording_context(recording)
         self.start_button.setToolTip(plan_view.status if plan_view.blocks_start else
                                     tr('创建批次后开始录制；只记录控制器已配置的数据主题') if can_start else

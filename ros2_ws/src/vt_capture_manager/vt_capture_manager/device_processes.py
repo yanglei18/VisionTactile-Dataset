@@ -112,6 +112,10 @@ class _Group:
     launch_spec: ProcessSpec | None = None
 
 
+class _RuntimePreflightError(ValueError):
+    """A known refusal before attempting a configured process launch."""
+
+
 def _proc_info(pid):
     """Read Linux birth identity, not just the reusable numeric PID."""
     try:
@@ -168,6 +172,10 @@ class ProcessSupervisor:
     receives the full device command and must fail closed unless the recorder is
     known idle. Callbacks run outside this service's lock to avoid lock inversion
     with the capture management service. ``event`` accepts model.event's API.
+    Optional ``launch_preflight`` receives the resolved ProcessSpec in the
+    command worker, before any restart stop. It returns evidence whose
+    ``assert_current()`` performs only bounded, cheap identity checks; expensive
+    probes must be completed by the callback, outside the process lock.
     """
     LOG_LIMIT_BYTES = 2 * 1024 * 1024
     LOG_KEEP_BYTES = 1024 * 1024
@@ -175,7 +183,8 @@ class ProcessSupervisor:
     RECEIPT_LIMIT = 256
 
     def __init__(self, specs, *, instance_id, state_dir, observe, allowed, event,
-                 poll_interval_s=.1, interrupt_timeout_s=3., terminate_timeout_s=2., kill_timeout_s=1., readiness=None):
+                 poll_interval_s=.1, interrupt_timeout_s=3., terminate_timeout_s=2., kill_timeout_s=1., readiness=None,
+                 launch_preflight=None):
         specs = tuple(specs)
         if len(specs) > 32 or any(not isinstance(spec, ProcessSpec) for spec in specs) or len({s.id for s in specs}) != len(specs):
             raise ValueError("device specs must have unique ids")
@@ -187,6 +196,7 @@ class ProcessSupervisor:
         self.instance_id = instance_id
         self._observe, self._allowed, self._event = observe, allowed, event
         self._readiness = readiness
+        self._launch_preflight = launch_preflight
         self._camera_start_problem = CameraStartGuard()
         self._poll_interval = poll_interval_s
         self._timeouts = (interrupt_timeout_s, terminate_timeout_s, kill_timeout_s)
@@ -531,6 +541,17 @@ class ProcessSupervisor:
                            f"Device group {group_id}: {state}. {detail}", group_id)
             self._trim_logs()
 
+    @staticmethod
+    def _assert_preflight_current(launch_spec, prepared_spec, proof):
+        if prepared_spec is None:
+            return
+        try:
+            if launch_spec != prepared_spec:
+                raise ValueError("Configured launch arguments or resource bindings changed during preflight; retry the command.")
+            proof.assert_current()
+        except Exception as exc:
+            raise _RuntimePreflightError(str(exc)) from exc
+
     def _execute(self, command, group_id, request_id):
         group = self._groups[group_id]
         with self._mutex:
@@ -543,6 +564,23 @@ class ProcessSupervisor:
             if not permitted:
                 self._finish_receipt(request_id, "rejected", "recorder_not_idle", reason or "Recorder is no longer idle; no command dispatched.")
                 return
+            prepared_spec, proof = None, None
+            if command in ("device.start", "device.restart") and self._launch_preflight is not None:
+                # Numerical probes may take seconds. Keep snapshots responsive
+                # and reject an invalid replacement before stopping a live child.
+                prepared_spec = group.spec.resolved()
+                try:
+                    proof = self._launch_preflight(prepared_spec)
+                except Exception as exc:
+                    raise _RuntimePreflightError(str(exc)) from exc
+                if self._stop.is_set():
+                    self._finish_receipt(request_id, "rejected", "supervisor_closed", "Supervisor closed during runtime preflight; no command dispatched.")
+                    return
+                permitted, reason = self._permission(command)
+                if not permitted:
+                    self._finish_receipt(request_id, "rejected", "recorder_not_idle", reason or "Recorder is no longer idle; no command dispatched.")
+                    return
+                self._assert_preflight_current(group.spec.resolved(), prepared_spec, proof)
             if command in ("device.stop", "device.restart"):
                 self._stop_group(group)
                 if self._stop.is_set():
@@ -572,9 +610,14 @@ class ProcessSupervisor:
                     code, detail = problem or ("supervisor_closed", "Supervisor closed before launch.")
                     self._finish_receipt(request_id, "rejected", code, detail)
                     return
+                self._assert_preflight_current(launch_spec, prepared_spec, proof)
                 self._launch(group, launch_spec)
             self._finish_receipt(request_id, "accepted", "started", "Owned process launched; fresh expected topics are still required for RUNNING.")
             self._emit("info", f"Device group {group_id} launched (pid {group.process.pid}).", group_id)
+        except _RuntimePreflightError as exc:
+            detail = "Device runtime preflight failed: " + str(exc)
+            self._finish_receipt(request_id, "rejected", "runtime_preflight_failed", detail)
+            self._emit("error", f"Device group {group_id}: {detail}", group_id)
         except Exception as exc:
             with self._mutex:
                 if command in ("device.start", "device.restart") and not group.members and (group.process is None or group.process.poll() is not None):

@@ -475,7 +475,7 @@ class OnlineFusion:
                 and not guard["gyro_rejected"] and not guard["accel_rejected"]):
             estimator.setBiasEstimate(bias, sigma)
 
-    def update(self, samples):
+    def update(self, samples, *, raw_observer=None):
         for sample in samples:
             if not isinstance(sample, RawSample):
                 raise TypeError("OnlineFusion expects RawSample instances")
@@ -543,6 +543,11 @@ class OnlineFusion:
                                 fusion_gyro_rad_s=used_gyro.tolist() if integration_allowed else None,
                                 fusion_accel_m_s2=used_accel.tolist() if integration_allowed else None)
             self.last_input = stamp
+            if raw_observer is not None:
+                # Exact identity at this sample's commit, before a later sample
+                # or calibration reset changes the node state. Original values
+                # are retained even when the guard substitutes filter inputs.
+                raw_observer(sample, self.counts[key], self.epochs[key], protection, integration_allowed)
 
     def input_snapshot(self, now=None):
         """Read input state without consuming the solver/logging event stream.

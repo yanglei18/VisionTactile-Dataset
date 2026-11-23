@@ -1,6 +1,8 @@
 """Bounded private IPC: read-only v1 snapshots and opt-in v2 management."""
 from __future__ import annotations
 
+from vt_capture_core.protocol import METRICS_PROTOCOL_VERSION
+
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
@@ -134,6 +136,8 @@ class SnapshotServer:
         if version >= 8:
             from vt_capture_core.software_identity import runtime_identity, source_root
             result["software"] = runtime_identity(source_root(__file__))
+        if version >= METRICS_PROTOCOL_VERSION:
+            result["recorder_metrics"] = self.model.recorder_metrics(result["recording"])
         return result
 
     def _run(self):

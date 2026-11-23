@@ -40,7 +40,7 @@ def test_bag_validator_is_not_shipped() -> None:
     assert "bag_validate" not in (ROOT / "CMakeLists.txt").read_text()
 
 
-def test_manifest_requires_rosbag_cli_without_compression_plugins() -> None:
+def test_manifest_requires_official_recorder_and_cli_without_compression_plugins() -> None:
     manifest_path = ROOT / "package.xml"
     runtime_dependencies = _runtime_dependencies(manifest_path)
 
@@ -49,7 +49,7 @@ def test_manifest_requires_rosbag_cli_without_compression_plugins() -> None:
         for dependency in runtime_dependencies
         if dependency == "ros2bag" or dependency.startswith("rosbag2")
     }
-    assert direct_rosbag_dependencies == {"ros2bag"}
+    assert direct_rosbag_dependencies == {"ros2bag", "rosbag2_cpp", "rosbag2_storage", "rosbag2_transport"}
     assert (ROS_SHARE / "ros2bag" / "package.xml").is_file()
 
     runtime_dependency_closure = _runtime_dependency_closure(

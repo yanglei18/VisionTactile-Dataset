@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .camera_streams import CAMERA_TOPIC_SUFFIXES, RECIPE_VERSION, camera_streams
+from .camera_streams import CAMERA_TOPIC_SUFFIXES, RECIPE_VERSION, RAW_IMU_RECIPE_VERSION, camera_streams
 from .validation import ProtocolError, choice, mapping, number, text
 
 
@@ -75,6 +75,7 @@ class Recipe:
             raise RecipeError("preview-only recipes do not have a recording allowlist")
         additional = sorted([
             *(f"/gloves/{hand}/state" for hand in recipe.pose_hands),
+            *(f"/gloves/{hand}/imu/raw" for hand in recipe.pose_hands if recipe.version >= RAW_IMU_RECIPE_VERSION),
             *(f"/gloves/{hand}/tactile/samples" for hand in recipe.tactile_hands),
         ])
         return (
@@ -86,7 +87,7 @@ class Recipe:
 
 
 def validate_recipe(document: dict) -> Recipe:
-    """Validate v1/v2 input without mutation and preserve its camera contract.
+    """Validate v1-v3 input without mutation and preserve historical contracts.
 
     All fields are explicit so missing selections cannot silently enable devices.
     Record duration is in seconds, inclusive 1..300; preview duration must be 0.
@@ -95,8 +96,8 @@ def validate_recipe(document: dict) -> Recipe:
     try:
         mapping(document, {"version", "name", "mode", "duration_s", "cameras", "trackers",
                            "pose_hands", "tactile_hands"}, "recipe")
-        if type(document["version"]) is not int or document["version"] not in (1, RECIPE_VERSION):
-            raise RecipeError("unsupported recipe version; expected integer 1 or 2")
+        if type(document["version"]) is not int or document["version"] not in (1, RECIPE_VERSION, RAW_IMU_RECIPE_VERSION):
+            raise RecipeError("unsupported recipe version; expected integer 1 through 3")
         text(document["name"], "recipe.name", nonempty=True)
         choice(document["mode"], {"record", "preview"}, "recipe.mode")
         duration = number(document["duration_s"], "recipe.duration_s")

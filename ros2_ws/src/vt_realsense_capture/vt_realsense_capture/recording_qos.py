@@ -14,6 +14,7 @@ _TYPE_DEPTHS = {
     "vt_tactile_msgs/msg/TactileSampleArray": 512,
     "vt_tactile_msgs/msg/TactileRow44Array": 512,
     "vt_glove_msgs/msg/GloveState": 256,
+    "vt_glove_msgs/msg/RawImuBatch": 256,
 }
 
 

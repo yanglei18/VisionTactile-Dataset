@@ -364,7 +364,7 @@ def test_reusing_backend_never_discovers_or_saves_new_environment_candidates(
     replacement = runtime_factory(directory=first.settings.directory, source=first.source, start=False)
     def forbidden():
         pytest.fail("an existing backend must not trigger startup preparation")
-    monkeypatch.setattr(replacement.settings, "prepare_for_startup", forbidden)
+    monkeypatch.setattr(replacement.settings, "detect_environment", forbidden)
     replacement.start()
     eventually(lambda: replacement.status["state"] == ("external" if external else "ready"))
     assert replacement.settings_path.read_bytes() == before
@@ -390,7 +390,7 @@ def test_alive_backend_with_initial_probe_failure_does_not_prepare_again(
     def forbidden():
         pytest.fail("a still-alive backend must not trigger startup preparation")
     monkeypatch.setattr(replacement, "_probe", probe)
-    monkeypatch.setattr(replacement.settings, "prepare_for_startup", forbidden)
+    monkeypatch.setattr(replacement.settings, "detect_environment", forbidden)
     replacement.start()
     eventually(lambda: replacement.status["state"] == "ready")
     assert calls >= 2
@@ -1231,3 +1231,32 @@ def test_candidate_refuses_existing_legacy_backend_without_signalling_or_relaunc
     assert replacement.settings_path.read_bytes() == before
     with pytest.raises(ValueError):
         replacement.fresh_snapshot()
+
+
+def test_invalid_enabled_hand_keeps_live_manager_and_configuration(runtime_factory, tmp_path):
+    runtime = runtime_factory()
+    eventually(lambda: runtime.status["state"] == "ready")
+    before = runtime.settings_path.read_bytes()
+    pid = runtime._probe()[1]
+    config = runtime.configuration
+    motion = next(group for group in config["process_groups"] if group["id"] == "right_glove")
+    motion["enabled"] = True
+    motion["parameters"].update(glove_python="/usr/bin/python3",
+                                port="/dev/test-glove", resources=str(tmp_path / "missing-bundle"))
+    assert runtime.apply(config, runtime._probe()[0])
+    eventually(lambda: runtime.status["last_apply"]["state"] == "rejected")
+    assert runtime.status["state"] == "ready"
+    assert runtime.settings_path.read_bytes() == before
+    assert runtime._probe()[1] == pid
+
+
+def test_candidate_manager_receives_source_constraint(tmp_path):
+    script = tmp_path / "tools/capture_deploy/start_manager.sh"
+    script.parent.mkdir(parents=True)
+    script.touch()
+    runtime = DesktopRuntime(tmp_path, tmp_path / "private", expected_software={"source_root": str(tmp_path)})
+    try:
+        argv = runtime._manager_argv()
+        assert argv[argv.index("--candidate-source-root") + 1] == str(tmp_path)
+    finally:
+        runtime.close()

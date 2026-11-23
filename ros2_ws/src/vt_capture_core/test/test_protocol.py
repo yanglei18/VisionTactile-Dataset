@@ -66,7 +66,7 @@ def test_to_dict_is_detached(response):
     None, [], "string", {},
     {"version": 1, "request_id": "x", "command": "start"},
     {"version": 1, "request_id": "x", "command": "stop"},
-    {"version": 9, "request_id": "x", "command": "ping"},
+    {"version": 10, "request_id": "x", "command": "ping"},
     {"version": True, "request_id": "x", "command": "ping"},
     {"version": 1.0, "request_id": "x", "command": "ping"},
     {"version": 1, "request_id": "", "command": "ping"},

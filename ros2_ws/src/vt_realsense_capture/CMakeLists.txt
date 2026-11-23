@@ -5,6 +5,11 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
+find_package(rosbag2_transport REQUIRED)
+find_package(yaml_cpp_vendor REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(realsense2 REQUIRED)
 find_package(realsense2_camera_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -39,6 +44,12 @@ add_executable(depth_scale_probe src/depth_scale_probe.cpp)
 target_compile_features(depth_scale_probe PRIVATE cxx_std_17)
 target_link_libraries(depth_scale_probe realsense2::realsense2)
 
+add_executable(monitored_recorder src/monitored_recorder.cpp)
+target_compile_features(monitored_recorder PRIVATE cxx_std_17)
+target_include_directories(monitored_recorder PRIVATE include)
+ament_target_dependencies(monitored_recorder rclcpp rosbag2_cpp rosbag2_storage rosbag2_transport)
+target_link_libraries(monitored_recorder nlohmann_json::nlohmann_json yaml-cpp)
+
 ament_python_install_package(${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY rviz DESTINATION share/${PROJECT_NAME})
@@ -54,6 +65,7 @@ install(
   RUNTIME DESTINATION bin)
 install(TARGETS timing_normalizer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS depth_scale_probe DESTINATION lib/${PROJECT_NAME})
+install(TARGETS monitored_recorder DESTINATION lib/${PROJECT_NAME})
 install(
   PROGRAMS vt_realsense_capture/controller_node.py
   DESTINATION lib/${PROJECT_NAME}
@@ -65,6 +77,13 @@ install(
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_pytest REQUIRED)
+  find_package(std_msgs REQUIRED)
+
+  ament_add_gtest(test_monitored_writer test/test_monitored_writer.cpp)
+  target_compile_features(test_monitored_writer PRIVATE cxx_std_17)
+  target_include_directories(test_monitored_writer PRIVATE include)
+  ament_target_dependencies(test_monitored_writer rclcpp rosbag2_cpp rosbag2_storage std_msgs)
+  target_link_libraries(test_monitored_writer nlohmann_json::nlohmann_json)
 
   ament_add_gtest(test_metadata_parser test/test_metadata_parser.cpp)
   target_compile_features(test_metadata_parser PRIVATE cxx_std_17)
@@ -89,6 +108,12 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_managed_capture test/test_managed_capture.py)
   ament_add_pytest_test(test_managed_capture_ros test/test_managed_capture_ros.py TIMEOUT 45)
   ament_add_pytest_test(test_recorder test/test_recorder.py)
+  ament_add_pytest_test(test_recorder_metrics test/test_recorder_metrics.py)
+  ament_add_pytest_test(test_monitored_recorder_ros test/test_monitored_recorder_ros.py TIMEOUT 45)
+  ament_add_pytest_test(test_hand_recording_ros test/test_hand_recording_ros.py
+    TIMEOUT 45
+    APPEND_ENV
+      "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../vt_capture_manager:${CMAKE_CURRENT_SOURCE_DIR}/../vt_capture_core:${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/multisensor_alignment/src")
   ament_add_pytest_test(test_recording_qos test/test_recording_qos.py)
   ament_add_pytest_test(test_hands_profiles test/test_hands_profiles.py)
   ament_add_pytest_test(test_storage test/test_storage.py)

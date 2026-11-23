@@ -6,6 +6,8 @@ UNKNOWN, never permission to invent a new request ID and retry automatically.
 """
 from __future__ import annotations
 
+from vt_capture_core.protocol import METRICS_PROTOCOL_VERSION
+
 from concurrent.futures import TimeoutError
 from copy import deepcopy
 import json
@@ -227,6 +229,8 @@ class ManagementService:
                         management["operation"] = operation
             if version >= 8:
                 value["software"] = deepcopy(self.software)
+            if version >= METRICS_PROTOCOL_VERSION:
+                value["recorder_metrics"] = self.model.recorder_metrics(value["recording"])
             return value
 
     def dispatch(self, request):
@@ -309,7 +313,10 @@ class ManagementService:
         # Reference hashing/copy preparation is bounded and outside the control
         # lock. Software/git observations were cached once at manager startup.
         prepared = alignment_content = None
+        hand_evidence = None
         if self.enabled and command == "capture.start":
+            if self.store.operation(request_id) is None:
+                hand_evidence = self._observe_hand_runtime("before_start", self._selected_pose_hands(params, self._controller or {}))
             try:
                 prepared, alignment_content = self._metadata.prepare()
                 prepared["device_observations"] = self.model.provenance()
@@ -384,9 +391,14 @@ class ManagementService:
                 plan = preflight = None
                 if "recipe" in params:
                     try:
-                        plan, preflight = check_capture_plan(params, context, self.model.topic_activity())
+                        plan, preflight = check_capture_plan(params, context, self.model.topic_activity(),
+                                                             topic_health=self.model.recording_health(hand_evidence))
                     except PlanPreflightError as exc:
                         return reject(exc.code, str(exc))
+                    if plan.admission_policy == "formal":
+                        problem = self._hand_evidence_problem(plan.recipe.pose_hands, hand_evidence)
+                        if problem:
+                            return reject("hand_provenance_not_ready", problem)
                 trial_id = uuid.uuid4().hex
                 with self.store.transaction() as db:
                     if db.execute("SELECT 1 FROM batches WHERE id=?", (params["batch_id"],)).fetchone() is None:
@@ -417,7 +429,8 @@ class ManagementService:
                         # cannot rewrite the geometry provenance of this trial.
                         metadata["calibration"] = [dict(document=document, manifest=manifest)
                             for document, manifest in self.calibration.active_documents()]
-                    self.store.insert_start_metadata(db, trial_id, metadata, alignment_content)
+                    self.store.insert_start_metadata(db, trial_id, metadata, alignment_content,
+                                                     hand_evidence=hand_evidence)
                 if self._quality:
                     self._quality.interrupt()
                 wire = dict(command=1, session_label=params["label"], planned_duration_sec=params["duration_s"])
@@ -452,6 +465,43 @@ class ManagementService:
             self.store.write_manifest(trial_id)
         except (OSError, ValueError) as exc:
             self.model.event("error", f"Trial manifest unavailable: {exc}", key="manifest")
+
+    @staticmethod
+    def _selected_pose_hands(params, context):
+        recipe = params.get("recipe")
+        if isinstance(recipe, dict):
+            return tuple(hand for hand in recipe.get("pose_hands", []) if hand in {"left", "right"})
+        topics = context.get("topics", [])
+        return tuple(hand for hand in ("left", "right") if f"/gloves/{hand}/state" in topics)
+
+    def _observe_hand_runtime(self, phase, hands):
+        """Only memory cache reads; no socket or file work on admission."""
+        if not hands:
+            return None
+        reader = getattr(self.hands, "trial_evidence", None)
+        try:
+            if not callable(reader):
+                raise ValueError("所选动捕手没有受管来源快照，无法确认实际配置和标定；可使用调试录制。")
+            return reader(phase, hands)
+        except (OSError, ValueError, RuntimeError) as exc:
+            return dict(schema_version=1, observation_phase=phase, observed_monotonic_ns=time.monotonic_ns(),
+                        boundary_exact=False, hands={hand: dict(status="unavailable", hand=hand,
+                            problems=[bounded_text(exc)]) for hand in hands})
+
+    @staticmethod
+    def _hand_evidence_problem(hands, evidence, expected=None):
+        rows = (evidence or {}).get("hands", {})
+        for hand in hands:
+            row = rows.get(hand, {})
+            if row.get("status") != "verified_snapshot" or set(row.get("artifacts", {})) != {"config", "rest", "profile"}:
+                detail = "; ".join(row.get("problems", [])) or "当前配置、参考模型或版本化标定的取证尚未就绪。"
+                return f"{hand} 动捕来源不可追溯：{detail} 请等待来源取证就绪，或选择调试录制。"
+            if expected is not None:
+                old = expected.get("hands", {}).get(hand, {})
+                if any(row.get(key) != old.get(key) for key in ("service_instance_id", "session_id", "profile_version",
+                                                               "config_sha256", "rest_sha256", "profile_sha256")):
+                    return f"{hand} 动捕来源或标定已在录制排队期间改变，请重新开始录制。"
+        return ""
 
     def _run(self):
         next_poll = 0.
@@ -504,6 +554,17 @@ class ManagementService:
         if context["state"] not in range(7):
             raise ValueError("unsupported controller state")
         context = deepcopy(context)
+        hand_finish = None
+        if self.store and context["state"] in (5, 6) and not context["recorder_alive"]:
+            for trial in self.store.active_trials():
+                if (trial["controller_instance_id"] == context["controller_instance_id"]
+                        and trial["start_request_id"] == context["start_request_id"] and context["session_id"]
+                        and trial["session_id"] in ("", context["session_id"])):
+                    start = self.store.details(trial["id"])["metadata"]["start"] or {}
+                    frozen = start.get("capture_plan") or {}
+                    selection = frozen if "recipe" in frozen else start.get("planned", {})
+                    hand_finish = self._observe_hand_runtime("after_stop", self._selected_pose_hands(selection, context))
+                    break
         with self._mutex:
             old = self._controller
             if (old is not None and old["controller_instance_id"] == context["controller_instance_id"]
@@ -550,7 +611,8 @@ class ManagementService:
                     if observation.freeze_finish:
                         self.store.freeze_finish(db, trial["id"], bounded_document(dict(schema_version=1,
                             frozen_at=utc_now(), controller=context, ownership_confirmed=True,
-                            recorder_stopped_confirmed=True)), quality_enabled=self.model.config.quality_enabled)
+                            recorder_stopped_confirmed=True)), quality_enabled=self.model.config.quality_enabled,
+                            hand_evidence=hand_finish)
                 self._manifest(trial["id"])
                 if self.geometry_recorder is not None and observation.bind_context:
                     self.geometry_recorder.observe(trial, context)
@@ -571,8 +633,16 @@ class ManagementService:
             with self._mutex:
                 if self._stop.is_set():
                     raise PlanPreflightError("manager_stopping", "后台正在退出，未发送录制命令。")
-                frozen = self.store.details(trial_id)["metadata"]["start"]["capture_plan"]
-                check_capture_plan(params, context, self.model.topic_activity(), frozen_plan=frozen)
+                start_metadata = self.store.details(trial_id)["metadata"]["start"]
+                frozen = start_metadata["capture_plan"]
+                expected = start_metadata.get("hand_runtime_evidence")
+                plan, _ = check_capture_plan(params, context, self.model.topic_activity(), frozen_plan=frozen,
+                                              topic_health=self.model.recording_health(expected))
+                if plan.admission_policy == "formal":
+                    observed = self._observe_hand_runtime("before_start", plan.recipe.pose_hands)
+                    problem = self._hand_evidence_problem(plan.recipe.pose_hands, observed, expected)
+                    if problem:
+                        raise PlanPreflightError("hand_provenance_not_ready", problem)
             return True
         except Exception as exc:
             if isinstance(exc, TimeoutError) and future is not None:

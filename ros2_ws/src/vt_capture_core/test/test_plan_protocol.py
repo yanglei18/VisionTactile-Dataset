@@ -71,7 +71,7 @@ def test_plan_fingerprint_is_exact_sha256(fingerprint):
 
 @pytest.mark.parametrize("change", [
     {"duration_s": 29}, {"mode": "preview", "duration_s": 0},
-    {"cameras": [], "trackers": []}, {"version": 3}, {"name": "x" * 513}, {"arbitrary": True},
+    {"cameras": [], "trackers": []}, {"version": 4}, {"name": "x" * 513}, {"arbitrary": True},
 ])
 def test_plan_recipe_is_valid_record_recipe_with_matching_duration(change):
     params = planned_start()

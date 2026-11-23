@@ -130,7 +130,7 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
     shape_rejected_count, shape_error = 0, None
     command_rejected_count, rejected_name, rejected_error = 0, None, None
     input_thread, input_stop = None, threading.Event()
-    pose_exporter = None
+    pose_exporter = raw_imu_exporter = None
     high_rate = (runtime_factory is None and options.get("upstream_checkout") is not None
                  and config["output_rate_hz"] > 30.)
     gc_policy = None
@@ -164,8 +164,11 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
             kwargs["result_recorder_factory"] = ProcessResultRecorder
         if options.get("ros_socket"):
             from .pose_export import PoseDatagramExporter
+            from .raw_imu_export import RawImuDatagramExporter
             pose_exporter = PoseDatagramExporter(options["ros_socket"])
+            raw_imu_exporter = RawImuDatagramExporter(options["ros_socket"])
             kwargs["pose_exporter"] = pose_exporter
+            kwargs["raw_imu_exporter"] = raw_imu_exporter
         if options.get("upstream_checkout") is not None:
             from .upstream_backend import OfficialFSGloveBackend
             kwargs["pose_backend"] = OfficialFSGloveBackend(
@@ -290,6 +293,8 @@ def _child_main(config, rest, model_axes, options, commands, stop, mailbox, inpu
                                        "独立计算进程已关闭。", disconnect=True), command_seen)
             if pose_exporter is not None:
                 pose_exporter.close()
+            if raw_imu_exporter is not None:
+                raw_imu_exporter.close()
         finally:
             if gc_policy is not None:
                 gc_policy.close()

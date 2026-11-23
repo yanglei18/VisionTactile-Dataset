@@ -19,6 +19,7 @@ import sys
 import tempfile
 
 from vt_capture_core.workstation import validate_configuration
+from vt_capture_core.hand_preflight import prepare_hand_runtimes
 from vt_fsglove12.hand_service_resources import validate_bundle_manifest
 
 from .hand_runtime_probe import probe_hand_runtime
@@ -101,31 +102,11 @@ def _verify_hand_choice(value, hand, root, verify_runtime, *, motion):
 
 
 def verify_candidate_runtimes(configuration, repo_root, verify_runtime=None):
-    """Verify currently enabled hand choices without reading migration sources.
-
-    Motion requires the candidate's numerical runtime. Pure tactile display
-    needs only its verified hand bundle; an unused or absent numerical Python
-    is irrelevant. Disabled profiles are checked when subsequently enabled.
-    """
+    """Use the shared launch/apply verifier for currently enabled choices."""
     configuration = validate_configuration(configuration)
-    verify_runtime = verify_runtime or probe_hand_runtime
-    root = Path(repo_root).expanduser().resolve(strict=True)
-    choices = {}
-    for group in configuration.get("process_groups", []):
-        if group["preset"] not in {"glove", "tactile"} or not group["enabled"]:
-            continue
-        parameters = group["parameters"]
-        hand = parameters["hand"]
-        bundle = parameters.get("resources", "")
-        if not bundle:
-            raise ValueError(f"Enabled {hand} candidate profile requires an explicit resource bundle")
-        choice = choices.setdefault(hand, dict(resources=bundle, motion=False))
-        if choice["resources"] != bundle:
-            raise ValueError("Existing candidate gives one hand conflicting display resources")
-        if group["preset"] == "glove":
-            choice.update(motion=True, glove_python=parameters.get("glove_python", ""))
-    return {hand: _verify_hand_choice(choice, hand, root, verify_runtime, motion=choice["motion"])
-            for hand, choice in choices.items()}
+    proof = prepare_hand_runtimes(configuration["process_groups"], candidate_root=repo_root,
+                                  verify_runtime=verify_runtime or probe_hand_runtime)
+    return proof.evidence
 
 
 def _build_configuration(source, selected, destination):

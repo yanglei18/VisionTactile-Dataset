@@ -16,6 +16,8 @@ rosidl_generate_interfaces(vt_camera_msgs
   "msg/CaptureCommand.msg"
   "msg/StreamStatus.msg"
   "msg/CaptureStatus.msg"
+  "msg/RecorderMetrics.msg"
+  "msg/RecorderTopicMetrics.msg"
   "msg/CaptureEvent.msg"
   "msg/CaptureContext.msg"
   "srv/GetCaptureSnapshot.srv"

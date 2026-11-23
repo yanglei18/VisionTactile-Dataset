@@ -8,6 +8,8 @@ content hash of large recordings; it is not a cryptographic bag integrity audit.
 
 from __future__ import annotations
 
+from .hand_quality import hand_source_warnings, validate_expectations
+
 import argparse
 from datetime import datetime
 import hashlib
@@ -191,6 +193,11 @@ def _fingerprint(bag, alignment_config=None):
                              sha256=hashlib.sha256(content).hexdigest())
     fingerprint = dict(path=str(bag), directory=_stat_key(before), files=entries,
                        metadata_sha256=hashlib.sha256(metadata).hexdigest(), alignment_config=configuration)
+    for name in ("recorder-metrics.json", "controller_session.json"):
+        sidecar = bag.parent / name
+        if os.path.lexists(sidecar):
+            content, identity = _read_bounded(sidecar, 2 * 1024 * 1024)
+            fingerprint[name] = dict(sha256=hashlib.sha256(content).hexdigest(), identity=identity)
     digest = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return dict(digest=digest, metadata_sha256=fingerprint["metadata_sha256"],
                 file_count=len(entries), alignment_config=configuration)
@@ -293,7 +300,7 @@ def _validate_calibration_entry(topic, entry, warnings):
 
 
 def _validate_report(report, bag, expected_topics, invocation_id, fingerprint, advisories=(),
-                     expected_image_rates_hz=None, optional_topics=()):
+                     expected_image_rates_hz=None, optional_topics=(), require_recorder_counts=False, hand_expectations=None):
     _finite_json(report)
     if type(report) is not dict or type(report.get("schema_version")) is not int or report["schema_version"] != 1:
         raise QualityRunError("Unsupported quality report schema")
@@ -326,8 +333,13 @@ def _validate_report(report, bag, expected_topics, invocation_id, fingerprint, a
             raise QualityRunError("Malformed report topic entry")
         if (type(entry.get("type")) is not str or type(entry.get("recorded_message_count")) is not int
                 or entry["recorded_message_count"] < 0
-                or entry.get("inspection") not in {"metadata_only", "compact_messages", "image_headers", "calibration_messages"}):
+                or entry.get("inspection") not in {"metadata_only", "compact_messages", "image_headers", "calibration_messages", "raw_imu_samples"}):
             raise QualityRunError("Malformed report topic count or inspection basis")
+        if entry["inspection"] == "raw_imu_samples":
+            if (entry["type"] != "vt_glove_msgs/msg/RawImuBatch"
+                    or type(entry.get("nodes")) is not dict or len(entry["nodes"]) > 12
+                    or type(entry.get("recorded_samples")) is not int or entry["recorded_samples"] < 0):
+                raise QualityRunError("Invalid raw IMU sample inspection")
         if entry["type"] in _CALIBRATION_KINDS or entry["inspection"] == "calibration_messages":
             _validate_calibration_entry(topic, entry, warnings)
         if entry["type"] == "sensor_msgs/msg/Image":
@@ -350,7 +362,7 @@ def _validate_report(report, bag, expected_topics, invocation_id, fingerprint, a
             raise QualityRunError(f"Invalid report summary.{key}")
     if (summary["topic_count"] != len(topics) or summary["warning_count"] != len(warnings)
             or summary["inspected_topic_count"] + summary["metadata_only_topic_count"] != len(topics)
-            or summary["inspected_topic_count"] != sum(entry["inspection"] in {"compact_messages", "image_headers", "calibration_messages"}
+            or summary["inspected_topic_count"] != sum(entry["inspection"] in {"compact_messages", "image_headers", "calibration_messages", "raw_imu_samples"}
                                                         for entry in topics.values())
             or report["status"] != ("warnings" if warnings else "ok")):
         raise QualityRunError("Report summary disagrees with its observations")
@@ -368,6 +380,16 @@ def _validate_report(report, bag, expected_topics, invocation_id, fingerprint, a
             or provenance.get("expected_image_rates_hz") != (expected_image_rates_hz or {})
             or provenance.get("advisories") != list(advisories)):
         raise QualityRunError("Report invocation/input/expected-topic/optional-topic/image-rate identity mismatch")
+    if provenance.get("hand_expectations", {}) != (hand_expectations or {}):
+        raise QualityRunError("Report hand source binding mismatch")
+    for warning in hand_source_warnings(topics, hand_expectations or {}):
+        if warning not in warnings:
+            raise QualityRunError("Report omitted a hand source verification warning")
+    if bool(provenance.get("require_recorder_counts", False)) != require_recorder_counts:
+        raise QualityRunError("Report recorder verification policy mismatch")
+    if require_recorder_counts and report.get("recorder_reconciliation", {}).get("status") != "verified":
+        if not any(w["code"] == "formal_recorder_unverified" for w in warnings):
+            raise QualityRunError("Formal report omitted recorder verification warning")
     _optional_topics(provenance["optional_topics"], expected_topics)
     _expected_image_rates(provenance["expected_image_rates_hz"], expected_topics + optional)
     for advisory in advisories:
@@ -483,7 +505,7 @@ class QualityRunner:
                 process.stdout.close()
 
     def run(self, bag_path, output_path, *, expected_topics, alignment_config=None,
-            advisories=(), expected_image_rates_hz=None, optional_topics=(), cancel=lambda: False) -> dict:
+            advisories=(), expected_image_rates_hz=None, optional_topics=(), require_recorder_counts=False, hand_expectations=None, cancel=lambda: False) -> dict:
         """Publish verified observations for required and optional recorded topics.
 
         Missing optional topics are coverage information; recorded content keeps
@@ -519,13 +541,17 @@ class QualityRunner:
                         "--expected-image-rates-hz", json.dumps(image_rates, separators=(",", ":")),
                         "--advisories", json.dumps(observations, separators=(",", ":")),
                         "--invocation-id", invocation, "--input-fingerprint", before["digest"]]
+                if hand_expectations:
+                    argv.extend(["--hand-expectations", json.dumps(validate_expectations(hand_expectations), separators=(",", ":"))])
+                if require_recorder_counts:
+                    argv.append("--require-recorder-counts")
                 if config is not None:
                     argv.extend(["--alignment-config", str(config)])
                 self._execute(argv, cancel)
                 _no_symlinks(staged)
                 content, report_identity = _read_bounded(staged, MAX_REPORT_BYTES)
                 report = json.loads(content, object_pairs_hook=_json_pairs)
-                _validate_report(report, bag, expected, invocation, before, observations, image_rates, optional)
+                _validate_report(report, bag, expected, invocation, before, observations, image_rates, optional, require_recorder_counts, hand_expectations)
                 if _fingerprint(bag, config) != before:
                     raise QualityRunError("Quality input changed during execution; report not published")
                 if cancel():
@@ -548,7 +574,7 @@ class QualityRunner:
 
 
 def _worker(bag, output, expected, invocation, fingerprint, alignment_config=None, advisories=(),
-            expected_image_rates_hz=None, optional_topics=()):
+            expected_image_rates_hz=None, optional_topics=(), require_recorder_counts=False, hand_expectations=None):
     # Heavy ROS-compatible imports happen only inside this dedicated child.
     from vt_multisensor_alignment.capture_quality import generate_capture_quality, _write_report
     from vt_multisensor_alignment.config import load_config
@@ -561,6 +587,10 @@ def _worker(bag, output, expected, invocation, fingerprint, alignment_config=Non
         report = generate_capture_quality(bag, Path(temporary) / "raw.json", config,
                                           expected_image_rates_hz=expected_image_rates_hz,
                                           optional_topics=optional_topics)
+    report["warnings"].extend(hand_source_warnings(report["topics"], hand_expectations or {}))
+    if require_recorder_counts and report.get("recorder_reconciliation", {}).get("status") != "verified":
+        report["warnings"].append(dict(code="formal_recorder_unverified",
+            detail="Formal capture requires independent agreement between recorder and readable bag."))
     for topic in expected:
         if (topic not in report["topics"] or report["topics"][topic]["recorded_message_count"] == 0) and not any(
                 warning["code"] == "expected_topic_missing" and warning.get("topic") == topic for warning in report["warnings"]):
@@ -580,7 +610,7 @@ def _worker(bag, output, expected, invocation, fingerprint, alignment_config=Non
         fingerprint_basis="SHA256 of bounded metadata plus file device/inode/size/mtime/ctime inventory; bag payloads are not hashed",
         metadata_sha256=before["metadata_sha256"], input_file_count=before["file_count"],
         alignment_config=before["alignment_config"], expected_topics=expected,
-        optional_topics=list(optional_topics),
+        optional_topics=list(optional_topics), require_recorder_counts=require_recorder_counts, hand_expectations=hand_expectations or {},
         expected_image_rates_hz=expected_image_rates_hz or {},
         expected_image_rates_source="caller-supplied recording contract" if expected_image_rates_hz else "not configured",
         advisories=list(advisories),
@@ -588,7 +618,7 @@ def _worker(bag, output, expected, invocation, fingerprint, alignment_config=Non
         optional_topics_source="caller-supplied optional recorded topics; absence is coverage information",
         topic_statistics_source="rosbag2 metadata.yaml counts; filtered compact payload statistics where inspection=compact_messages; serialized image header timing where inspection=image_headers; recorded factory parameters where inspection=calibration_messages",
     )
-    _validate_report(report, bag, expected, invocation, before, advisories, expected_image_rates_hz, optional_topics)
+    _validate_report(report, bag, expected, invocation, before, advisories, expected_image_rates_hz, optional_topics, require_recorder_counts, hand_expectations)
     if _fingerprint(bag, alignment_config) != before:
         raise QualityRunError("Input changed while generating quality observations")
     payload = json.dumps(report, ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -604,6 +634,8 @@ def main(argv=None):
     parser.add_argument("--output", required=True)
     parser.add_argument("--expected-topics", required=True)
     parser.add_argument("--optional-topics", default="[]")
+    parser.add_argument("--require-recorder-counts", action="store_true")
+    parser.add_argument("--hand-expectations", default="{}")
     parser.add_argument("--expected-image-rates-hz", default="{}")
     parser.add_argument("--advisories", default="[]")
     parser.add_argument("--alignment-config")
@@ -611,6 +643,9 @@ def main(argv=None):
     parser.add_argument("--input-fingerprint", required=True)
     args = parser.parse_args(argv)
     try:
+        if len(args.hand_expectations.encode("utf-8")) > 8192:
+            raise QualityRunError("Hand source expectations exceed size limit")
+        hands = validate_expectations(json.loads(args.hand_expectations, object_pairs_hook=_json_pairs))
         if len(args.expected_topics.encode("utf-8")) > MAX_EXPECTED_TOPICS_BYTES:
             raise QualityRunError("Expected-topic argument is too large")
         expected = _expected_topics(json.loads(args.expected_topics))
@@ -634,7 +669,7 @@ def main(argv=None):
             raise QualityRunError("Quality output must be new and outside the bag")
         _worker(bag, output, expected, args.invocation_id, args.input_fingerprint,
                 Path(args.alignment_config).absolute() if args.alignment_config else None, advisories, image_rates,
-                optional)
+                optional, args.require_recorder_counts, hands)
         return 0
     except Exception as exc:
         print(f"{type(exc).__name__}: {exc}"[:2048], file=sys.stderr)

@@ -63,7 +63,7 @@ def _scan_recorder_processes(output_root: Path) -> set[tuple[int, int]]:
             ).decode(errors='replace')
         except (FileNotFoundError, PermissionError, ProcessLookupError):
             continue
-        if 'ros2 bag record' not in command or output_root_text not in command:
+        if not ('ros2 bag record' in command or 'monitored_recorder' in command) or output_root_text not in command:
             continue
         pid = int(process_dir.name)
         try:

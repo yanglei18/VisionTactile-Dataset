@@ -17,6 +17,7 @@ import uuid
 from vt_capture_core.glove_sources import glove_sources
 
 from .config import ManagerConfig
+from .recorder_metrics import RecorderMeasurements
 
 
 SOURCE_FUTURE_TOLERANCE_NS = 500_000_000
@@ -90,6 +91,7 @@ class _Device:
     cell_stamps: list = field(default_factory=list)
     cell_max_age_ns: int = 0
     preview_source_ns: int = 0
+    source_mode: str = ""
 
 
 class SnapshotModel:
@@ -114,12 +116,21 @@ class SnapshotModel:
         # Tactile display snapshots continue while raw acquisition is stopped.
         # Observe their configured sibling sample topics separately, retaining
         # one monotonic arrival timestamp per topic and no sample payloads.
-        self._sample_activity = {device.topic.removesuffix("/state") + "/samples": None
+        self._sample_sides = {device.topic.removesuffix("/state") + "/samples": device.side
                                  for device in config.devices
                                  if device.kind == "tactile" and device.topic.endswith("/state")}
+        self._sample_activity = dict.fromkeys(self._sample_sides)
+        self._sample_health = {topic: (False, 0) for topic in self._sample_sides}
+        self._imu_topics = {device.topic.removesuffix("/state") + "/imu/raw": device.side
+                            for device in config.devices
+                            if device.kind == "glove" and device.topic.endswith("/state")}
+        self._imu_activity = {topic: None for topic in self._imu_topics}
+        self._imu_health = {topic: (False, 0) for topic in self._imu_topics}
+        self._imu_identity = {topic: None for topic in self._imu_topics}
         self._events = deque(maxlen=32)
         self._event_id = 0
         self._sequence = 0
+        self._recorder_measurements = RecorderMeasurements()
         self._capture_received_ns = None
         self._capture_source_ns = 0
         self._capture = None
@@ -162,6 +173,7 @@ class SnapshotModel:
                     state.source_order_ns = source_ns
                 state.source_ns = source_ns
                 state.valid = bool(valid and fresh_source)
+                state.source_mode = getattr(message, "source_mode", "") if config.kind == "glove" else ""
                 if config.kind != "camera":
                     state.preview = preview
                 state.explicitly_disconnected = disconnected
@@ -264,6 +276,20 @@ class SnapshotModel:
         preview = dict(values=values, valid_mask=masks, rows=20, cols=20)
         return preview, valid, f"{message.reason}; valid cells={sum(masks)}/400; rolling snapshot, not simultaneous scan.", not connected, (message.session_id, message.stream_epoch)
 
+    def observe_recorder_metrics(self, message):
+        with self._lock:
+            try:
+                self._recorder_measurements.observe(message, self._mono())
+            except (AttributeError, TypeError, ValueError, OverflowError) as exc:
+                self.event("warning", f"Malformed recorder measurements: {exc}", key="recorder-metrics")
+
+    def recorder_metrics(self, recording):
+        if recording["state"] not in ("RECORDING", "COMPLETE"):
+            return None
+        with self._lock:
+            return self._recorder_measurements.snapshot(recording["session_id"], self._mono(),
+                                                       int(self.config.offline_after_s * 1e9))
+
     def observe_capture(self, message):
         with self._lock:
             try:
@@ -324,12 +350,28 @@ class SnapshotModel:
         """
         return tuple(self._sample_activity)
 
-    def observe_topic_activity(self, topic):
-        """Record raw arrival without inspecting quality or retaining payloads."""
+    def observe_topic_activity(self, topic, *, message=None):
+        """Keep arrivals and latest raw tactile readiness separately, without payload retention.
+
+        Arrival-only callers retain historical debug behavior. Formal admission
+        needs an actual, connected sample batch rather than a status heartbeat.
+        """
         with self._lock:
             if topic not in self._sample_activity:
                 raise ValueError("sample activity topic is not configured")
             self._sample_activity[topic] = self._mono()
+            valid, source_ns = False, 0
+            if message is not None:
+                try:
+                    side = self._sample_sides[topic]
+                    source_ns = _stamp_ns(message)
+                    valid = bool(message.schema_version == 2 and message.hand == side
+                                 and message.connected and message.time_valid and message.blocks
+                                 and all(0 <= block.row < 20 and len(block.adc) == 20
+                                         for block in message.blocks))
+                except (AttributeError, TypeError, ValueError, OverflowError):
+                    pass
+            self._sample_health[topic] = (valid, source_ns)
 
     def topic_activity(self):
         """Report recent arrivals for recording, independently of payload quality.
@@ -342,11 +384,71 @@ class SnapshotModel:
             now = self._mono()
             maximum = int(self.config.stale_after_s * 1e9)
             arrivals = dict(self._sample_activity)
+            arrivals.update(self._imu_activity)
             arrivals.update({self._configs[identity].topic: state.received_ns
                              for identity, state in self._devices.items()
                              if self._configs[identity].kind != "tactile"})
             return {topic: received is not None and 0 <= now - received <= maximum
                     for topic, received in arrivals.items()}
+
+    def imu_activity_topics(self):
+        """Raw IMU siblings for configured hand pose devices; no serial ownership."""
+        return tuple(self._imu_topics)
+
+    def observe_imu_activity(self, topic, message):
+        """Bounded latest-batch readiness; rejected fusion input remains raw evidence."""
+        with self._lock:
+            if topic not in self._imu_topics:
+                raise ValueError("raw IMU activity topic is not configured")
+            self._imu_activity[topic] = self._mono()
+            valid, source_ns = False, 0
+            identity = None
+            try:
+                samples = message.samples
+                identity = (message.session_id, message.config_sha256, message.source_mode)
+                valid = bool(message.schema_version == 1 and message.hand == self._imu_topics[topic]
+                             and message.clock_domain == "CLOCK_MONOTONIC" and message.timing_source == "host_receive"
+                             and message.batch_sequence >= 1
+                             and isinstance(message.session_id, str) and 0 < len(message.session_id) <= 256
+                             and isinstance(message.config_sha256, str) and 0 < len(message.config_sha256) <= 128
+                             and samples and len(samples) <= 64
+                             and all(1 <= sample.node_id <= 12 and sample.sample_index >= 1
+                                     and sample.time_valid and sample.host_monotonic_ns > 0
+                                     and sample.host_realtime_ns > 0 and len(sample.raw_values) == 6
+                                     for sample in samples))
+                source_ns = min(sample.host_realtime_ns for sample in samples) if valid else 0
+                newest_ns = max(sample.host_realtime_ns for sample in samples) if valid else 0
+                valid = valid and newest_ns <= self._wall() + SOURCE_FUTURE_TOLERANCE_NS
+            except (AttributeError, TypeError, ValueError, OverflowError):
+                pass
+            self._imu_health[topic] = (valid, source_ns)
+            self._imu_identity[topic] = identity if valid else None
+
+    def recording_health(self, hand_evidence=None):
+        """Formal readiness needs a coherent live raw/pose producer per hand.
+
+        Legacy previews/debug still use topic_health/arrivals independently.
+        This does not assert every joint is physically observed or solve accuracy.
+        """
+        with self._lock:
+            result = self.topic_health()
+            for device_id, config in self._configs.items():
+                if config.kind != "glove" or not config.topic.endswith("/state"):
+                    continue
+                raw_topic = config.topic.removesuffix("/state") + "/imu/raw"
+                state = self._devices[device_id]
+                raw_identity = self._imu_identity.get(raw_topic)
+                matching = bool(state.identity and raw_identity and state.source_mode == "live"
+                                and raw_identity[2] == "live" and raw_identity[0] == state.identity[0]
+                                and raw_identity[1] == state.identity[2])
+                producer = (hand_evidence or {}).get("hands", {}).get(config.side, {})
+                if producer.get("status") == "verified_snapshot":
+                    frozen_pose_identity = tuple(producer.get(k) for k in
+                        ("session_id", "profile_version", "config_sha256", "rest_sha256"))
+                    matching = matching and state.identity == frozen_pose_identity and producer.get("source_mode") == "live"
+                if not matching:
+                    result[raw_topic] = result[config.topic] = False
+            return result
 
     def topic_health(self):
         """Cheap latest-sample readiness; do not copy previews or query the disk.
@@ -368,6 +470,16 @@ class SnapshotModel:
                 self._capture is not None and self._capture_received_ns is not None
                 and 0 <= now - self._capture_received_ns <= maximum
                 and self._capture_source_ns > 0 and -SOURCE_FUTURE_TOLERANCE_NS <= wall - self._capture_source_ns <= maximum)
+            for topic, (valid, source_ns) in self._sample_health.items():
+                received_ns = self._sample_activity[topic]
+                result[topic] = bool(valid and received_ns is not None
+                    and 0 <= now - received_ns <= maximum and source_ns > 0
+                    and -SOURCE_FUTURE_TOLERANCE_NS <= wall - source_ns <= maximum)
+            for topic, (valid, source_ns) in self._imu_health.items():
+                received_ns = self._imu_activity[topic]
+                result[topic] = bool(valid and received_ns is not None
+                    and 0 <= now - received_ns <= maximum and source_ns > 0
+                    and -SOURCE_FUTURE_TOLERANCE_NS <= wall - source_ns <= maximum)
             return result
 
     def snapshot(self):

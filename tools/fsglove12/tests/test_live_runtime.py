@@ -65,6 +65,40 @@ def test_results_export_is_optional_and_bridge_errors_do_not_stop_acquisition(ha
     assert h.controller._profile is None
 
 
+@pytest.mark.parametrize("harness", [False], indirect=True)
+def test_reader_exports_every_raw_input_without_calibration_or_local_csv(harness, tmp_path):
+    import socket
+    from vt_fsglove12.raw_imu_export import RawImuDatagramExporter
+
+    h = harness
+    h.controller._fusion_factory = OnlineFusion
+    exporter = RawImuDatagramExporter(str(tmp_path / "pose.sock"))
+    h.controller._raw_imu_exporter = exporter
+    receiver = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    receiver.bind(exporter.path)
+    receiver.settimeout(2.)
+    try:
+        source = h.connect()
+        mono, real = int(h.clock() * 1_000_000_000), 1_800_000_000_000_000_123
+        source.batches.put([RawSample(node, (0, 0, 0, 0, 0, 8192), mono / 1_000_000_000,
+            real / 1_000_000_000, 200 + node, mono, real) for node in (9, 10, 11, 12)])
+        batch = json.loads(receiver.recv(60_000))
+        snapshot = h.controller.latest_input_snapshot()
+        assert batch["session_id"] == snapshot["runtime"]["session_id"]
+        assert len(batch["samples"]) == 4 and h.controller._profile is None
+        for row in batch["samples"]:
+            node = snapshot["orientation"]["nodes"][str(row["node_id"])]
+            assert row["sample_index"] == node["sample_index"] == 1
+            assert row["host_realtime_ns"] == node["host_realtime_ns"] == real
+        assert snapshot["runtime"]["ros_raw_export"]["dropped_samples"] == 0
+        assert not list(tmp_path.glob("*/raw.csv"))
+    finally:
+        h.controller.stop()
+        assert h.controller.join(2.)
+        assert exporter.close()
+        receiver.close()
+
+
 def test_passive_input_diagnostics_reach_status_recording_and_summary(harness):
     h = harness
     diagnostics = dict(source_kind="raw_serial", opened=True, bytes_received=0,

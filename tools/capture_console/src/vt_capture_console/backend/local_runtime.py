@@ -22,6 +22,7 @@ import threading
 import time
 import uuid
 
+from vt_capture_core.hand_preflight import prepare_hand_runtimes
 from vt_capture_core.protocol import MAX_MESSAGE_BYTES, decode_message, encode_message
 from .workstation_settings import (WorkstationSettings, atomic_json, private_directory,
                                    read_private_json, serial_ports, validate_configuration)
@@ -404,7 +405,8 @@ class DesktopRuntime:
         script = self.repo_root / "tools/capture_deploy/start_manager.sh"
         if not script.is_file():
             raise ValueError("缺少仓库后台启动脚本，请修复桌面工作站安装。")
-        return ("/bin/bash", str(script), "--enable-device-control", "--enable-recording",
+        candidate = ("--candidate-source-root", str(self.repo_root)) if self.expected_software is not None else ()
+        return ("/bin/bash", str(script), *candidate, "--enable-device-control", "--enable-recording",
                 "--enable-calibration", "--calibration-python", str(self.repo_root / ".venv-calibration/bin/python"),
                 "--config", str(self.settings.path), "--socket", str(self.socket_path),
                 "--state-dir", str(self.state_dir), "--desktop-apply-lock", str(self.apply_lock_path),
@@ -446,6 +448,8 @@ class DesktopRuntime:
             self._status_update("permission_required", "旧后台与当前窗口尚未继承串口权限。请先停止相关设备，"
                                 "关闭并从桌面快捷方式重新打开工作台以刷新权限。")
             return True
+        configuration = validate_configuration(read_private_json(self.settings_path))
+        proof = self._prepare_hand_environment(configuration)
         with self._file_lock(self.admission_path):
             fresh, peer = self._probe()
             if not self._is_owned(record, fresh, peer) or peer != pid:
@@ -454,15 +458,26 @@ class DesktopRuntime:
             if problem:
                 self._status_update("permission_required", "后台仍使用旧串口权限。" + problem + "随后点击“重试连接”恢复。")
                 return True
-            if self._stop_owned(record) and self._launch():
+            self._verify_launch_configuration(configuration, proof)
+            if not self._stop.is_set() and self._stop_owned(record) and self._launch(configuration, proof):
                 self._status_update("ready", "已刷新空闲后台的串口权限；未自动启动设备，请手动启动需要的模块。")
         return True
 
-    def _launch(self):
+    def _prepare_hand_environment(self, configuration):
+        return prepare_hand_runtimes(configuration["process_groups"],
+                                     candidate_root=self.repo_root if self.expected_software is not None else None)
+
+    def _verify_launch_configuration(self, configuration, proof):
+        if validate_configuration(read_private_json(self.settings_path)) != configuration:
+            raise ValueError("预检后工作台配置已变化，请重新应用。")
+        proof.assert_current()
+
+    def _launch(self, configuration, proof):
         if self._stop.is_set():
             return False
         self._check_launch_session()
         argv = self._manager_argv()
+        self._verify_launch_configuration(configuration, proof)
         record = dict(version=1, boot_id=self._boot_id, socket_path=str(self.socket_path), identity=None,
                       pending_launch=True, manager_instance_id="", nonce=uuid.uuid4().hex)
         fd = os.open(self.log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NONBLOCK | os.O_NOFOLLOW, 0o600)
@@ -530,8 +545,16 @@ class DesktopRuntime:
                 # The task queue serializes configuration writers. Settings
                 # publishes a new value only after atomic persistence, so UI
                 # reads keep the previous complete value during slow discovery.
-                self.settings.prepare_for_startup()
-                if self._launch():
+                if self.expected_software is None:
+                    configuration = self.settings.detect_environment(self.configuration).configuration
+                else:
+                    configuration = validate_configuration(read_private_json(self.settings_path))
+                proof = self._prepare_hand_environment(configuration)
+                if self._stop.is_set():
+                    return
+                proof.assert_current()
+                configuration = self.settings.save(configuration, bind_serial_identity=False)
+                if self._launch(configuration, proof):
                     self._status_update("ready", "本地路径已自动准备，后台已就绪；可启动需要的设备。")
             else:
                 if self._is_owned(record, snapshot, pid):
@@ -574,11 +597,25 @@ class DesktopRuntime:
         raise RuntimeError("后台没有在限定时间退出；未强制杀死或重复启动，请查看日志。")
 
     def _apply_worker(self, configuration, submitted_snapshot):
+        # Numerical verification can take seconds. Keep recording admission
+        # responsive, then re-read ownership and activity under its normal lock.
+        self._check_launch_session()
+        try:
+            proof = self._prepare_hand_environment(configuration)
+        except (OSError, ValueError) as exc:
+            # A rejected draft does not change the health of an owned live manager.
+            try:
+                snapshot, pid = self._probe()
+                owned = self._is_owned(self._record(), snapshot, pid)
+            except (KeyError, OSError, ValueError):
+                owned = False
+            self._status_update("ready" if owned else "error", f"配置预检未通过：{exc}", "rejected")
+            return
         with self._file_lock(self._operation_lock_path), self._file_lock(self.apply_lock_path):
-            # Detect an old GUI session before saving configuration or stopping
-            # the existing manager. A failed relaunch must not take it offline.
-            self._check_launch_session()
+            if self._stop.is_set():
+                return
             record = self._record()
+            owned = False
             try:
                 snapshot, pid = self._probe()
             except (OSError, ValueError, KeyError) as exc:
@@ -593,17 +630,15 @@ class DesktopRuntime:
                 problem = _snapshot_problem(snapshot)
                 if problem:
                     raise RuntimeError(problem)
-                with self._lock:
-                    # Retain any normalized serial identity across the backend
-                    # restart; a reused tty number must not rebind this apply.
-                    configuration = self.settings.save(configuration)
-                if not self._stop_owned(record):
-                    return
+                owned = True
+            proof.assert_current()
             if self._stop.is_set():
                 return
             with self._lock:
-                self.settings.save(configuration)
-            if self._launch():
+                configuration = self.settings.save(configuration)
+            if owned and not self._stop_owned(record):
+                return
+            if self._launch(configuration, proof):
                 self._status_update("ready", "配置已保存并应用；设备仍需手动启动，未自动打开任何硬件。", "applied")
 
     def _run(self):

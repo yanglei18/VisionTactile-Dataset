@@ -8,6 +8,7 @@ test. It exercises neither serial hardware nor GUI rendering/scheduling.
 import json
 import os
 import io
+import time
 from importlib.resources import files
 from pathlib import Path
 from types import SimpleNamespace
@@ -208,11 +209,12 @@ def test_continuous_raw_vqf_guided_calibration_and_hand_return(record_property):
 
 @pytest.mark.skipif(not os.environ.get("FSGLOVE12_UPSTREAM_CHECKOUT"),
                     reason="explicit official source checkout required")
-def test_official_continuous_raw_vqf_runtime_direct_mano_and_records(tmp_path, monkeypatch, record_property):
+def test_official_continuous_raw_vqf_runtime_direct_mano_and_records(tmp_path, monkeypatch, record_property, request):
     """Real VQF + original FSGlove + MANO, ideal inputs, no hardware accuracy claim."""
     from vt_fsglove12 import live_runtime
     from vt_fsglove12.upstream_backend import OfficialFSGloveBackend, ALGORITHM
     from vt_fsglove12.live_display import measured_pose_visible
+    from vt_capture_console.ui.hand.composition import DisplayComposer
 
     def forbidden(*args, **kwargs):
         raise AssertionError("official pipeline must never call a legacy fitting algorithm")
@@ -245,10 +247,16 @@ def test_official_continuous_raw_vqf_runtime_direct_mano_and_records(tmp_path, m
         SimpleNamespace(input_kind="synthetic_raw_no_hardware"), rig.fusion, None, clock(),
         streams={name: io.StringIO() for name in ("events", "orientations", "poses")}, opened=True)
     controller._session = session
+    # These are normally initialized by connect/reader; this fixture supplies
+    # its real VQF stream directly without opening any hardware.
+    controller._snapshot['runtime']['session_id'] = session.session_id
+    request.addfinalizer(lambda: getattr(controller, '_geometry_preview_worker', None)
+                         and controller._geometry_preview_worker.close())
     controller._captures = captures
     controller._fit_profile(session)
     assert controller._profile and not controller._profile["rejected_nodes"]
     assert controller._solver is None
+    composer = DisplayComposer(mesh.render_mano(np.zeros((16, 3))))
 
     snapshots = []
     bent = neutral.copy()
@@ -261,6 +269,7 @@ def test_official_continuous_raw_vqf_runtime_direct_mano_and_records(tmp_path, m
         for _ in range(8):
             rig.advance(root, angles, .1)
             session.last_sample = clock()
+            session.received = sum(rig.fusion.counts.values())
             controller._tick(session)
             snap = controller.latest_snapshot()
             pose, geometry = snap["pose"], snap["geometry"]
@@ -270,8 +279,42 @@ def test_official_continuous_raw_vqf_runtime_direct_mano_and_records(tmp_path, m
             assert not pose["hardware_accessed"] and pose["input_kind"] == "synthetic_raw_no_hardware"
             assert sum(pose["segment_observed_mask"]) == 11
             assert geometry["provenance"]["pose_input"] == "upstream_mano_axis_angle_direct"
-            assert np.asarray(geometry["vertices_m"]).shape == (778, 3)
-            assert np.isfinite(geometry["vertices_m"]).all()
+            # Numeric output retains all 21 SAME-FRAME points, with the exact
+            # hand, root and shape. A complete surface is no longer required
+            # on the measurement thread.
+            assert 'vertices_m' not in geometry
+            expected = mesh.render_mano(pose['mano_pose_rotvec'], pose.get('shape_params'))
+            np.testing.assert_allclose(geometry['joints_m'], expected['joints_m'], atol=1e-6, rtol=0)
+            assert geometry['mano_pose_rotvec'] == pose['mano_pose_rotvec']
+            assert geometry['provenance']['betas'] == pose['shape_params']
+
+            # Exercise the real spawned preview process and the same consumer
+            # used by the ordinary workbench entry. Waiting is TEST ONLY:
+            # the production tick above never waits for a surface.
+            deadline = time.monotonic() + 10.
+            while time.monotonic() < deadline:
+                controller._poll_geometry_preview(session)
+                snap = controller.latest_snapshot()
+                preview = snap.get('surface_preview')
+                if preview and preview['measurement_pose']['frame_index'] == pose['frame_index']:
+                    break
+                time.sleep(.005)
+            else:
+                pytest.fail(f"No paired surface preview: {snap.get('display_geometry_error')}")
+            shown = composer.compose(snap, None, now_ns=round(clock() * 1e9))
+            assert shown.pose_current and shown.uses_tracked_geometry
+            assert shown.geometry is preview['geometry']
+            assert preview['measurement_pose'] == pose
+            assert snap['display_pose']['frame_index'] == pose['frame_index']
+            assert snap['display_pose']['source_monotonic_ns'] == pose['source_monotonic_ns']
+            assert np.asarray(shown.geometry['vertices_m']).shape == (778, 3)
+            assert np.isfinite(shown.geometry['vertices_m']).all()
+            rendered_reference = mesh.render_mano(snap['display_pose']['mano_pose_rotvec'],
+                                                   snap['display_pose'].get('shape_params'))
+            np.testing.assert_allclose(shown.geometry['vertices_m'],
+                                       rendered_reference['vertices_m'], atol=1e-7, rtol=0)
+            np.testing.assert_allclose(shown.geometry['joints_m'],
+                                       rendered_reference['joints_m'], atol=1e-7, rtol=0)
             snapshots.append(snap)
     written = [json.loads(line) for line in session.streams["poses"].getvalue().splitlines()]
     assert len(written) == 32 and all(p["upstream_fsglove_solver_executed"] for p in written)
@@ -283,6 +326,8 @@ def test_official_continuous_raw_vqf_runtime_direct_mano_and_records(tmp_path, m
         fixture="ideal_raw_int16_no_hardware_or_accuracy_validation", frames=32,
         samples_per_node=rig.samples_per_node, actual_modules="VQF / upstream Raw2MANO / manotorch",
         legacy_solver_called=False, all_vertices_finite=True,
+        same_frame_measured_joint_count=21, paired_surface_frames=32,
+        preview_visible_in_workbench_composer=True,
         total_ms_median=float(np.median([s["runtime"]["timing_ms"]["total"] for s in snapshots])))))
 
 

@@ -156,9 +156,9 @@ def test_process_controller_topic_health_does_not_depend_on_recording_phase():
 @pytest.mark.parametrize("kind", ["camera", "tracker", "glove"])
 def test_recording_activity_tracks_arrival_independently_of_sample_quality(kind):
     model, clock, identity = make(kind)
-    assert model.topic_activity() == {"/test/state": False}
+    assert model.topic_activity() == {"/test/state": False, **({"/test/imu/raw": False} if kind == "glove" else {})}
     model.observe(identity, message(kind, clock))
-    assert model.topic_activity() == {"/test/state": True}
+    assert model.topic_activity() == {"/test/state": True, **({"/test/imu/raw": False} if kind == "glove" else {})}
     # Even malformed data is recordable evidence. Preview validity must not
     # silently remove a receiving stream from recording quality expectations.
     model.observe(identity, NS())

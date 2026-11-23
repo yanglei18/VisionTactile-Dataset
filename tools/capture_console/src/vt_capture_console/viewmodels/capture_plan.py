@@ -1,11 +1,11 @@
 """Present the configured Recorder allowlist without changing it or probing ROS."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from vt_capture_core.capture_plan import (
     CapturePlanError, MAX_CONTROLLER_TOPICS, MAX_TOPIC_NAME_BYTES,
-    ResolvedCapturePlan, recipe_for_topics, resolve_capture_plan, topics_fingerprint,
+    ResolvedCapturePlan, compare_controller_topics, recipe_for_topics, resolve_capture_plan, topics_fingerprint,
 )
 
 from ..i18n import LocalizedText, tr
@@ -24,10 +24,13 @@ class CapturePlanView:
         """Return fresh machine values; legacy and blocked views carry no intent."""
         if self.plan is None or self.blocks_start:
             return {}
-        return {
+        parameters = {
             "recipe": self.plan.recipe.to_dict(),
             "expected_topics_fingerprint": self.expected_topics_fingerprint,
         }
+        if self.plan.admission_policy is not None:
+            parameters["admission_policy"] = self.plan.admission_policy
+        return parameters
 
 
 def _hands(values):
@@ -70,7 +73,42 @@ def _plan_error(error):
     return tr('无法建立采集计划：{detail}', detail=str(error))
 
 
-def capture_plan_view(controller, *, duration_s, supported, required, demo=False):
+def _selected_hands(recipe, selections):
+    """Explicit user intent remains independent of the controller allowlist."""
+    pose, tactile = set(recipe.pose_hands), set(recipe.tactile_hands)
+    for hand, mode in (selections or {}).items():
+        if hand not in ("left", "right") or mode not in ("configured", "none", "pose", "tactile", "both"):
+            raise CapturePlanError("invalid hand recording selection")
+        if mode == "configured":
+            continue
+        pose.discard(hand)
+        tactile.discard(hand)
+        if mode in ("pose", "both"):
+            pose.add(hand)
+        if mode in ("tactile", "both"):
+            tactile.add(hand)
+    return replace(recipe, pose_hands=tuple(sorted(pose)), tactile_hands=tuple(sorted(tactile)))
+
+
+def _profile_hint(recipe):
+    pose, tactile = recipe.pose_hands, recipe.tactile_hands
+    hands = pose or tactile
+    if pose and tactile and pose != tactile:
+        return ""
+    if not hands:
+        filename = "cameras.yaml"
+    else:
+        side = "both" if len(hands) == 2 else hands[0]
+        suffix = "gloves" if side == "both" else "glove"
+        kinds = (suffix + "_tactile" if tactile else suffix) if pose else "tactile"
+        filename = f"cameras.with_{side}_{kinds}.yaml"
+        if pose and recipe.version >= 3:
+            filename = "cameras.formal_both_gloves_tactile.yaml"
+    return "ros2_ws/src/vt_realsense_capture/config/" + filename
+
+
+def capture_plan_view(controller, *, duration_s, supported, required, demo=False,
+                      admission_policy=None, hand_selection=None, policy_supported=True):
     """Separate plan support, configured intent and startup validation status.
 
     ``required`` is negotiated protocol support, not a guessed device state. A
@@ -86,9 +124,22 @@ def capture_plan_view(controller, *, duration_s, supported, required, demo=False
         return CapturePlanView(tr('采集计划不可用'),
                                tr('当前后台的计划校验不可用；请恢复连接或检查后台配置。'),
                                topics_text, blocks_start=True)
+    if supported and admission_policy == "formal" and not policy_supported:
+        return CapturePlanView(tr('正式采集不可用'),
+                               tr('当前后台不支持正式采集策略；请加载新版后台，或明确选择调试采集。'),
+                               topics_text, blocks_start=True)
+    if not policy_supported:
+        admission_policy = None  # Explicit legacy debug uses its original wire contract.
     try:
         recipe = recipe_for_topics(topics, duration_s=duration_s)
-        plan = resolve_capture_plan(recipe)
+        recipe = _selected_hands(recipe, hand_selection)
+        if supported and recipe.version >= 3 and not policy_supported:
+            return CapturePlanView(_summary(resolve_capture_plan(recipe)),
+                                   tr('当前后台不支持原始 IMU 录制计划，请加载新版后台。'),
+                                   topics_text, blocks_start=True)
+        if admission_policy == "formal" and recipe.pose_hands:
+            recipe = replace(recipe, version=3)
+        plan = resolve_capture_plan(recipe, admission_policy=admission_policy)
     except CapturePlanError as error:
         if supported:
             return CapturePlanView(tr('采集计划需要修正'), _plan_error(error),
@@ -97,9 +148,26 @@ def capture_plan_view(controller, *, duration_s, supported, required, demo=False
     else:
         summary = _summary(plan)
         if supported:
+            comparison = compare_controller_topics(plan, topics)
+            if not comparison.matches:
+                issues = []
+                if comparison.missing_topics:
+                    issues.append(tr('缺少录制数据：{topics}', topics=", ".join(comparison.missing_topics)))
+                if comparison.unexpected_topics:
+                    issues.append(tr('额外配置数据：{topics}', topics=", ".join(comparison.unexpected_topics)))
+                hint = _profile_hint(recipe)
+                if hint:
+                    issues.append(tr('可参考配套配置：{path}；不会自动修改当前配置。', path=hint))
+                return CapturePlanView(summary, tr('；').join(issues), topics_text, blocks_start=True)
+            status = tr('按可用数据录制，未连接设备不阻止开始。')
+            if admission_policy == "formal":
+                status = tr('正式采集：所选动捕包含原始 IMU 与解算结果，触觉独立录制。\n主数据须新鲜有效；相机辅助数据录后核验。')
+            elif admission_policy == "debug":
+                status = (tr('调试采集：只要求当前可用数据，缺失流保持可选。\n不代表完整实验数据。') if recipe.version >= 3 else
+                          tr('调试采集：只要求当前可用数据，缺失流保持可选。\n原始 IMU 未覆盖，不代表完整实验数据。'))
             return CapturePlanView(
                 summary,
-                tr('按可用数据录制，未连接设备不阻止开始。'),
+                status,
                 topics_text, plan=plan, expected_topics_fingerprint=topics_fingerprint(topics),
             )
     return CapturePlanView(summary, tr('旧版后台未启用计划校验；按控制器配置录制。'), topics_text)

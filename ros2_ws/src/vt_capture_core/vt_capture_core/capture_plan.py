@@ -1,6 +1,8 @@
 """Resolved, immutable recording intent derived from the existing Recipe.
 
-The v3 plan uses explicitly named row44 tactile messages. Frozen v1/v2 plans
+The v4 plan freezes an explicit formal/debug policy. Formal requires the whole
+selection, including recipe v3 raw IMU for every selected hand pose. The v3
+plan uses explicitly named row44 tactile messages. Frozen v1/v2 plans
 retain the legacy26 tactile type and their original fingerprints. The v2
 admission design separates the configured Recorder allowlist from streams required
 for this recording. Admission freezes available streams as required; the other
@@ -18,12 +20,14 @@ import hashlib
 import json
 import re
 
-from .camera_streams import CAMERA_STREAMS, RECIPE_VERSION, camera_streams, capture_schema_version
+from .camera_streams import CAMERA_STREAMS, RECIPE_VERSION, RAW_IMU_RECIPE_VERSION, camera_streams, capture_schema_version
 from .recipes import CAMERA_IDS, HAND_IDS, TRACKER_IDS, Recipe, RecipeError, validate_recipe
 from .validation import ProtocolError, boolean, mapping, text
 
 
-CAPTURE_PLAN_VERSION = 3
+CAPTURE_PLAN_VERSION = 4
+LEGACY_AVAILABLE_PLAN_VERSION = 3
+ADMISSION_POLICIES = ("formal", "debug")
 CAPTURE_SCHEMA_VERSION = capture_schema_version()
 MAX_CONTROLLER_TOPICS = 200
 MAX_TOPIC_NAME_BYTES = 512
@@ -107,7 +111,8 @@ def recipe_for_topics(
         for camera in cameras for suffix, _type_name in CAMERA_STREAMS
         if suffix not in legacy_suffixes
     )
-    version = RECIPE_VERSION if not cameras or has_calibration else 1
+    has_raw = any(f"/gloves/{hand}/imu/raw" in configured for hand in HAND_IDS)
+    version = RAW_IMU_RECIPE_VERSION if has_raw else RECIPE_VERSION if not cameras or has_calibration else 1
     recipe = Recipe(name, duration_s=duration_s, cameras=cameras, trackers=trackers,
                     pose_hands=pose_hands, tactile_hands=tactile_hands, version=version)
     recognized = {stream.topic for stream in _streams_for_recipe(recipe)}
@@ -172,6 +177,8 @@ def _streams_for_recipe(recipe: Recipe, *, required: bool = False,
         for role in recipe.trackers
     )
     additional = [
+        *(PlannedStream(f"/gloves/{hand}/imu/raw", "vt_glove_msgs/msg/RawImuBatch", f"glove:{hand}", required)
+          for hand in recipe.pose_hands if recipe.version >= RAW_IMU_RECIPE_VERSION),
         *(PlannedStream(f"/gloves/{hand}/state", "vt_glove_msgs/msg/GloveState", f"glove:{hand}", required)
           for hand in recipe.pose_hands),
         *(PlannedStream(f"/gloves/{hand}/tactile/samples", ("vt_tactile_msgs/msg/TactileRow44Array" if plan_version >= 3 else
@@ -185,13 +192,23 @@ def _streams_for_recipe(recipe: Recipe, *, required: bool = False,
 class ResolvedCapturePlan:
     recipe: Recipe
     streams: tuple[PlannedStream, ...]
-    version: int = CAPTURE_PLAN_VERSION
+    version: int = LEGACY_AVAILABLE_PLAN_VERSION
     schema_version: str = CAPTURE_SCHEMA_VERSION
+    admission_policy: str | None = None
 
     def __post_init__(self):
-        if type(self.version) is not int or self.version not in (1, 2, CAPTURE_PLAN_VERSION):
-            raise CapturePlanError("unsupported capture plan version; expected integer 1, 2 or 3")
+        if type(self.version) is not int or self.version not in (1, 2, 3, CAPTURE_PLAN_VERSION):
+            raise CapturePlanError("unsupported capture plan version; expected integer 1 through 4")
+        if self.version >= 4:
+            if self.admission_policy not in ADMISSION_POLICIES:
+                raise CapturePlanError("v4 capture plans require an explicit formal/debug admission_policy")
+        elif self.admission_policy is not None:
+            raise CapturePlanError("historical capture plans cannot acquire a new admission policy")
         recipe = _record_recipe(self.recipe)
+        if self.version < 4 and recipe.version >= RAW_IMU_RECIPE_VERSION:
+            raise CapturePlanError("raw IMU recipes require a v4 capture plan")
+        if self.admission_policy == "formal" and recipe.pose_hands and recipe.version < RAW_IMU_RECIPE_VERSION:
+            raise CapturePlanError("formal hand capture requires recipe v3 with raw IMU and solved pose")
         if self.schema_version != capture_schema_version(recipe.version):
             raise CapturePlanError("capture plan schema_version does not match its recipe version")
         if self.version == 1 and recipe.version != 1:
@@ -200,8 +217,9 @@ class ResolvedCapturePlan:
             raise CapturePlanError("v1 capture plans require all three cameras and all three trackers")
         if type(self.streams) is not tuple or any(not isinstance(stream, PlannedStream) for stream in self.streams):
             raise CapturePlanError("capture plan streams must be an immutable tuple of PlannedStream values")
-        expected = _streams_for_recipe(recipe, required=self.version == 1, plan_version=self.version)
-        normalized = (self.streams if self.version == 1 else
+        strict = self.version == 1 or self.admission_policy == "formal"
+        expected = _streams_for_recipe(recipe, required=strict, plan_version=self.version)
+        normalized = (self.streams if strict else
                       tuple(replace(stream, required=False) for stream in self.streams))
         if normalized != expected:
             raise CapturePlanError("capture plan streams do not match the resolved recipe")
@@ -210,11 +228,16 @@ class ResolvedCapturePlan:
         object.__setattr__(self, "recipe", recipe)
 
     def _document(self) -> dict:
-        return {
+        document = {
             "version": self.version, "schema_version": self.schema_version,
             "recipe": self.recipe.to_dict(),
             "streams": [stream.to_dict() for stream in self.streams],
         }
+        # Historical serialized documents and their fingerprints stay byte-for-
+        # byte equivalent. Policy is part of the new immutable intent only.
+        if self.version >= 4:
+            document["admission_policy"] = self.admission_policy
+        return document
 
     @property
     def fingerprint(self) -> str:
@@ -233,7 +256,7 @@ class ResolvedCapturePlan:
         return tuple(stream.topic for stream in self.streams)
 
     def required_topics(self) -> tuple[str, ...]:
-        """Streams frozen as present at admission, or all streams for v1."""
+        """All formal selections, or the historical required availability set."""
         return tuple(stream.topic for stream in self.streams if stream.required)
 
     def optional_topics(self) -> tuple[str, ...]:
@@ -249,11 +272,19 @@ class ResolvedCapturePlan:
         return self.recipe.device_ids
 
 
-def resolve_capture_plan(recipe: Recipe) -> ResolvedCapturePlan:
-    """Resolve current candidates without claiming any stream was observed."""
+def resolve_capture_plan(recipe: Recipe, *, admission_policy: str | None = None) -> ResolvedCapturePlan:
+    """Resolve explicit v4 policy, or preserve the historical v3 call contract.
+
+    Formal selects all configured streams as required, independently of whether
+    they happen to be arriving. No plan proves actual bag coverage or quality.
+    """
     recipe = _record_recipe(recipe)
-    return ResolvedCapturePlan(recipe, _streams_for_recipe(recipe),
-                               schema_version=capture_schema_version(recipe.version))
+    if recipe.version >= RAW_IMU_RECIPE_VERSION and admission_policy is None:
+        admission_policy = "debug"
+    version = LEGACY_AVAILABLE_PLAN_VERSION if admission_policy is None else CAPTURE_PLAN_VERSION
+    return ResolvedCapturePlan(recipe, _streams_for_recipe(recipe, required=admission_policy == "formal"),
+                               version=version, schema_version=capture_schema_version(recipe.version),
+                               admission_policy=admission_policy)
 
 
 def require_available_streams(plan: ResolvedCapturePlan, topics: Sequence[str]) -> ResolvedCapturePlan:
@@ -263,8 +294,9 @@ def require_available_streams(plan: ResolvedCapturePlan, topics: Sequence[str]) 
     observations and owns minimum-data and failure policies. Old v1 plans are
     immutable historical contracts and cannot be weakened through this API.
     """
-    if not isinstance(plan, ResolvedCapturePlan) or plan.version != CAPTURE_PLAN_VERSION:
-        raise CapturePlanError("available streams require the current v3 capture plan")
+    if (not isinstance(plan, ResolvedCapturePlan) or plan.version not in (3, CAPTURE_PLAN_VERSION)
+            or plan.admission_policy == "formal"):
+        raise CapturePlanError("available streams require a v3 or explicit debug capture plan")
     available = set(_controller_topics(topics, allow_empty=True))
     unexpected = sorted(available - set(plan.record_topics()))
     if unexpected:
@@ -275,9 +307,12 @@ def require_available_streams(plan: ResolvedCapturePlan, topics: Sequence[str]) 
 
 
 def validate_capture_plan(document: dict) -> ResolvedCapturePlan:
-    """Read a frozen v1, v2 or v3 plan; reject inconsistent or altered fields."""
+    """Read a frozen v1-v4 plan; reject inconsistent or altered fields."""
     try:
-        mapping(document, {"version", "schema_version", "recipe", "streams", "fingerprint"}, "capture_plan")
+        fields = {"version", "schema_version", "recipe", "streams", "fingerprint"}
+        if type(document) is dict and document.get("version") == 4:
+            fields.add("admission_policy")
+        mapping(document, fields, "capture_plan")
         recipe = validate_recipe(document["recipe"])
         if type(document["streams"]) is not list:
             raise CapturePlanError("capture_plan.streams must be an array")
@@ -285,7 +320,8 @@ def validate_capture_plan(document: dict) -> ResolvedCapturePlan:
         for value in document["streams"]:
             mapping(value, {"topic", "type_name", "device_id", "required"}, "capture_plan.stream")
             streams.append(PlannedStream(**value))
-        plan = ResolvedCapturePlan(recipe, tuple(streams), document["version"], document["schema_version"])
+        plan = ResolvedCapturePlan(recipe, tuple(streams), document["version"], document["schema_version"],
+                                   document.get("admission_policy"))
         if type(document["fingerprint"]) is not str or document["fingerprint"] != plan.fingerprint:
             raise CapturePlanError("capture_plan.fingerprint does not match the resolved intent")
         return plan

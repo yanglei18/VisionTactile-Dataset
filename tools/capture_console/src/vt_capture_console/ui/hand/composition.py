@@ -250,6 +250,38 @@ class DisplayComposer:
             return geometry
         return None
 
+    def _display_snapshot(self, snapshot, now):
+        """Select one complete rendered frame without changing measurements.
+
+        Surface work may finish between numeric frames. Its own pose/source
+        time drives display age and tactile skew; the latest pose still gates
+        session health, calibration and sensor continuity.
+        """
+        preview = snapshot.get('surface_preview')
+        latest = snapshot.get('pose') or {}
+        if (not isinstance(preview, dict) or not measured_pose_visible(snapshot, now / 1e9)
+                or not self._geometry_valid(preview.get('geometry'))):
+            return snapshot
+        pose, display = preview.get('measurement_pose') or {}, preview.get('pose') or {}
+        calibration = snapshot.get('calibration') or {}
+        binding = preview.get('binding') or ()
+        if (not isinstance(pose, dict) or not isinstance(display, dict) or len(binding) != 11
+                or any(pose.get(key) != latest.get(key) for key in _POSE_CONTEXT_FIELDS)
+                or pose.get('hand', self.hand) != self.hand
+                or pose.get('shape_params') != latest.get('shape_params')
+                or binding[1] != calibration.get('clear_generation', binding[1])
+                or binding[5] != calibration.get('functional_enabled', binding[5])
+                or any(display.get(key) != pose.get(key)
+                       for key in (*_POSE_CONTEXT_FIELDS, 'frame_index', 'timestamp_s', 'source_monotonic_ns'))):
+            return snapshot
+        old_nodes = (preview.get('orientation') or {}).get('nodes', {})
+        nodes = (snapshot.get('orientation') or {}).get('nodes', {})
+        if any(node in nodes and item.get('epoch') != nodes[node].get('epoch')
+               for node, item in old_nodes.items()):
+            return snapshot
+        return {**snapshot, 'pose': pose, 'orientation': preview.get('orientation'),
+                'geometry': None, 'display_pose': display, 'display_geometry': preview['geometry']}
+
     def compose(self, snapshot, tactile_state, *, now_ns=None):
         now = host_clock.monotonic_ns() if now_ns is None else _clock(now_ns)
         if self._last_now is not None and now < self._last_now:
@@ -258,6 +290,7 @@ class DisplayComposer:
             return self._fixed_hand("时钟异常 · 等待新数据")
         self._last_now = now
         snapshot = snapshot if isinstance(snapshot, dict) else {}
+        snapshot = self._display_snapshot(snapshot, now)
         pose_frame = self._compose_pose(snapshot, now)
         touch = self._current_touch(tactile_state, now)
         if touch is None:

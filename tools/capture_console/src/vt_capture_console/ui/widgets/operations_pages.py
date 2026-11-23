@@ -103,6 +103,23 @@ def build_recording_page(window):
     window.duration.setAccessibleName(tr('录制时长'))
     window.duration.setEnabled(window.demo)
     _field(setup_layout, tr('录制时长'), window.duration)
+    window.capture_policy = QComboBox()
+    window.capture_policy.addItem(tr('正式采集'), "formal")
+    window.capture_policy.addItem(tr('调试采集'), "debug")
+    window.capture_policy.setAccessibleName(tr('采集策略'))
+    _field(setup_layout, tr('采集策略'), window.capture_policy)
+    window.capture_hand_modes = {}
+    for hand, label in (("left", tr('左手录制目标')), ("right", tr('右手录制目标'))):
+        selector = QComboBox()
+        for title, mode in ((tr('按当前配置'), "configured"), (tr('不录入'), "none"),
+                            (tr('动捕结果'), "pose"), (tr('仅触觉'), "tactile"),
+                            (tr('动捕结果与触觉'), "both")):
+            selector.addItem(title, mode)
+        selector.setAccessibleName(label)
+        _field(setup_layout, label, selector)
+        window.capture_hand_modes[hand] = selector
+        selector.currentIndexChanged.connect(lambda _index: window.refresh())
+    window.capture_policy.currentIndexChanged.connect(lambda _index: window.refresh())
     setup_layout.addStretch()
     setup_layout.addWidget(_label(
         tr('演示录制仅存于内存，不生成数据包。') if window.demo else
@@ -139,6 +156,9 @@ def build_recording_page(window):
     window.record_detail.setAccessibleName(tr('录制状态说明'))
     window.record_detail.setMaximumHeight(64)
     console_layout.addWidget(window.record_detail)
+    window.write_metrics = _label("", "recordingContext", wrap=True)
+    window.write_metrics.hide()
+    console_layout.addWidget(window.write_metrics)
     plan = QFrame()
     plan.setObjectName("capturePlan")
     plan_layout = QVBoxLayout(plan)

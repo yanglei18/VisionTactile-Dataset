@@ -56,6 +56,7 @@ def build_specs(profiles):
                 p["socket_path"] = p.get("socket_path") or default_socket_path(hand)
                 resources += tuple("socket:" + str(Path(p[key]).resolve())
                                    for key in ("control_socket", "socket_path"))
+                resources += ("socket:" + str(Path(p["socket_path"] + ".imu").resolve()),)
         argv = ("ros2", "launch", package, launch) + tuple(f"{key}:={value}" for key, value in sorted(p.items()) if value)
         if any(python_paths):
             python_path = os.pathsep.join(path for path in (*python_paths, os.environ.get("PYTHONPATH", "")) if path)

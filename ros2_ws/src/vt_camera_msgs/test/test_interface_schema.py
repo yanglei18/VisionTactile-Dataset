@@ -13,6 +13,8 @@ def test_public_message_set_contains_only_implemented_capture_interfaces():
         "CaptureContext.msg",
         "CaptureEvent.msg",
         "CaptureStatus.msg",
+        "RecorderMetrics.msg",
+        "RecorderTopicMetrics.msg",
         "SessionInfo.msg",
         "StreamProfile.msg",
         "StreamStatus.msg",

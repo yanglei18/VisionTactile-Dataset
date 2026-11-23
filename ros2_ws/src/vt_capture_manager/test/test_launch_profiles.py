@@ -88,7 +88,9 @@ def test_managed_glove_requires_runtime_assets_even_for_legacy_headless_profile(
     assert spec.topics == ("/gloves/left/state",)
     assert "hand_service.launch.py" in spec.argv
     assert not any(arg.startswith("launch_gui:=") for arg in spec.argv)
-    assert len([r for r in spec.resources if r.startswith("socket:")]) == 2
+    assert len([r for r in spec.resources if r.startswith("socket:")]) == 3
+    pose_socket = next(arg.removeprefix("socket_path:=") for arg in spec.argv if arg.startswith("socket_path:="))
+    assert "socket:" + str(Path(pose_socket + ".imu").resolve()) in spec.resources
 
 
 def test_duplicate_ids_and_shared_serial_aliases(tmp_path):

@@ -51,6 +51,50 @@ def missing_palm(snapshot):
     return gap
 
 
+def asynchronous_preview_snapshot():
+    latest = pose(NOW + 50_000_000, shape_params=[0.] * 10)
+    old = pose(NOW, shape_params=[0.] * 10)['pose']
+    latest['geometry'] = {'joints_m': [[9., 0., 0.]] * 21}  # Current measurement, no surface.
+    display = {**old, 'display_only': True, 'shape_preview_mode': 'current'}
+    latest['surface_preview'] = dict(
+        binding=('pose-session', 0, 1, 1, None, True, 'config', 'model', 'right', 0, 'current'),
+        pose=display, measurement_pose=old, orientation={'nodes': {}}, geometry=geometry())
+    return latest
+
+
+def test_async_surface_uses_its_own_pose_time_for_age_and_tactile_skew():
+    composer = DisplayComposer(geometry())
+    motion = asynchronous_preview_snapshot()
+    before = deepcopy(motion)
+    rendered = composer.compose(motion, tactile(NOW + 50_000_000), now_ns=NOW + 50_000_000)
+    assert rendered.pose_current and rendered.geometry is motion['surface_preview']['geometry']
+    assert rendered.pose_age_ms == rendered.skew_ms == 50.
+    assert motion == before  # Latest numeric measurement remains untouched.
+
+
+@pytest.mark.parametrize('change', ['profile', 'clear', 'functional', 'shape', 'hand', 'epoch', 'unavailable'])
+def test_async_surface_does_not_cross_current_measurement_context(change):
+    composer = DisplayComposer(geometry())
+    motion = asynchronous_preview_snapshot()
+    if change == 'profile':
+        motion['pose']['profile_version'] = 2
+    elif change == 'clear':
+        motion['calibration']['clear_generation'] = 2
+    elif change == 'functional':
+        motion['calibration']['functional_enabled'] = False
+    elif change == 'shape':
+        motion['pose']['shape_params'] = [1.] * 10
+    elif change == 'hand':
+        motion['surface_preview']['measurement_pose']['hand'] = 'left'
+    elif change == 'epoch':
+        motion['surface_preview']['orientation']['nodes'] = {'11': {'epoch': 1}}
+        motion['orientation'] = {'nodes': {'11': {'epoch': 2}}}
+    else:
+        motion['pose']['pose_available'] = False
+    rendered = composer.compose(motion, None, now_ns=NOW + 50_000_000)
+    assert not rendered.uses_tracked_geometry
+
+
 @pytest.fixture(params=[("left", "left_glove_from_right_initial.json"),
                         ("right", "right_glove_candidate.json")], ids=["left", "right"])
 def native_composer(request):

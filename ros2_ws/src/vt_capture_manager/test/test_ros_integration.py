@@ -34,7 +34,7 @@ def test_tactile_recording_activity_observes_raw_samples_separately_from_state()
     from rclpy.executors import SingleThreadedExecutor
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-    from vt_tactile_msgs.msg import TactileRow44Array, TactileGridState
+    from vt_tactile_msgs.msg import TactileRow44, TactileRow44Array, TactileGridState
     from vt_capture_manager.config import DeviceConfig, ManagerConfig
     from vt_capture_manager.model import SnapshotModel
     from vt_capture_manager.node import build_node
@@ -67,7 +67,7 @@ def test_tactile_recording_activity_observes_raw_samples_separately_from_state()
     try:
         sample_subscription = next(item for item in manager.subscriptions
                                    if item.topic_name == prefix + "/samples")
-        assert sample_subscription.raw
+        assert not sample_subscription.raw  # Formal admission inspects decoded row evidence.
         assert sample_subscription.qos_profile.depth == 1
         assert sample_subscription.qos_profile.reliability == ReliabilityPolicy.BEST_EFFORT
         until(lambda: state.get_subscription_count() == samples.get_subscription_count() == 1)
@@ -77,6 +77,13 @@ def test_tactile_recording_activity_observes_raw_samples_separately_from_state()
         samples.publish(TactileRow44Array())  # Invalid payload is still recordable evidence.
         until(lambda: model.topic_activity()[prefix + "/samples"])
         assert not model.topic_health()[prefix + "/state"]
+        assert not model.topic_health()[prefix + "/samples"]
+        stamp = time.time_ns()
+        rows = TactileRow44Array(schema_version=2, hand="right", connected=True, time_valid=True,
+                                 host_realtime_ns=stamp, host_monotonic_ns=monotonic[0],
+                                 blocks=[TactileRow44(row=3, adc=[0]*20)])
+        samples.publish(rows)
+        until(lambda: model.topic_health()[prefix + "/samples"])
         monotonic[0] += 2_000_000_000
         state.publish(TactileGridState())
         until(lambda: model.snapshot()["devices"][0]["age_s"] == 0)

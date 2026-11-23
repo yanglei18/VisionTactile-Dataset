@@ -10,6 +10,10 @@
   <depend>nlohmann-json-dev</depend>
   <depend>librealsense2</depend>
   <depend>rclcpp</depend>
+  <depend>rosbag2_cpp</depend>
+  <depend>rosbag2_storage</depend>
+  <depend>rosbag2_transport</depend>
+  <depend>yaml_cpp_vendor</depend>
   <depend>rclpy</depend>
   <depend>realsense2_camera</depend>
   <depend>realsense2_camera_msgs</depend>
@@ -28,5 +32,7 @@
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>ros2launch</test_depend>
   <test_depend>rosbag2_py</test_depend>
+  <test_depend>vt_glove_msgs</test_depend>
+  <test_depend>vt_tactile_msgs</test_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>

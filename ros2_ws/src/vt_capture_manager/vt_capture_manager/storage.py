@@ -91,6 +91,11 @@ class IntentStore:
                 CREATE TABLE IF NOT EXISTS alignment_snapshots (
                     trial_id TEXT PRIMARY KEY REFERENCES trials(id), content BLOB NOT NULL,
                     sha256 TEXT NOT NULL, path TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS hand_trial_evidence (
+                    trial_id TEXT NOT NULL REFERENCES trials(id), phase TEXT NOT NULL,
+                    document_json TEXT NOT NULL, PRIMARY KEY(trial_id,phase));
+                CREATE TRIGGER IF NOT EXISTS immutable_hand_trial_evidence BEFORE UPDATE ON hand_trial_evidence
+                    BEGIN SELECT RAISE(ABORT, 'hand trial evidence is immutable'); END;
                 CREATE TABLE IF NOT EXISTS quality_jobs (
                     trial_id TEXT PRIMARY KEY REFERENCES trials(id), state TEXT NOT NULL,
                     verdict TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '', attempt INTEGER NOT NULL DEFAULT 0,
@@ -168,7 +173,10 @@ class IntentStore:
                        "WHERE state='RUNNING'", (utc_now(),))
             db.execute("UPDATE trials SET quality='QUEUED' WHERE id IN (SELECT trial_id FROM quality_jobs WHERE state='QUEUED')")
 
-    def insert_start_metadata(self, db, trial_id, value, alignment_content=None):
+    def insert_start_metadata(self, db, trial_id, value, alignment_content=None, *, hand_evidence=None):
+        if hand_evidence is not None:
+            from .hand_trial_archive import freeze
+            value = dict(value, hand_runtime_evidence=freeze(db, trial_id, "before_start", hand_evidence))
         start_path = str(self.manifests/(trial_id+".start.json"))
         finish_path = str(self.manifests/(trial_id+".finish.json"))
         db.execute("INSERT INTO trial_metadata VALUES(?,?,NULL,?,?)",
@@ -178,7 +186,13 @@ class IntentStore:
             path = str(self.manifests/(trial_id+".alignment.yaml"))
             db.execute("INSERT INTO alignment_snapshots VALUES(?,?,?,?)", (trial_id, alignment_content, digest, path))
 
-    def freeze_finish(self, db, trial_id, value, *, quality_enabled):
+    def freeze_finish(self, db, trial_id, value, *, quality_enabled, hand_evidence=None):
+        if hand_evidence is not None:
+            current = db.execute("SELECT finish_json FROM trial_metadata WHERE trial_id=?", (trial_id,)).fetchone()
+            if current is None or current["finish_json"] is not None:
+                return False
+            from .hand_trial_archive import freeze
+            value = dict(value, hand_runtime_evidence=freeze(db, trial_id, "after_stop", hand_evidence))
         updated = db.execute("UPDATE trial_metadata SET finish_json=? WHERE trial_id=? AND start_json IS NOT NULL AND finish_json IS NULL",
                              (json.dumps(value, ensure_ascii=False, allow_nan=False), trial_id)).rowcount
         if not updated:
@@ -284,6 +298,8 @@ class IntentStore:
         target = self.manifests / (trial_id + ".json")
         temporary = self.manifests / (trial_id + "." + uuid.uuid4().hex + ".tmp")
         details = self.details(trial_id)
+        from .hand_trial_archive import write_archives
+        write_archives(self, trial_id)
         for key in ("start", "finish"):
             value = details["metadata"][key]
             if value is not None:

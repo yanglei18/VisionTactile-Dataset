@@ -296,7 +296,7 @@ class LiveController(ShapeCalibrationMixin):
     def __init__(self, config, rest, model_axes, *, output_root,
                  source_factory=None, clock=host_clock.monotonic, fusion_factory=None,
                  solver_factory=None, recorder_factory=None, calibration_fn=None,
-                 geometry_backend=None, pose_backend=None, pose_exporter=None,
+                 geometry_backend=None, pose_backend=None, pose_exporter=None, raw_imu_exporter=None,
                  result_recorder_factory=None, input_scale_job_factory=None, shape_job_factory=None,
                  record_streams=True):
         if type(record_streams) is not bool:
@@ -319,6 +319,7 @@ class LiveController(ShapeCalibrationMixin):
         self._geometry_backend = geometry_backend
         self._pose_backend = pose_backend
         self._pose_exporter = pose_exporter
+        self._raw_imu_exporter = raw_imu_exporter
         self.renders_geometry = geometry_backend is not None
         # The official path never constructs or falls back to the legacy solver.
         self._solver = None if pose_backend is not None else (solver_factory or SparseHandSolver)(
@@ -495,6 +496,7 @@ class LiveController(ShapeCalibrationMixin):
             if reason == "disconnected":
                 runtime["connected"] = False
                 result["display_pose"] = result["display_geometry"] = None
+                result['surface_preview'] = None
             if reason == "missing_or_stale_root":
                 runtime["message"] = (_input_wait_message(runtime.get("input_diagnostics")) or
                                       "手掌数据缺失或已过期；隐藏旧姿态，等待新数据。")
@@ -560,6 +562,8 @@ class LiveController(ShapeCalibrationMixin):
             last_sample_monotonic_s=session.last_sample if session is not None else None,
             last_sample_age_s=(max(0., now - session.last_sample)
                 if session is not None and session.last_sample is not None else None))
+        if self._raw_imu_exporter is not None:
+            runtime["ros_raw_export"] = self._raw_imu_exporter.snapshot()
         result = dict(runtime=runtime, orientation=frame)
         # Callers retain a fully independent mutable result. Cache its owned
         # copy outside the state lock, then validate the epoch/session at the
@@ -696,6 +700,12 @@ class LiveController(ShapeCalibrationMixin):
                     reference_status=status["status"], unstable_slots=status["unstable_slots"])
         return dict(active=active, captured_steps=[key for key in STEP_KEYS if key in self._captures],
                     profile_version=(self._profile or {}).get("profile_version"),
+                    config_sha256=self._config_sha, rest_sha256=self._rest_sha,
+                    profile_sha256=getattr(self, "_profile_sha256", "") if self._profile else "",
+                    upstream_state_sha256=(self._profile or {}).get("upstream_state_sha256", ""),
+                    profile_artifact_path=(str(self._calibration_artifact_destination(self._session,
+                        self._session.directory / f"profile.v{self._profile['profile_version']:03d}.json"))
+                        if self._session is not None and self._profile else ""),
                     palm_tilt_references=deepcopy(self._palm_tilt_references),
                     retry_steps=list(self._mounting_retry_steps),
                     shape_calibration=self._shape_state(now),
@@ -724,6 +734,7 @@ class LiveController(ShapeCalibrationMixin):
             self._snapshot["orientation"] = None
             self._snapshot["geometry"] = None
             self._snapshot["display_pose"] = self._snapshot["display_geometry"] = None
+            self._snapshot['surface_preview'] = None
             self._snapshot["geometry_error"] = ""
             self._revision += 1
 
@@ -1266,10 +1277,28 @@ class LiveController(ShapeCalibrationMixin):
                         session.recorder.close()
                     except OSError:
                         pass  # First failure is latched; do not retry disk I/O on every batch.
-                with session.lock:
-                    self._retain_scale_samples(session, samples)
-                    session.fusion.update(samples)
-                    session.node_counts.update(str(sample.node_id) for sample in samples)
+                raw_rows = []
+                try:
+                    with session.lock:
+                        self._retain_scale_samples(session, samples)
+                        if self._raw_imu_exporter is None:
+                            session.fusion.update(samples)
+                        else:
+                            from .raw_imu_export import raw_sample_document
+                            session.fusion.update(samples, raw_observer=lambda *args: raw_rows.append(raw_sample_document(*args)))
+                        session.node_counts.update(str(sample.node_id) for sample in samples)
+                finally:
+                    if self._raw_imu_exporter is not None:
+                        if len(raw_rows) != len(samples):
+                            self._raw_imu_exporter.record_error(
+                                RuntimeError("fusion ended before all received raw samples were committed"),
+                                len(samples) - len(raw_rows))
+                        try:
+                            self._raw_imu_exporter.publish(raw_rows, hand=self.config["hand"],
+                                session_id=session.session_id, config_sha256=self._config_sha,
+                                source_mode="live" if self._source_tags(session)["input_kind"] == "raw_serial" else "replay")
+                        except Exception as exc:
+                            self._raw_imu_exporter.record_error(exc, len(raw_rows))
                 with self._state_lock:
                     if self._session is session:
                         self._snapshot["runtime"]["received_samples"] = session.received
@@ -1934,6 +1963,7 @@ class LiveController(ShapeCalibrationMixin):
         version = max(session.profile_version, len(session.profiles)) + 1
         session.profile_version = version
         profile = {**profile, "profile_version": version}
+        self._profile_sha256 = digest(profile)
         filename = f"profile.v{version:03d}.json"
         session.profile_saved = False
         self._profile, self._rejected = profile, profile.get("rejected_nodes", {})
@@ -1988,9 +2018,80 @@ class LiveController(ShapeCalibrationMixin):
         else:
             self._message(f"{name}弯曲方向已更新；保持运动幅度，不增加平滑。属于模型轴重定向，非人体精度或极限认证。")
 
+    def _has_async_geometry(self):
+        return (self._pose_backend is not None
+                and callable(getattr(self._geometry_backend, 'measure_mano', None))
+                and callable(getattr(self._geometry_backend, 'create_preview_renderer', None)))
+
+    def _preview_binding(self, session):
+        profile = self._profile or {}
+        return (session.session_id, self._clear_generation, id(self._profile),
+                profile.get('profile_version'), profile.get('upstream_state_sha256'),
+                profile.get('functional_enabled', True), self._config_sha, self._rest_sha,
+                getattr(self._geometry_backend, 'hand', None), self._shape_preview_revision,
+                self._shape_preview)
+
+    def _submit_geometry_preview(self, session, frame, pose, display_pose):
+        if not pose.get('pose_available') or not pose.get('solver_success') or display_pose is None:
+            return
+        # Candidate shape is a display selection. Measured joints above always
+        # used the solver's current shape, even while comparing candidates.
+        display_pose = {**display_pose, 'shape_preview_mode': 'current',
+                        'shape_preview_revision': self._shape_preview_revision}
+        if self._shape_preview != 'current' and self._shape_candidate is not None:
+            params = (self._shape_candidate['shape_profile']['shape_params']
+                      if self._shape_preview == 'candidate'
+                      else self._shape_candidate.get('before_shape_params', [0.] * 10))
+            display_pose = {**display_pose, 'shape_params': list(params),
+                            'shape_preview_mode': self._shape_preview, 'display_only': True}
+        worker = getattr(self, '_geometry_preview_worker', None)
+        if worker is None:
+            worker = self._geometry_preview_worker = self._geometry_backend.create_preview_renderer()
+        worker.submit(dict(binding=self._preview_binding(session), pose=display_pose,
+                           measurement_pose=pose, orientation=frame))
+
+    def _poll_geometry_preview(self, session):
+        worker = getattr(self, '_geometry_preview_worker', None)
+        if worker is None:
+            return
+        result = worker.poll()
+        with self._state_lock:
+            status = worker.snapshot()
+            self._snapshot['runtime']['surface_preview'] = status
+            if status.get('alive') is False:
+                self._snapshot['display_geometry_error'] = '手模型显示进程已结束；姿态测量和采集继续。'
+            if result is None:
+                return
+            pose = self._snapshot.get('pose') or {}
+            if (session is None or session.done.is_set() or session.stop.is_set() or self._stop.is_set()
+                    or result['binding'] != self._preview_binding(session)
+                    or not pose.get('pose_available') or not pose.get('solver_success')):
+                return
+            # A late surface cannot cross sensor epochs, calibration or hand
+            # identity, and cannot prolong its actual source timestamp.
+            previous = result['orientation'].get('nodes', {})
+            current = (self._snapshot.get('orientation') or {}).get('nodes', {})
+            if any(node in current and data.get('epoch') != current[node].get('epoch')
+                   for node, data in previous.items() if node in self.config['node_to_slot']):
+                return
+            stamp = result['pose'].get('timestamp_s')
+            if not isinstance(stamp, (float, int)) or not 0 <= self._clock() - stamp <= .25:
+                return
+            if result['error']:
+                self._snapshot['display_geometry_error'] = result['error']
+                self._revision += 1
+                return
+            # Publish an indivisible original-pose/surface pair. Never attach
+            # this surface to the newer numeric result in snapshot['pose'].
+            self._snapshot.update(display_pose=result['pose'], display_geometry=result['geometry'],
+                                  display_geometry_error='', surface_preview=result)
+            self._revision += 1
+
     def _tick(self, session):
         pipeline_start = time.perf_counter()
         timing = dict(solve=0., calibration=0., mesh=0., total=0.)
+        if self._has_async_geometry():
+            timing['joints'] = 0.
         self._check_recording(session)
         self._ensure_metadata(session)
         with session.lock:
@@ -2097,6 +2198,7 @@ class LiveController(ShapeCalibrationMixin):
             self._display_context = context
             with self._state_lock:
                 self._snapshot["display_pose"] = self._snapshot["display_geometry"] = None
+                self._snapshot['surface_preview'] = None
         if (self._pose_backend is not None and not self._stop.is_set() and not session.stop.is_set()
                 and not input_health_blocked
                 and not session.done.is_set() and root is not None
@@ -2113,9 +2215,12 @@ class LiveController(ShapeCalibrationMixin):
                 and pose.get("pose_available") and pose.get("solver_success")):
             mesh_start = time.perf_counter()
             try:
-                # Intentionally the same processing thread as solve. Neither the
-                # reader nor GUI invokes MANO, and geometry is not a pose record.
-                if self._pose_backend is not None:
+                if self._has_async_geometry():
+                    # The exported 21 points belong to this exact measurement,
+                    # including its actual hand, shape and root rotation.
+                    geometry = self._geometry_backend.measure_mano(
+                        pose['mano_pose_rotvec'], pose.get('shape_params'))
+                elif self._pose_backend is not None:
                     render_pose = display_pose if display_pose is not None else pose
                     rendered = self._geometry_backend.render_mano(
                         render_pose["mano_pose_rotvec"], render_pose.get("shape_params"))
@@ -2138,7 +2243,7 @@ class LiveController(ShapeCalibrationMixin):
                     geometry = self._geometry_backend.render(pose["anatomical_euler_rad"], pose["root_quat_xyzw"])
             except Exception as exc:
                 geometry_error = f"手模型生成失败（采集继续）：{type(exc).__name__}: {exc}"
-            timing["mesh"] = (time.perf_counter() - mesh_start) * 1000.
+            timing['joints' if self._has_async_geometry() else 'mesh'] = (time.perf_counter() - mesh_start) * 1000.
         # A slow fit, solver or render cannot publish an expired root as fresh.
         finished = self._clock()
         if not source_current():
@@ -2161,7 +2266,15 @@ class LiveController(ShapeCalibrationMixin):
         pose["input_warnings"] = [warning for warning in frame.get("warnings", [])
                                   if warning.endswith("_gyro_near_rail")]
         self._shape_tick(session, frame, pose, finished)
-        display_pose, display_geometry = self._shape_render_preview(display_pose, display_geometry, pose, finished)
+        if self._has_async_geometry():
+            try:
+                self._submit_geometry_preview(session, frame, pose, display_pose)
+            except Exception as exc:
+                # A display failure never invalidates numeric measurements.
+                with self._state_lock:
+                    self._snapshot['display_geometry_error'] = f'{type(exc).__name__}: {exc}'
+        else:
+            display_pose, display_geometry = self._shape_render_preview(display_pose, display_geometry, pose, finished)
         flush = finished - session.last_flush >= 1.
         if session.recording_policy is None:
             session.recording_policy = ResultRecordingPolicy(self.config)
@@ -2211,6 +2324,7 @@ class LiveController(ShapeCalibrationMixin):
                                   geometry_error=geometry_error, calibration=self._calibration_state(finished))
             if not connected:
                 self._snapshot["display_pose"] = self._snapshot["display_geometry"] = None
+                self._snapshot['surface_preview'] = None
             elif display_pose is not None and (display_geometry is not None or self._geometry_backend is None):
                 self._snapshot.update(display_pose=display_pose, display_geometry=display_geometry)
             self._snapshot["runtime"].update(connected=connected, received_samples=session.received,
@@ -2223,6 +2337,8 @@ class LiveController(ShapeCalibrationMixin):
                 self._snapshot["runtime"]["result_recording"] = session.result_recorder.snapshot()
             if export_status is not None:
                 self._snapshot["runtime"]["ros_export"] = export_status
+            if self._raw_imu_exporter is not None:
+                self._snapshot["runtime"]["ros_raw_export"] = self._raw_imu_exporter.snapshot()
             self._revision += 1
         return True
 
@@ -2279,6 +2395,7 @@ class LiveController(ShapeCalibrationMixin):
                 try:
                     self._poll_scale_check()
                     self._poll_shape()
+                    self._poll_geometry_preview(session)
                     if session is not None and session.done.is_set():
                         self._disconnect("source_eof" if session.eof else "reader_error", session.error)
                     elif session is not None and session.opened and self._clock() >= next_tick:
@@ -2311,3 +2428,6 @@ class LiveController(ShapeCalibrationMixin):
                 self._wake.clear()
         finally:
             self._disconnect("controller_stopped")
+            worker = getattr(self, '_geometry_preview_worker', None)
+            if worker is not None:
+                worker.close()

@@ -52,7 +52,7 @@ def test_arbitrary_preview_subsets(cameras, trackers, pose, tactile):
 
 
 @pytest.mark.parametrize("field,value", [
-    ("version", True), ("version", 3), ("name", ""), ("name", 9),
+    ("version", True), ("version", 4), ("name", ""), ("name", 9),
     ("mode", "unknown"), ("duration_s", 0), ("duration_s", 300.01),
     ("duration_s", True), ("duration_s", float("nan")),
     ("duration_s", float("inf")), ("duration_s", -1),

@@ -160,6 +160,7 @@ class CaptureStatusFact:
     disk_free_bytes: int
     observed_write_mb_s: float
     detail: str
+    recorder_metrics: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -861,6 +862,8 @@ class CaptureController:
             else request_id
         )
         recovered = self._recovery is not None
+        reader = getattr(self._recorder, "metrics", None)
+        metrics = reader() if callable(reader) else None
         status = CaptureStatusFact(
             request_id=effective_request_id,
             session_id=self.session_id,
@@ -869,7 +872,9 @@ class CaptureController:
             camera_groups=(),
             recorder_alive=True if recovered else self._recorder_alive(),
             disk_free_bytes=self._disk_free_bytes,
-            observed_write_mb_s=0.0,
+            observed_write_mb_s=(metrics["storage_returned_mb_s"]
+                                 if metrics and metrics.get("rate_available") else 0.0),
+            recorder_metrics=metrics,
             detail=((self._context_detail if recovered or detail == "periodic status" else detail)
                     + (f"; {self._disk_error}" if self._disk_error and self._disk_error not in self._context_detail else "")),
         )
