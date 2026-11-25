@@ -160,3 +160,11 @@ ros2 run vt_capture_manager vt_optical_hand_fusion --ros-args -p camera_name:=d4
 ```bash
 ros2 bag record -s mcap /d436/color/image_raw /d436/color/camera_info /d436/frame_timing /gloves/left/state /gloves/right/state /hand_cube_tracking/left/observation /hand_cube_tracking/right/observation /hand_cube_tracking/left/hand_pose /hand_cube_tracking/right/hand_pose
 ```
+
+#### 联合空间的手部方向验收
+
+头部相机的第一人称视图和联合空间的自由视角应使用同一份带时间戳的手部观测。掌的前方取手腕到中指指根，手背朝向取对应手模的手背法向，各指指尖的实际朝向取末节指骨。相机观察方向取拍摄时的彩色相机光轴。区分手背朝向镜头和指尖指向镜头时，使用相应部位到镜头中心的方向。
+
+1. 使用已知安装方向和偏移的固定底座。首次绑定后，双手自然平放，手背朝上，手腕靠自己、指尖朝前，两拇指相对。从头部相机看实手，将模型腕点、两拇指尖和食指尖叠在原始未镜像画面上，核对位置、左右和掌背。两手在世界坐标中的初始位置应来自此次观测。这个姿势用于核对，可复用原有手指标定。
+2. 左右手分别翻掌，再朝镜头指一下食指，检查掌背翻转和末节指向能随真实动作改变。方块遮挡或身份不确定时显示跟踪状态，记录中保留有效性。
+3. 双手回到桌面固定位置，保持方块可见并转头。第一人称图像中的手应移动，联合空间中的手应留在原桌面位置。此项需要实物安装参数、已标定的头部相机和 Tracker，以及联合空间的手部显示接入后验证。

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from math import sqrt
+from math import cos, radians, sin, sqrt
 import json
 from types import SimpleNamespace as N
 
@@ -72,6 +72,51 @@ def test_known_root_removed_before_optical_pose_and_nearest_true_shape_retains_i
     assert outcome.shape.frame == 8 and outcome.shape.realtime == HOST+4*MS
     assert (outcome.before, outcome.after) == (HOST-8*MS, HOST+4*MS)
     assert not q.drain(100*MS)
+
+
+@pytest.mark.parametrize("hand,thumb_side", [("left", 1), ("right", -1)])
+@pytest.mark.parametrize("pitch", [135, -135], ids=["fingers-away", "fingers-toward-lens"])
+def test_camera_view_preserves_hand_side_and_finger_depth(tmp_path, hand, thumb_side, pitch):
+    # Synthetic wrist model: +Y points along open fingers, +Z is dorsal.
+    # The two thumb tips lie toward the centre of the image at the starting pose.
+    local = [(0., 0., 0.)]
+    for offset, length in [(0.045, .060), (.020, .092), (0., .100), (-.018, .086), (-.034, .065)]:
+        for step in range(1, 5):
+            local.append((thumb_side * offset, length * step / 4, 0.))
+    # Flex the index fingertip independently of the hand's overall forward axis.
+    x, y, z = local[7]
+    local[8] = (x, y + .004, z - .012)
+    shape = glove()
+    shape.hand = hand
+    shape.session_id = f"{hand}-1"
+    shape.header = header(f"glove_{hand}_reference", HOST)
+    # The input glove root has already rotated these points +90 degrees about X.
+    shape.joint_positions_m = [v for x, y, z in local for v in (x, -z, y)]
+    history = ShapeBuffer()
+    history.add(shape, hand)
+
+    # The mount turns the wrist 180 degrees about Z relative to the cube.
+    path = tmp_path / "mount.json"
+    path.write_text(json.dumps({"schema_version": 1, "hands": {hand: {
+        "layout_sha256": LAYOUT, "cube_from_model_wrist": {
+            "translation_m": [0., 0., .01], "quaternion_xyzw": [0., 0., 1., 0.]}}}}))
+    theta = radians(pitch)
+    obs = cube()
+    obs.hand = hand
+    x_center = -.12 * thumb_side
+    obs.pose.position = N(x=x_center, y=0., z=.55)
+    # Camera-from-cube = X pitch followed in local coordinates by a half turn about Z.
+    obs.pose.orientation = N(x=0., y=-sin(theta/2), z=cos(theta/2), w=0.)
+    out = fuse(obs, hand, CAMERA, read_mounts(path), color_time(timing(), CAMERA), history)
+    assert out.status == "tracked"
+    wrist = (x_center, -.01 * sin(theta), .55 + .01 * cos(theta))
+    # Camera optical +Z is away from the lens. Check every labelled joint, including
+    # the thumb side and distal segments, against an independent camera-frame reference.
+    expected = [(wrist[0] + x, wrist[1] + y*cos(theta) - z*sin(theta),
+                 wrist[2] + y*sin(theta) + z*cos(theta)) for x, y, z in local]
+    assert out.joints == pytest.approx([v for point in expected for v in point])
+    assert out.wrist.apply((0., 0., 1.)) == pytest.approx(
+        (wrist[0], wrist[1]-sin(theta), wrist[2]+cos(theta)))
 
 
 def test_missing_mount_only_affects_its_side_unavailable_timing_never_becomes_ros_time(tmp_path):
