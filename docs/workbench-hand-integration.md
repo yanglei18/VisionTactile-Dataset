@@ -137,3 +137,26 @@ IPC v8 增加 `software` 身份：源码根目录、Git 提交、运行源码内
 在左手 347 帧、右手 349 帧的历史姿态上，关闭预览、正常预览和网格延迟 120 ms 的三组回放均产生相同的 21 点测量结果。两手任一坐标相对完整模型的最大差异低于 0.00000007 m。该对照可用 `tools/fsglove12/scripts/compare_mano_measurements.py` 检查。三组的测量周期测试各约 2.9 秒；目标工作站的 USB、相机、Tracker、点云与目标磁盘仍需共同运行才能测得整机持续录制 Hz。
 
 短时混合负载回归分别关闭、开启管理器预览，在同一块本地磁盘上通过正常控制器录制约 4 秒。双手六路数据和一路 Tracker 各发送 400 条，另发送 120 帧 1280×720 RGB 图像。两组都从 MCAP 读回 2,920 条，逐路数据内容一致。开启预览时做了 32 次 JPEG 转换。该测试使用合成发布源，硬件传输、三相机同时运行和持续写盘还需在目标工作站验证。示例配置基于未压缩相机数据预估磁盘需求，额外数据流可通过 `recording.disk_guard.additional_stream_bytes_per_second` 纳入容量预算。
+
+### 头部相机的双手方块跟踪
+
+在工作台的“标定与离线工具”中选择“双手方块跟踪”。启动头部相机的原始彩色流，按实际连接选择相机名，再点击“开始跟踪”。窗口读取该相机的彩色图及内参。坐标原点在方块中心，输出单位为米，坐标轴相对于彩色相机光学系。内置规格为边长 30 mm、居中的 24 mm AprilTag 36h11，编号 0–5，两块使用相同的面布局。
+
+- **绑定左右手**。两手在画面中分开放置。可以先展示一只手并点击对应按钮，再让另一只手入镜。两只同时可见时，选手后点击对应方块中心圆圈。编码在两颗方块上重复；交叉产生歧义、短时缺测或相机重启时界面会显示失去绑定。再次点击即可恢复。相同方块在相同位置发生不可见的互换，单目图像无法辨别。
+- **加载六面布局**。窗口优先显示当前用户配置目录 `visiontactile/hand-cubes/default-30mm.json` 指定的布局，也可手动选择文件。无文件时内置模板仅含已知的 2 号顶面和 5 号正面。实物面序和贴码朝向须一致。一次只展示一颗，选“识别六面布局”后缓慢旋转，保留相邻面同时可见的过渡，六面复核成功后保存。可用同一文件独立复核第二颗。另一种入口是从单方块短视频恢复布局，依据印刷方码与立方体边长比例校验共边和转向，两个分开的帧组必须得到同一结果。
+- **使用现有手形**。若已有本次固定方式的安装变换，在“选择腕部安装参数”中加载每手的安装文件。文件绑定手别、方块布局摘要和 `cube_from_model_wrist` 刚性变换。腕原点在方块坐标系中的位置以米表示，旋转使用 xyzw 单位四元数。相机帧时序与手套时间匹配后，窗口可叠加 21 点手形。缺少安装参数时，仍可查看方块位姿。相机或标记被遮挡时根据新观测更新状态。实际手腕安装变换不能从一段单独旋转方块的视频测出。
+
+在已加载 ROS 工作区的终端，可使用以下入口。ROS 节点与交互窗口二选一启动跟踪。独立运行安装融合还需要相机时序以及所选手的 `GloveState`。视频布局导入命令创建新文件。
+
+```bash
+bash tools/capture_deploy/start_hand_cube_viewer.sh
+python3 -m vt_capture_manager.optical.video_layout cube.mp4 new-layout.json
+ros2 run vt_capture_manager vt_hand_cube_tracking --ros-args -p camera_name:=d436 -p layout_path:=/path/to/layout.json
+ros2 run vt_capture_manager vt_optical_hand_fusion --ros-args -p camera_name:=d436 -p mount_path:=/path/to/mounts.json
+```
+
+`/hand_cube_tracking/{left,right}/observation` 逐个已处理的图像帧发布方块结果、有效状态和源图像时标。`/hand_cube_tracking/{left,right}/hand_pose` 可分别给出腕部和 21 点两个有效位。它们可以随原始图像与内参录入 MCAP；例如在独立光学验收中使用以下录制命令，按实际相机名称替换 d436。工作台原有正式采集配方仍按已配置的话题录制，打开预览本身不会将这四个新话题加入已有试次。
+
+```bash
+ros2 bag record -s mcap /d436/color/image_raw /d436/color/camera_info /d436/frame_timing /gloves/left/state /gloves/right/state /hand_cube_tracking/left/observation /hand_cube_tracking/right/observation /hand_cube_tracking/left/hand_pose /hand_cube_tracking/right/hand_pose
+```

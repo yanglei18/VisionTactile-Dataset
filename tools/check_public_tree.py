@@ -157,6 +157,8 @@ EXPECTED_MESSAGES = {
     "CaptureCommand.msg",
     "CaptureEvent.msg",
     "CaptureStatus.msg",
+    "HandCubeObservation.msg",
+    "OpticalHandPose.msg",
     "RecorderMetrics.msg",
     "RecorderTopicMetrics.msg",
     "SessionInfo.msg",

@@ -40,7 +40,8 @@ def test_menu_construction_and_tracker_reopen_do_not_start_processes(qapp, tmp_p
     window = MainWindow(backend)
     tools = DesktopTools(window, backend, runtime)
     try:
-        assert len(tools.button.menu().actions()) == 7
+        assert tools.cube_action in tools.button.menu().actions()
+        assert len(tools.button.menu().actions()) == 8
         tools.open_tracker()
         first = tools.tracker_dialog
         assert first.isVisible() and not first.start_button.isEnabled()

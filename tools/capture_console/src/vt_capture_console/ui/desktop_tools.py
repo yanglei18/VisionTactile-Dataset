@@ -1,13 +1,13 @@
 """Workbench entry points for embedded calibration and existing offline tools."""
 from __future__ import annotations
 
-from ..i18n import tr
+from ..i18n import language, tr
 from ..i18n.messages import message as display_message
 
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QProcess, QProcessEnvironment, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from ..i18n.widgets import QAction
 from ..i18n.widgets import QMenu, QMessageBox, QToolButton
@@ -32,6 +32,10 @@ class DesktopTools(QObject):
         self.tracker_action = self._action(menu, tr('追踪器初始化向导'), self.open_tracker)
         self.right_glove_action = self._action(menu, tr('右手姿态标定工具'), lambda: window.open_glove_calibration("right"))
         self.left_glove_action = self._action(menu, tr('左手姿态标定工具'), lambda: window.open_glove_calibration("left"))
+        self.cube_process = QProcess(self)
+        self.cube_action = self._action(menu, tr('双手方块跟踪'), self.open_hand_cubes)
+        self.cube_process.finished.connect(self._cube_closed)
+        self.cube_process.errorOccurred.connect(self._cube_error)
         self.calibration_action = self._action(menu, tr('相机–追踪器标定'), self.open_calibration)
         self.alignment_action = self._action(menu, tr('离线检查与时间对齐'), self.open_alignment)
         menu.addSeparator()
@@ -48,6 +52,31 @@ class DesktopTools(QObject):
         self.timer.timeout.connect(self._poll_tools)
         self.timer.start()
         window.installEventFilter(self)
+
+    def open_hand_cubes(self):
+        if self.cube_process.state() != QProcess.ProcessState.NotRunning:
+            return
+        script = Path(self.runtime.repo_root) / "tools/capture_deploy/start_hand_cube_viewer.sh"
+        if not script.is_file():
+            self.window.statusBar().showMessage(tr('当前工作树缺少双手方块跟踪工具。'))
+            return
+        env = QProcessEnvironment.systemEnvironment()
+        for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "AMENT_PREFIX_PATH",
+                    "COLCON_PREFIX_PATH", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "LD_LIBRARY_PATH"):
+            env.remove(key)
+        self.cube_process.setProcessEnvironment(env)
+        self.cube_action.setEnabled(False)
+        self.cube_process.start("/bin/bash", [str(script), "--language", language()])
+
+    def _cube_error(self, *_):
+        self.cube_action.setEnabled(True)
+        self.window.statusBar().showMessage(tr('双手方块跟踪启动失败，请检查 ROS 工作区构建。'))
+
+    def _cube_closed(self, code, *_):
+        self.cube_action.setEnabled(True)
+        if code:
+            detail = bytes(self.cube_process.readAllStandardError()).decode(errors="replace").strip()
+            self.window.statusBar().showMessage(tr('双手方块跟踪已退出。') + " " + detail[-300:])
 
     def open_hub(self):
         from .widgets.vivehub_connection import ViveHubConnectionDialog
@@ -75,6 +104,8 @@ class DesktopTools(QObject):
                 self.window.statusBar().showMessage(tr('正在结束本窗口的初始化／离线任务；采集节点不受影响。'))
                 event.ignore()
                 return True
+            if self.cube_process.state() != QProcess.ProcessState.NotRunning:
+                self.cube_process.terminate()
             for dialog in (self.tracker_dialog, self.alignment_dialog, self.hub_dialog):
                 if dialog is not None:
                     dialog.close()

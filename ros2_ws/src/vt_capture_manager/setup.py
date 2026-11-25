@@ -10,4 +10,6 @@ setup(name="vt_capture_manager", version="0.7.0", packages=find_packages(exclude
       extras_require={"test": ["pytest>=7"]},
       maintainer="Vision Tactile Team", maintainer_email="vision-tactile@example.com",
       description="ROS capture snapshots and opt-in durable recorder management", license="Apache-2.0", license_files=["LICENSE"],
-      entry_points={"console_scripts": ["vt_capture_manager = vt_capture_manager.node:main"]})
+      entry_points={"console_scripts": ["vt_capture_manager = vt_capture_manager.node:main",
+                                        "vt_hand_cube_tracking = vt_capture_manager.optical.node:main",
+                                        "vt_optical_hand_fusion = vt_capture_manager.optical.fusion_node:main"]})

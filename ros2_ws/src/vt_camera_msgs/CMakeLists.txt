@@ -11,6 +11,8 @@ rosidl_generate_interfaces(vt_camera_msgs
   "msg/CameraTrackerCalibration.msg"
   "msg/CameraGroupStatus.msg"
   "msg/CameraDescriptor.msg"
+  "msg/HandCubeObservation.msg"
+  "msg/OpticalHandPose.msg"
   "msg/StreamProfile.msg"
   "msg/SessionInfo.msg"
   "msg/CaptureCommand.msg"

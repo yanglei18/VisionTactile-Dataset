@@ -9,6 +9,8 @@ def test_public_message_set_contains_only_implemented_capture_interfaces():
         "CameraTrackerCalibration.msg",
         "CameraFrameTiming.msg",
         "CameraGroupStatus.msg",
+        "HandCubeObservation.msg",
+        "OpticalHandPose.msg",
         "CaptureCommand.msg",
         "CaptureContext.msg",
         "CaptureEvent.msg",

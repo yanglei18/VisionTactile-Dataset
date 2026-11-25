@@ -1,0 +1,6 @@
+{
+  "双手方块跟踪": "Bilateral cube tracking",
+  "当前工作树缺少双手方块跟踪工具。": "The cube tracking tool is missing from this worktree.",
+  "双手方块跟踪启动失败，请检查 ROS 工作区构建。": "Could not launch cube tracking. Check the ROS workspace build.",
+  "双手方块跟踪已退出。": "Cube tracking exited."
+}

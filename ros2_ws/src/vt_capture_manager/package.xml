@@ -7,6 +7,8 @@
   <depend>rclpy</depend><depend>sensor_msgs</depend><depend>vt_tracker_msgs</depend>
   <depend>vt_glove_msgs</depend><depend>vt_tactile_msgs</depend><depend>vt_camera_msgs</depend>
   <exec_depend>realsense2_camera_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend><exec_depend>std_srvs</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
   <exec_depend version_gte="0.8.0">vt_capture_core</exec_depend><exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-opencv</exec_depend><exec_depend>python3-numpy</exec_depend>
   <!-- Dynamic message lookup in the post-record quality worker. -->
