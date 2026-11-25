@@ -1,6 +1,6 @@
 """Validated camera geometry. Configured timing serials are not identity proof."""
 from copy import deepcopy
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import json
 import math
@@ -11,6 +11,21 @@ import time
 
 from vt_capture_core.spatial.transforms import RigidTransform, finite_vector
 from vt_capture_core.spatial.frustum import frustum_vertices
+
+
+def intrinsics_digest(geometry):
+    return hashlib.sha256(json.dumps(geometry, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+@dataclass(frozen=True)
+class OpticalRegistration:
+    frame: str
+    serial: str
+    tracker_role: str
+    tracker_id: str
+    tracker_from_color: RigidTransform
+    intrinsics: str
+    identity_revision: int
 
 
 def _finite(values, size, name):
@@ -68,6 +83,7 @@ class CameraGeometryRegistry:
         self.world_frame, self.identity_ttl_ns = world_frame, int(identity_ttl_s*1e9)
         self._lock = threading.RLock()
         self._entries = {}
+        self._color_digests = {}
         for value in cameras:
             config = asdict(value) if is_dataclass(value) else dict(value)
             name = config.get('id', config.get('name'))
@@ -132,13 +148,17 @@ class CameraGeometryRegistry:
                 info = _intrinsics(message, entry['config'][f'{stream}_frame_id'])
             except (ValueError, TypeError, AttributeError, OverflowError):
                 entry[f'{stream}_intrinsics'] = None
-                if stream == 'color': entry['color_frustum'] = None
+                if stream == 'color':
+                    entry['color_frustum'] = None
+                    self._color_digests.pop(camera_id, None)
                 self._revise(camera_id)
                 raise
             if info == entry[f'{stream}_intrinsics']:
                 return False
             entry[f'{stream}_intrinsics'] = info
-            if stream == 'color': entry['color_frustum'] = _frustum(info)
+            if stream == 'color':
+                entry['color_frustum'] = _frustum(info)
+                self._color_digests[camera_id] = intrinsics_digest(info)
             return self._revise(camera_id)
 
     def load_extrinsic(self, camera_id, path):
@@ -238,6 +258,20 @@ class CameraGeometryRegistry:
     def geometry(self, camera_id):
         with self._lock:
             return deepcopy(self._entries[camera_id])
+
+    def optical_registration(self, camera_id):
+        """Only the color-camera geometry used to place an optical hand source."""
+        with self._lock:
+            entry = self._entries.get(camera_id)
+            digest = self._color_digests.get(camera_id)
+            if not entry or not entry['extrinsic'] or not digest or not entry['identity']['verified']:
+                return None
+            doc = entry['extrinsic']
+            pose = doc['transform']
+            return OpticalRegistration(entry['config']['color_frame_id'], entry['identity']['serial'],
+                                       doc['tracker']['role'], doc['tracker']['tracker_id'],
+                                       RigidTransform(pose['translation_m'], pose['quaternion_xyzw']),
+                                       digest, entry['identity_revision'])
 
     def describe(self):
         with self._lock:

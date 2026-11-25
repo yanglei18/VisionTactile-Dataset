@@ -2,8 +2,10 @@
 import time
 import math
 import threading
+from functools import partial
 
 from vt_capture_core.spatial.transforms import RigidTransform, finite_vector
+from .world_hands import SIDES
 
 class SpatialRosAdapter:
     def __init__(self, node, store):
@@ -22,6 +24,17 @@ class SpatialRosAdapter:
         self.subscriptions, self.clients, self.pending = [], {}, {}
         self.cameras = {c['id']: c for c in store.config.cameras}
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE)
+        try:
+            from vt_camera_msgs.msg import OpticalHandPose
+        except ImportError:
+            # The camera and tracker layers can run with a legacy ROS message build.
+            for side in SIDES:
+                store.invalidate_hand(side, '当前 ROS 接口缺少手部位姿消息，请加载候选工作区')
+        else:
+            for side in SIDES:
+                topic = f'/hand_cube_tracking/{side}/hand_pose'
+                self.subscriptions.append(node.create_subscription(OpticalHandPose, topic,
+                    partial(self._hand_pose, side, topic), qos))
         for name, camera in self.cameras.items():
             for stream, key in [('color', 'camera_info_topic'), ('depth', 'depth_camera_info_topic')]:
                 if camera.get(key):
@@ -36,6 +49,12 @@ class SpatialRosAdapter:
             if service:
                 self.clients[name] = node.create_client(DeviceInfo, service)
         self.timer = node.create_timer(2., self._identity_tick)
+
+    def _hand_pose(self, side, topic, message):
+        if len(self.node.get_publishers_info_by_topic(topic)) != 1:
+            self.store.invalidate_hand(side, '手部位姿来源不唯一')
+            return
+        self.store.observe_hand(side, message)
 
     def _info(self, name, message, stream):
         try:

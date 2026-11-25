@@ -11,6 +11,7 @@ import uuid
 from vt_capture_core.spatial.transforms import RigidTransform
 from vt_capture_core.spatial.timeline import PoseBuffer
 from vt_capture_core.spatial.types import PoseSample, timestamp_ns
+from .world_hands import OpticalHandTrack, SIDES
 
 ROLES = ('left_wrist', 'right_wrist', 'torso')
 LABELS = ('左腕 Tracker', '右腕 Tracker', '躯干 Tracker')
@@ -33,6 +34,7 @@ class SceneStore:
         self._interests = {}
         self._base_config_revision = config.config_revision
         self._calibration_digests = {}
+        self._hands = {side: OpticalHandTrack(side) for side in SIDES}
 
     def apply_camera_calibration(self, camera_id, document, *, tracker_sample_topic=None):
         """Change live geometry and future replay bindings as one scene operation.
@@ -73,6 +75,9 @@ class SceneStore:
             self.config, self._calibration_digests = config, digests
             self.sync_epoch += 1
             self.active_reference_camera = None
+            for track in self._hands.values():
+                if track.camera == camera_id:
+                    track.reset(self.realtime_ns())
             return True
 
     def geometry_snapshot(self):
@@ -88,12 +93,14 @@ class SceneStore:
         return dict(tracker_id=None, source_ns=None, source_monotonic_ns=None, received_ns=None,
                     frame_id=None, pose=None, valid=False, trail=deque(maxlen=90), broken=True, reason='等待数据')
 
-    def _reset(self, *, coordinate=False):
+    def _reset(self, *, coordinate=False, source_ns=None):
         if coordinate:
             self.coordinate_epoch += 1
         else:
             self.time_epoch += 1
         self.sync_epoch += 1
+        for hand in self._hands.values():
+            hand.reset(self.realtime_ns() if source_ns is None else source_ns)
         for role in ROLES:
             self.buffers[role].reset(time_epoch=str(self.time_epoch), coordinate_epoch=str(self.coordinate_epoch))
             state = self._states[role]
@@ -122,7 +129,7 @@ class SceneStore:
                     raise ValueError('无效角色、坐标系或源时间')
                 if state['tracker_id'] and (identity != state['tracker_id'] or frame != state['frame_id']):
                     self._retired_identities[role].append((state['tracker_id'], state['frame_id']))
-                    self._reset(coordinate=True)
+                    self._reset(coordinate=True, source_ns=source)
                 # Network reordering may fill the interpolation buffer but cannot
                 # advance freshness or display time. Exact duplicates are ignored.
                 if state['source_ns'] == source:
@@ -135,7 +142,7 @@ class SceneStore:
                         if abs(jump) > 5_000_000 or source >= state['source_ns']:
                             return False
                     elif abs(jump) > 5_000_000:
-                        self._reset()
+                        self._reset(source_ns=source)
                 valid = bool(message.pose_valid)
                 reason = '' if valid else '无效位姿、坐标系或源时间'
                 pose = None
@@ -177,6 +184,18 @@ class SceneStore:
             self._interests = {k: v for k, v in self._interests.items() if now-v[0] < 2_000_000_000}
             if len(self._interests) < 32 or viewer_id in self._interests:
                 self._interests[viewer_id] = (now, set(interest))
+
+    def observe_hand(self, side, message):
+        with self._lock:
+            track = self._hands[side]
+            try:
+                track.observe(message, self.camera_registry, self.realtime_ns(), self.monotonic_ns())
+            except (ValueError, TypeError, AttributeError, OverflowError) as exc:
+                track.invalidate(str(exc)[:256] or '手部观测无效')
+
+    def invalidate_hand(self, side, reason):
+        with self._lock:
+            self._hands[side].invalidate(reason)
 
     def has_interest(self, layer):
         with self._lock:
@@ -288,7 +307,7 @@ class SceneStore:
                 segments[-1].append(point)
             tracker['trail_segments']=segments
 
-    def snapshot(self):
+    def snapshot(self, *, include_hands=False):
         with self._lock:
             now, mono = self.realtime_ns(), self.monotonic_ns()
             trackers = []
@@ -316,6 +335,12 @@ class SceneStore:
             cameras = self.camera_registry.camera_entities(trackers, now_ns=now,
                 require_live_tracker=not independent) if self.camera_registry else []
             scene_time, reference = self._align_cloud_scene(trackers, cameras, now)
+            extra = {}
+            if include_hands:
+                by_camera = {c['id']: c for c in cameras}
+                gap_ns = round(self.config.timing.get('max_tracker_gap_ms', 50)*1e6)
+                extra['hands'] = [track.entity(by_camera, self.camera_registry, self.buffers, now, mono,
+                                               gap_ns, scene_time is not None) for track in self._hands.values()]
             diagnostics = list(self._diagnostics)
             if self.has_interest('cloud') and (not any(c.get('frame_key') for c in cameras) if independent else scene_time is None):
                 status = self.cloud_supervisor.status() if self.cloud_supervisor and hasattr(self.cloud_supervisor, 'status') else {}
@@ -329,4 +354,4 @@ class SceneStore:
                 active_reference_camera=reference, map_identity=self.config.map_identity,
                 preview_notice=self.config.preview_notice,
                 display_from_world=self.config.display_from_world.as_dict(), trackers=trackers,
-                cameras=cameras, diagnostics=diagnostics))
+                cameras=cameras, diagnostics=diagnostics, **extra))

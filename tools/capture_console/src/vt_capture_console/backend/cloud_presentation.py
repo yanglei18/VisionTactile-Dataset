@@ -7,6 +7,7 @@ Independent live mode advances/leases each camera separately.
 """
 from copy import deepcopy
 import time
+from .hand_presentation import hide_hand
 
 
 class CloudPresentation:
@@ -66,6 +67,14 @@ class CloudPresentation:
             self.held = True
             self.hold_age_s = age
             held = deepcopy(self.frame)
+            # The strict cloud group is still showing its previous capture.
+            # Keep current loss reasons, but never attach a new or cached live
+            # skeleton to a different capture.
+            held.pop('hands', None)
+            if 'hands' in frame:
+                held['hands'] = deepcopy(frame['hands'])
+                for hand in held['hands']:
+                    hide_hand(hand, 'waiting', '等待当前点云与手部画面对齐')
             for kind in ('cameras', 'trackers'):
                 for entity in held.get(kind, ()):
                     if isinstance(entity.get('age_s'), (float, int)):

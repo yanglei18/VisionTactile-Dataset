@@ -1,7 +1,5 @@
 """Observe metric hand-mounted cubes from existing raw ROS images and intrinsics."""
 from collections import deque
-import hashlib
-import json
 import re
 import threading
 import time
@@ -18,7 +16,7 @@ from sensor_msgs.msg import CameraInfo, Image
 from std_srvs.srv import Trigger
 from vt_camera_msgs.msg import HandCubeObservation
 
-from ..spatial.camera_geometry import _intrinsics
+from ..spatial.camera_geometry import _intrinsics, intrinsics_digest
 from .cube import CubeDetector, CubeLayout
 from .identity import BilateralTracker
 from .lease import domain_lease
@@ -35,7 +33,7 @@ def _calibration(msg, frame):
     valid_sizes = {"plumb_bob": (4, 5), "rational_polynomial": (8, 12, 14)}
     if len(coefficients) not in valid_sizes.get(model, ()):
         raise ValueError("unsupported raw RGB distortion model or coefficient count")
-    digest = hashlib.sha256(json.dumps(geometry, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    digest = intrinsics_digest(geometry)
     return digest, msg.width, msg.height, np.reshape(geometry["k"], (3, 3)), np.asarray(coefficients)
 
 

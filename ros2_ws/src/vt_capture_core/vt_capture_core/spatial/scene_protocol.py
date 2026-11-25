@@ -140,12 +140,44 @@ def _entity(value):
             raise SceneProtocolError('trail point count exceeds limit')
 
 
+def _hands(values):
+    """Optional, negotiated world-frame geometry. A lost hand carries no pose."""
+    if not isinstance(values, (list, tuple)) or len(values) > 2:
+        raise SceneProtocolError('hands must contain at most two entities')
+    required = {'id', 'hand', 'label', 'camera_id', 'source_realtime_ns', 'state',
+                'reason', 'position_m', 'quaternion_xyzw', 'joint_positions_m', 'valid'}
+    sides = set()
+    for hand in values:
+        _entity(hand)
+        if not required.issubset(hand):
+            raise SceneProtocolError('missing hand observation fields')
+        side = hand['hand']
+        if side not in ('left', 'right') or side != hand['id'] or side in sides:
+            raise SceneProtocolError('expected one observation per unique left/right hand')
+        sides.add(side)
+        if not isinstance(hand['reason'], str) or len(hand['reason']) > 1024:
+            raise SceneProtocolError('invalid hand reason')
+        joints = hand['joint_positions_m']
+        if not isinstance(joints, (list, tuple)) or len(joints) not in (0, 21):
+            raise SceneProtocolError('joint_positions_m must contain zero or 21 XYZ points')
+        if hand['valid']:
+            if (hand['state'] != 'fresh' or hand['camera_id'] is None or hand['position_m'] is None
+                    or hand['quaternion_xyzw'] is None):
+                raise SceneProtocolError('valid hand requires a fresh world pose and camera')
+            _integer(hand['source_realtime_ns'], 'hand source_realtime_ns', 1)
+        elif (hand['state'] not in ('waiting', 'invalid', 'offline') or hand['position_m'] is not None
+              or hand['quaternion_xyzw'] is not None or joints):
+            raise SceneProtocolError('unavailable hand cannot carry world geometry')
+        for point in joints:
+            _vector(point, 3, 'joint position')
+
+
 _SCENE_FIELDS = {
     'manager_instance_id', 'scene_epoch', 'sequence', 'mode', 'world_frame',
     'time_epoch', 'coordinate_epoch', 'sync_epoch', 'map_identity', 'time_mode',
     'scene_time_ns', 'time_basis', 'config_revision', 'geometry_revision',
     'generated_realtime_ns', 'active_reference_camera', 'display_from_world',
-    'trackers', 'cameras', 'diagnostics', 'preview_notice',
+    'trackers', 'cameras', 'hands', 'diagnostics', 'preview_notice',
 }
 
 
@@ -181,6 +213,8 @@ def validate_scene(value):
             raise SceneProtocolError(f'{key} exceeds entity count limit')
         for entity in entities:
             _entity(entity)
+    if 'hands' in value:
+        _hands(value['hands'])
     if not isinstance(value['diagnostics'], (list, tuple)) or len(value['diagnostics']) > 128:
         raise SceneProtocolError('diagnostics exceeds limit')
 
@@ -206,7 +240,7 @@ def validate_scene_message(value):
             _string(params['viewer_id'], 'viewer_id')
         if 'interest' in params:
             interest = params['interest']
-            if not isinstance(interest, (list, tuple)) or len(interest) > 8 or any(item not in ('tracker', 'camera', 'cloud', 'trail') for item in interest):
+            if not isinstance(interest, (list, tuple)) or len(interest) > 8 or any(item not in ('tracker', 'camera', 'cloud', 'trail', 'hand') for item in interest):
                 raise SceneProtocolError('invalid display interest')
     else:
         fields = {'hello', 'description', 'scene', 'no_change'}

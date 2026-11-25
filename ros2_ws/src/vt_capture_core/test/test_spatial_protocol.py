@@ -107,3 +107,53 @@ def test_waiting_entity_allows_unknown_observed_identity_and_absent_label(kind):
                         state='waiting', position_m=None, quaternion_xyzw=None)]
     response = dict(protocol='vt.scene', version=1, request_id='waiting', ok=True, error=None, scene=value)
     assert decode_scene_message(encode_scene_message(response)) == response
+
+
+def hand_scene(*hands):
+    return dict(protocol='vt.scene', version=1, request_id='hands', ok=True, error=None,
+                scene=dict(scene(), hands=list(hands)))
+
+
+def observed_hand(side='left'):
+    return dict(id=side, hand=side, label=side, camera_id='head', source_realtime_ns=100,
+                state='fresh', valid=True, reason='', position_m=[.1, .2, .3],
+                quaternion_xyzw=[0, 0, 0, 1], joint_positions_m=[[.1, .2, .3]]*21)
+
+
+def test_opt_in_hands_can_report_full_pose_wrist_only_or_single_loss():
+    opt_in = request('latest', {'interest': ['camera', 'hand']})
+    assert decode_scene_message(encode_scene_message(opt_in)) == opt_in
+    left = observed_hand()
+    right = dict(observed_hand('right'), joint_positions_m=[])
+    for value in (hand_scene(), hand_scene(left, right),
+                  hand_scene(dict(left, valid=False, state='invalid', reason='遮挡',
+                                  position_m=None, quaternion_xyzw=None, joint_positions_m=[]), right),
+                  hand_scene(dict(right, valid=False, state='waiting', camera_id=None, reason='',
+                                  source_realtime_ns=None, position_m=None, quaternion_xyzw=None))):
+        assert decode_scene_message(encode_scene_message(value)) == value
+
+
+@pytest.mark.parametrize('overrides', [
+    {'id': 'right'}, {'hand': []}, {'valid': 1}, {'quaternion_xyzw': [0, 0, 0, 0]},
+    {'source_realtime_ns': None}, {'source_realtime_ns': 0}, {'camera_id': None},
+    {'position_m': None}, {'quaternion_xyzw': None}, {'state': 'offline'}, {'valid': False},
+    {'joint_positions_m': [0.] * 63}, {'joint_positions_m': [[0, 0, True]]*21},
+    {'joint_positions_m': [[0., 0.]]*21}, {'joint_positions_m': [[0., 0., float('inf')]]*21},
+    {'reason': 5}, {'reason': 'x'*1025},
+    {'valid': False, 'state': 'invalid', 'position_m': None, 'quaternion_xyzw': None},
+])
+def test_invalid_or_stale_skeleton_cannot_cross_scene_protocol(overrides):
+    wrong = hand_scene(dict(observed_hand(), **overrides))
+    with pytest.raises(SceneProtocolError):
+        encode_scene_message(wrong)
+    with pytest.raises(SceneProtocolError):
+        decode_scene_message(json.dumps(wrong))
+
+
+def test_hands_requires_stable_distinct_sides_and_explicit_geometry():
+    hand = observed_hand()
+    missing = dict(hand)
+    del missing['joint_positions_m']
+    for wrong in (hand_scene(hand, hand), hand_scene(hand, hand, hand), hand_scene(missing)):
+        with pytest.raises(SceneProtocolError):
+            encode_scene_message(wrong)

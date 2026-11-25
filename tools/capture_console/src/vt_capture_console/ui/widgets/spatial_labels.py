@@ -11,7 +11,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainterPath, QPen
 from ...i18n.widgets import QApplication
 
-from ...viewmodels.spatial import STATE_LABELS
+from ...viewmodels.spatial import STATE_LABELS, entity_state_label
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,9 @@ def _label_fonts(font):
 
 
 def _subtitle(model, entity):
+    if "hand" in entity:
+        state = entity_state_label(entity)
+        return tr('冻结 · ') + state if model.frozen else state
     role = entity.get("role") or entity.get("id", "")
     role = tracker_role(role)
     state = tr('位姿无效') if entity.get("valid") is False else STATE_LABELS.get(entity.get("state"), tr('状态未知'))
@@ -59,7 +62,7 @@ def _overlap_area(first, second):
     return max(0., overlap.width()) * max(0., overlap.height())
 
 
-def layout_entity_labels(model, projected, viewport_rect):
+def layout_entity_labels(model, projected, viewport_rect, *, avoid=()):
     """Place (entity, projected origin, visible color) labels without moving poses.
 
     All distances are logical pixels. Candidate scoring keeps the six-device
@@ -100,7 +103,8 @@ def layout_entity_labels(model, projected, viewport_rect):
                                  for _entity, point, _color in visible)
             displacement = abs(rect.x()-candidate.x()) + abs(rect.y()-candidate.y())
             distance = (rect.center()-center).manhattanLength()
-            return label_overlap*20. + origin_overlap*12. + displacement*2. + distance*.02
+            hand_overlap = sum(_overlap_area(rect, region) for region in avoid)
+            return label_overlap*20. + (origin_overlap+hand_overlap)*12. + displacement*2. + distance*.02
 
         rect = _clamp_rect(min(candidates, key=score), bounds)
         placements.append(LabelPlacement(entity["id"], center, rect, title, subtitle, color,

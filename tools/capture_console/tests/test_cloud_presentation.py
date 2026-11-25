@@ -51,6 +51,24 @@ def test_repeated_groups_never_renew_expiry():
     assert not p.held
 
 
+def test_held_strict_group_clears_geometry_and_keeps_current_hand_loss():
+    p = CloudPresentation()
+    first, clouds = group()
+    first['hands'] = [dict(hand=side, valid=True, state='fresh', reason='',
+                           position_m=[0, 0, 1], quaternion_xyzw=[0, 0, 0, 1],
+                           joint_positions_m=[[0, 0, 1]]*21) for side in ('left', 'right')]
+    p.select(first, clouds)
+    next_frame, partial = group(2, ('head',))
+    next_frame['hands'] = [dict(first['hands'][0], state='invalid', reason='左手方块遮挡',
+                                valid=False, position_m=None, quaternion_xyzw=None, joint_positions_m=[]),
+                           first['hands'][1]]
+    shown, _ = p.select(next_frame, partial)
+    assert p.held
+    assert shown['hands'][0]['reason'] == '左手方块遮挡'
+    assert all(not h['valid'] and h['position_m'] is None and not h['joint_positions_m'] for h in shown['hands'])
+    assert first['hands'][1]['valid']
+
+
 @pytest.mark.parametrize('field,value', [('scene_epoch','other'), ('time_epoch',2),
     ('coordinate_epoch',2), ('sync_epoch',2), ('manager_instance_id','other'),
     ('world_frame','other'), ('mode','replay')])

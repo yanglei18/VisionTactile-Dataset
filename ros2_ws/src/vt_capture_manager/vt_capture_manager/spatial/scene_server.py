@@ -11,7 +11,7 @@ class SceneServer(SnapshotServer):
         super().__init__(store, path, max_message_bytes=MAX_SCENE_BYTES)
         self.store = store
         self._cache_lock = threading.Lock()
-        self._cache = store.snapshot()
+        self._cache = store.snapshot(include_hands=True)
         self._cache_error = None
         self._producer = None
 
@@ -27,7 +27,7 @@ class SceneServer(SnapshotServer):
 
     def _refresh_cache(self):
         try:
-            scene = self.store.snapshot()
+            scene = self.store.snapshot(include_hands=True)
             # Validate before exchanging caches, not inside the socket thread.
             encode_scene_message(dict(protocol='vt.scene', version=1, request_id='cache', ok=True, error=None, scene=scene))
             with self._cache_lock:
@@ -52,7 +52,7 @@ class SceneServer(SnapshotServer):
             command = request['command']
             if command == 'hello':
                 response['hello'] = dict(manager_instance_id=self.store.manager_instance_id, manager_pid=os.getpid(),
-                                         scene_epoch=self.store.scene_epoch, capabilities=['tracker', 'camera', 'cloud'],
+                                         scene_epoch=self.store.scene_epoch, capabilities=['tracker', 'camera', 'cloud', 'hand'],
                                          cloud=self.store.cloud_supervisor.description() if self.store.cloud_supervisor else None)
             elif command == 'describe':
                 response['description'] = self.store.description()
@@ -63,6 +63,8 @@ class SceneServer(SnapshotServer):
                     if self._cache_error is not None:
                         raise ValueError(self._cache_error)
                     scene = deepcopy(self._cache)
+                if 'hand' not in params.get('interest', ()):
+                    scene.pop('hands', None)
                 if scene['sequence'] <= params.get('after_sequence', 0):
                     response['no_change'] = True
                 else:

@@ -15,7 +15,7 @@ from ...i18n.widgets import (QAbstractItemView, QCheckBox, QComboBox, QDoubleSpi
                               QHeaderView, QLabel, QListWidget, QListWidgetItem, QMenu, QPushButton, QScrollArea, QSlider, QTabWidget,
                               QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from ...viewmodels.spatial import SpatialViewModel, STATE_LABELS
+from ...viewmodels.spatial import SpatialViewModel, STATE_LABELS, entity_state_label
 from .preview import PreviewWidget
 from .spatial_scene import SpatialScene
 from ...backend.cloud_presentation import CloudPresentation
@@ -240,7 +240,8 @@ class SpatialPage(QWidget):
         layer_layout.addWidget(plain_label(tr('仅影响当前视图，不改变采集数据。'), name="spatialSectionCaption"))
         self.layer_checks = {}
         for title, key in ((tr('追踪器刚体'), "tracker"), (tr('相机刚体'), "camera"), (tr('坐标轴'), "axes"),
-                           (tr('参考网格'), "grid"), (tr('运动轨迹'), "trail"), (tr('相机视锥'), "frustum")):
+                           (tr('参考网格'), "grid"), (tr('运动轨迹'), "trail"), (tr('相机视锥'), "frustum"),
+                           (tr('手部骨架'), "hand")):
             check = QCheckBox(title)
             check.setChecked(True)
             check.toggled.connect(lambda checked, layer=key: self._layer_changed(layer, checked))
@@ -424,14 +425,17 @@ class SpatialPage(QWidget):
             if frame.get("map_identity") is None:
                 explanation += "\n" + tr('地图身份未核验')
             self.status.setToolTip(explanation)
+        hello = getattr(self.backend, "hello", None)
+        capabilities = hello().get("capabilities", ()) if callable(hello) else ()
+        self.layer_checks["hand"].setVisible(bool(frame and "hands" in frame) or "hand" in capabilities)
         self.scene.set_model(self.model)
         entities = self.model.all_entities()
-        signature = tuple((e.get("id"), e.get("label"), e.get("state")) for e in entities)
+        signature = tuple((e.get("id"), e.get("label"), entity_state_label(e)) for e in entities)
         if signature != self._list_signature:
             self.devices.blockSignals(True)
             self.devices.clear()
             for entity in entities:
-                item = QListWidgetItem(entity.get("label", entity["id"])+"\n"+STATE_LABELS.get(entity.get("state"), str(entity.get("state", ""))))
+                item = QListWidgetItem(entity.get("label", entity["id"])+"\n"+entity_state_label(entity))
                 item.setData(Qt.ItemDataRole.UserRole, entity["id"])
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Unchecked if entity["id"] in self.model.hidden_entities else Qt.CheckState.Checked)
@@ -489,12 +493,14 @@ class SpatialPage(QWidget):
         age = entity.get("age_s")
         age_text = tr('{v0:.0f} ms', v0=age*1000) if isinstance(age, (float, int)) else tr('未知')
         camera_detail = ""
-        if "role" not in entity:
+        if "hand" in entity:
+            camera_detail = tr('\n定位相机：{camera}', camera=entity.get('camera_id') or tr('未知'))
+        elif "role" not in entity:
             registration = entity.get("registration_state", "missing")
             camera_detail = (tr('\n配准：{v0}\n绑定追踪器：{v1}', v0=STATE_LABELS.get(registration, display_message(registration)), v1=tracker_role(entity.get('tracker_role')) or tr('未提供')))
         reason = entity.get("reason") or ""
         reason = STATE_LABELS.get(reason, display_message(reason))
-        self.detail.setText(tr('{v0}\n{v1}\n\n位置 XYZ / m\n{v2}\n\n姿态 xyzw\n{v3}\n\n数据年龄：{v4}\n坐标系：{v5}\n身份：{v6}{v7}\n{v8}', v0=entity.get('label', entity['id']), v1=STATE_LABELS.get(entity.get('state'), entity.get('state', '')), v2=pos, v3=rotation, v4=age_text, v5=entity.get('frame_id', '—'), v6=entity.get('tracker_id', entity.get('serial', '—')), v7=camera_detail, v8=reason))
+        self.detail.setText(tr('{v0}\n{v1}\n\n位置 XYZ / m\n{v2}\n\n姿态 xyzw\n{v3}\n\n数据年龄：{v4}\n坐标系：{v5}\n身份：{v6}{v7}\n{v8}', v0=entity.get('label', entity['id']), v1=entity_state_label(entity), v2=pos, v3=rotation, v4=age_text, v5=(self.model.frame['world_frame'] if 'hand' in entity else entity.get('frame_id', '—')), v6=entity.get('tracker_id', entity.get('serial', '—')), v7=camera_detail, v8=reason))
 
     def _toggle_inspector(self, visible):
         self.inspector.setVisible(visible)

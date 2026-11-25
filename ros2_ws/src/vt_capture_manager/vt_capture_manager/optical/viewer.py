@@ -212,7 +212,7 @@ class Viewer(QtWidgets.QWidget):
             self.mount.setText(str(target))
             try:
                 self.apply_mounts(target)
-                self.notice.setText('手背标定已保存并加载。')
+                self.notice.setText('手背标定已保存并加载。保持跟踪运行，切回工作台的“空间”即可查看三维位置。')
             except (ValueError, OSError, RuntimeError) as exc:
                 self.notice.setText('标定已保存。加载失败，可重新开始跟踪。' + str(exc))
 

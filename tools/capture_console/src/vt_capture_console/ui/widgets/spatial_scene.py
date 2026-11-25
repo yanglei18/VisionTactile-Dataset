@@ -14,7 +14,7 @@ from PySide6.QtGui import (QColor, QGradient, QMatrix4x4, QPen, QPolygonF, QQuat
 from ...i18n.widgets import QApplication, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from ...i18n.widgets import QPainter
 
-from ...viewmodels.spatial import display_point, entity_color, transform
+from ...viewmodels.spatial import display_point, entity_color, entity_state_label, transform
 from ..gpu_status import OpenGLRenderer, inspect_current_context
 from .spatial_glyphs import local_glyph
 from .spatial_labels import layout_entity_labels, draw_entity_labels
@@ -35,7 +35,9 @@ def _pose_signature(pose):
 
 
 def entity_geometry(entity):
-    """Fixed-size illustrative body, positioned using the measured pose only."""
+    """World positions for bounds and device shapes; hand joints are already in world."""
+    if "hand" in entity:
+        return entity.get("joint_positions_m") or (entity["position_m"],)
     if "role" in entity:
         return [transform(p, entity["position_m"], entity["quaternion_xyzw"])
                 for p in local_glyph().bounds]
@@ -149,6 +151,8 @@ def scene_surfaces(model):
     if not model.frame:
         return surfaces
     for entity in model.entities():
+        if "hand" in entity:
+            continue
         color = visible_entity_color(model, entity)
         selected = entity.get("id") == model.selected_id
         if "role" in entity:
@@ -198,6 +202,33 @@ def display_cloud_data(cloud, *, max_points=50000, max_depth=0.):
     return positions[::stride], colors[::stride]
 
 
+def hand_markers(model):
+    """Display landmarks for full hands or a single measured wrist when shape is unavailable."""
+    markers = []
+    for entity in model.entities():
+        if "hand" in entity:
+            color = entity_color(entity)
+            for i, point in enumerate(entity_geometry(entity)):
+                markers.append((display_point(model.frame, point), color, 6. if i == 0 else 4.))
+    return markers
+
+
+def projected_labels(model, project, bounds):
+    """Avoid covering fingers with a device or wrist label in either viewport."""
+    projected, hand_bounds = [], []
+    for entity in model.entities():
+        center = project(display_point(model.frame, entity["position_m"]))
+        if center is None:
+            continue
+        projected.append((entity, center, visible_entity_color(model, entity)))
+        if entity.get("joint_positions_m"):
+            joints = [project(display_point(model.frame, p)) for p in entity["joint_positions_m"]]
+            polygon = QPolygonF([p for p in joints if p is not None])
+            if polygon:
+                hand_bounds.append(polygon.boundingRect().adjusted(-6., -6., 6., 6.))
+    return projected, layout_entity_labels(model, projected, bounds, avoid=hand_bounds)
+
+
 def scene_lines(model, *, include_grid=True, include_entities=True):
     """World-space lines with colors and widths, shared by both renderers."""
     frame = model.frame
@@ -226,7 +257,17 @@ def scene_lines(model, *, include_grid=True, include_entities=True):
         position, rotation = entity["position_m"], entity["quaternion_xyzw"]
         color = visible_entity_color(model, entity)
         selected = model.selected_id == entity.get("id")
-        if "role" in entity:
+        if "hand" in entity:
+            joints = entity.get("joint_positions_m") or ()
+            if joints:
+                # Wrist, then four joints on each thumb/index/middle/ring/little chain.
+                for base in (1, 5, 9, 13, 17):
+                    chain = (0, base, base+1, base+2, base+3)
+                    for a, b in zip(chain, chain[1:]):
+                        add(joints[a], joints[b], color, 2.4)
+                for a, b in ((5, 9), (9, 13), (13, 17)):
+                    add(joints[a], joints[b], color, 1.2)
+        elif "role" in entity:
             _surfaces, lines = _tracker_body(tuple(position), tuple(rotation))
             for a, b, token, width in lines:
                 add(a, b, _glyph_color(token, model, entity), width + (.5 if selected else 0.))
@@ -235,7 +276,7 @@ def scene_lines(model, *, include_grid=True, include_entities=True):
             for a, b in BOX_EDGES:
                 add(world[a], world[b], color, 3. if selected else 2.)
         if "axes" in model.layers:
-            length = .072 if "role" in entity else .13
+            length = .035 if "hand" in entity else .072 if "role" in entity else .13
             for axis, axis_color in enumerate(("#cb4c55", "#40a46a", "#487ddd")):
                 point = tuple(length if index == axis else 0. for index in range(3))
                 add(position, transform(point, position, rotation), axis_color, 2.)
@@ -372,12 +413,12 @@ class ProjectionViewport(QWidget):
         for a, b, color, width in scene_lines(self.model, include_grid=False):
             painter.setPen(QPen(QColor(color), width))
             painter.drawLine(self._project(a), self._project(b))
-        projected = []
-        for entity in self.model.entities():
-            center = self._project(display_point(self.model.frame, entity["position_m"]))
-            self._labels.append((entity["id"], center))
-            projected.append((entity, center, visible_entity_color(self.model, entity)))
-        self._label_placements = layout_entity_labels(self.model, projected, QRectF(self.rect()))
+        painter.setPen(Qt.PenStyle.NoPen)
+        for point, color, size in hand_markers(self.model):
+            painter.setBrush(QColor(color))
+            painter.drawEllipse(self._project(point), size/2, size/2)
+        projected, self._label_placements = projected_labels(self.model, self._project, QRectF(self.rect()))
+        self._labels = [(entity["id"], center) for entity, center, _ in projected]
         draw_entity_labels(painter, self._label_placements)
         painter.setPen(QColor("#9b9b9b"))
         painter.drawText(16, self.height()-16, tr('公共坐标 · 米    网格 0.2 m    实体外形为示意'))
@@ -480,15 +521,13 @@ def create_gl_view(parent):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
             matrix = viewport.projectionMatrix()*viewport.viewMatrix()
-            projected = []
-            for entity in viewport.model.entities():
-                position = display_point(viewport.model.frame, entity["position_m"])
+            def project(position):
                 point = matrix.map(QVector4D(*position, 1.))
                 if point.w() > 0:
-                    screen = QPointF((point.x()/point.w()+1)*self.width()/2,
-                                     (1-point.y()/point.w())*self.height()/2)
-                    projected.append((entity, screen, visible_entity_color(viewport.model, entity)))
-            viewport._label_placements = layout_entity_labels(viewport.model, projected, QRectF(self.rect()))
+                    return QPointF((point.x()/point.w()+1)*self.width()/2,
+                                   (1-point.y()/point.w())*self.height()/2)
+                return None
+            _, viewport._label_placements = projected_labels(viewport.model, project, QRectF(self.rect()))
             draw_entity_labels(painter, viewport._label_placements)
             painter.setPen(QColor("#9b9b9b"))
             painter.drawText(16, self.height()-16, tr('公共坐标 · 米    网格 0.2 m    实体外形为示意'))
@@ -608,13 +647,15 @@ def create_gl_view(parent):
                 item.setMeshData(vertexes=np.asarray(vertices, dtype=float).reshape(-1, 3),
                                  faces=np.asarray(faces, dtype=int).reshape(-1, 3),
                                  faceColors=np.asarray(face_colors, dtype=float).reshape(-1, 4))
-            selected_position = []
+            markers = hand_markers(model)
             for entity in model.entities():
                 identifier = entity["id"]
                 position = display_point(model.frame, entity["position_m"])
                 if identifier == model.selected_id:
-                    selected_position.append(position)
-            self.selection.setData(pos=np.asarray(selected_position, dtype=float).reshape(-1, 3))
+                    markers.append((position, "#ffffff", 11.))
+            self.selection.setData(pos=np.asarray([p for p, _, _ in markers], dtype=float).reshape(-1, 3),
+                                   color=np.asarray([QColor(c).getRgbF() for _, c, _ in markers], dtype=float).reshape(-1, 4),
+                                   size=np.asarray([s for _, _, s in markers], dtype=float))
             self.label_overlay.update()
             self.update()
 
@@ -793,6 +834,9 @@ class SpatialScene(QWidget):
         title.setObjectName("spatialCanvasTitle")
         heading.addWidget(title)
         heading.addStretch()
+        self.hand_status = QLabel()
+        self.hand_status.setVisible(False)
+        heading.addWidget(self.hand_status)
         self.note = QLabel()
         self.note.setObjectName("spatialCanvasBadge")
         heading.addWidget(self.note)
@@ -859,6 +903,9 @@ class SpatialScene(QWidget):
     def set_model(self, model):
         self.model = model
         self.viewport.model = model
+        hands = [h for h in model.all_entities() if "hand" in h and h["id"] not in model.hidden_entities]
+        self.hand_status.setVisible(bool(hands) and model.preset == "combined" and "hand" in model.layers)
+        self.hand_status.setText("    ".join(f"{h['label']} · {entity_state_label(h)}" for h in hands))
         self._model_pending = True
         self._flush_display()
         self._fit_initial()
@@ -871,7 +918,7 @@ class SpatialScene(QWidget):
         if self._model_pending and self.model is not None:
             model, frame = self.model, self.model.frame
             keys = ("id", "label", "role", "position_m", "quaternion_xyzw", "state", "valid",
-                    "frustum_vertices", "trail_segments")
+                    "frustum_vertices", "trail_segments", "hand", "joint_positions_m")
             # SpatialViewModel recursively freezes frame values, including
             # trails and frusta; keeping those immutable values avoids copies.
             # Ages/timestamps belong to telemetry, not geometry or labels.

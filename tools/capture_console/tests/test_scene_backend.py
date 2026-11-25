@@ -39,6 +39,40 @@ def test_without_interest_or_verified_control_no_poll(monkeypatch, tmp_path):
     backend.close()
 
 
+@pytest.mark.parametrize("capabilities", [[], ["hand", "camera"]])
+def test_hand_interest_negotiation_and_expiry_on_stalled_source(monkeypatch, tmp_path, capabilities):
+    from vt_capture_console.backend import scene_backend
+    backend = SceneBackend(tmp_path / "scene.sock", expected_instance_id="demo-manager", autostart=False)
+    frame = demo_scene(0)
+    frame.update(mode="live", generated_realtime_ns=1_100_000_000)
+    hand = dict(id="left", hand="left", label="左手", camera_id="head", valid=True,
+                state="fresh", reason="", source_realtime_ns=1_000_000_000,
+                position_m=[0., 0., .5], quaternion_xyzw=[0., 0., 0., 1.], joint_positions_m=[])
+    clock = [10_000_000_000]
+    monkeypatch.setattr(scene_backend.time, "monotonic_ns", lambda: clock[0])
+    def exchange(command, params):
+        if command == "hello":
+            return {"hello": {"manager_instance_id": "demo-manager", "capabilities": capabilities}}
+        if command == "describe":
+            return {"description": {}}
+        assert ("hand" in params["interest"]) == ("hand" in capabilities)
+        return {"scene": dict(frame, hands=[hand]) if "hand" in capabilities else frame}
+    monkeypatch.setattr(backend, "_request", exchange)
+    try:
+        backend.set_interest("main", {"camera", "hand"})
+        backend.poll_once()
+        if "hand" in capabilities:
+            assert backend.latest()["hands"][0]["valid"]
+            clock[0] += 151_000_000
+            expired = backend.latest()["hands"][0]
+            assert not expired["valid"] and expired["position_m"] is None and not expired["joint_positions_m"]
+            assert hand["valid"]
+        else:
+            assert "hands" not in backend.latest()
+    finally:
+        backend.close()
+
+
 def test_real_scene_wire_and_same_process_peer_identity(tmp_path):
     from vt_capture_manager.spatial.config import SceneConfig
     from vt_capture_manager.spatial.scene_server import SceneServer

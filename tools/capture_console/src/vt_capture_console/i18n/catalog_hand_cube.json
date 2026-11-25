@@ -2,5 +2,11 @@
   "双手方块跟踪": "Bilateral cube tracking",
   "当前工作树缺少双手方块跟踪工具。": "The cube tracking tool is missing from this worktree.",
   "双手方块跟踪启动失败，请检查 ROS 工作区构建。": "Could not launch cube tracking. Check the ROS workspace build.",
-  "双手方块跟踪已退出。": "Cube tracking exited."
+  "双手方块跟踪已退出。": "Cube tracking exited.",
+  "21 点手形": "21 hand landmarks",
+  "仅腕部": "Wrist only",
+  "等待手部定位": "Waiting for hand tracking",
+  "手部定位已中断": "Hand tracking lost",
+  "手部定位不可用": "Hand pose unavailable",
+  "\n定位相机：{camera}": "\nSource camera: {camera}"
 }

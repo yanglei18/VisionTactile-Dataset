@@ -11,6 +11,7 @@ import time
 import uuid
 
 from .ipc_client import default_socket_path
+from .hand_presentation import expire_hands
 
 
 MAX_SCENE_BYTES = 256 * 1024
@@ -27,6 +28,7 @@ class SceneBackend:
         self._verified = None
         self._peer_pid = None
         self._scene = None
+        self._received_ns = 0
         self._description = {}
         self._hello = {}
         self._hello_at = 0.
@@ -65,7 +67,11 @@ class SceneBackend:
 
     def latest(self):
         with self._lock:
-            return copy.deepcopy(self._scene)
+            scene = copy.deepcopy(self._scene)
+            received = self._received_ns
+        if scene is not None:
+            expire_hands(scene, time.monotonic_ns() - received)
+        return scene
 
     def description(self):
         with self._lock:
@@ -124,8 +130,9 @@ class SceneBackend:
     def poll_once(self):
         with self._lock:
             expected = self._expected
-            interest = sorted(set().union(*self._interests.values()) & {"tracker", "camera", "cloud", "trail"}) if self._interests else []
+            interest = sorted(set().union(*self._interests.values()) & {"tracker", "camera", "cloud", "trail", "hand"}) if self._interests else []
             verified = self._verified
+            hello = self._hello
             sequence = self._scene.get("sequence", 0) if self._scene else 0
         if not expected or not interest:
             return
@@ -142,6 +149,9 @@ class SceneBackend:
                 self._hello, self._description, self._verified = hello, description, expected
                 self._hello_at = time.monotonic()
                 self.cloud_backend.configure(hello.get("cloud"), expected)
+        # Legacy scene servers reject unrecognised interest names.
+        if "hand" in interest and "hand" not in hello.get("capabilities", ()):
+            interest.remove("hand")
         response = self._request("latest", dict(after_sequence=sequence, viewer_id=self._viewer_id, interest=interest))
         scene = response.get("scene")
         with self._lock:
@@ -152,6 +162,7 @@ class SceneBackend:
                     # Synthetic frames are allowed only by the explicit DemoSceneBackend.
                     raise ValueError("场景后台实例或运行模式不匹配")
                 self._scene = scene
+                self._received_ns = time.monotonic_ns()
             self._status = {"state": "ready", "message": "LIVE · 原生公共坐标 · 实时监看"}
 
     def _run(self):
