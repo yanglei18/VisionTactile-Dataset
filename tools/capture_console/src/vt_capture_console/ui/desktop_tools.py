@@ -66,7 +66,14 @@ class DesktopTools(QObject):
             env.remove(key)
         self.cube_process.setProcessEnvironment(env)
         self.cube_action.setEnabled(False)
-        self.cube_process.start("/bin/bash", [str(script), "--language", language()])
+        arguments = [str(script), "--language", language()]
+        for group in self.runtime.configuration.get("process_groups", ()):
+            if group.get("preset") == "glove":
+                parameters = group.get("parameters", {})
+                hand, resources = parameters.get("hand"), parameters.get("resources")
+                if hand in ("left", "right") and resources:
+                    arguments.extend([f"--{hand}-resources", resources])
+        self.cube_process.start("/bin/bash", arguments)
 
     def _cube_error(self, *_):
         self.cube_action.setEnabled(True)

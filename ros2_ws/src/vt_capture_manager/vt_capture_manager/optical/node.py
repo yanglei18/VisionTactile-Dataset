@@ -65,6 +65,10 @@ class HandCubeNode(Node):
     def instance_id(self):
         return self._instance
 
+    @property
+    def layout_sha256(self):
+        return self._layout_hash
+
     def _configure(self, listener):
         self.camera_name = self.declare_parameter("camera_name", "d436").value
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", self.camera_name):

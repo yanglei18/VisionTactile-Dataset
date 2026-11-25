@@ -11,13 +11,14 @@ import time
 
 import cv2
 import numpy as np
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtCore, QtWidgets
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.parameter import Parameter
 from rclpy.signals import SignalHandlerOptions
 
 from .node import HandCubeNode
+from .preview_image import Preview, draw_hand
 
 
 # Display-only limits. Image capture and the fusion publisher run independently.
@@ -37,28 +38,6 @@ def select_preview_frame(frames, fused, now, *, wait_for_fusion):
     if frames and len(frames) == frames.maxlen and now - frames[0][0] <= PREVIEW_EXPIRY_S:
         return frames[0]
     return None
-
-
-class Preview(QtWidgets.QLabel):
-    clicked = QtCore.pyqtSignal(object, object)
-
-    def __init__(self):
-        super().__init__()
-        self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setMinimumSize(480, 270)
-        self.setStyleSheet("background:#202329;color:white")
-        self.source_geometry = None
-
-    def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton and self.source_geometry:
-            width, height, stamp = self.source_geometry
-            pixmap = self.pixmap()
-            if pixmap and not pixmap.isNull():
-                x = event.x() - (self.width() - pixmap.width()) / 2
-                y = event.y() - (self.height() - pixmap.height()) / 2
-                if 0 <= x < pixmap.width() and 0 <= y < pixmap.height():
-                    self.clicked.emit((x * width / pixmap.width(), y * height / pixmap.height()), stamp)
-        super().mousePressEvent(event)
 
 
 def annotated_preview(image, camera, distortion, observations, results):
@@ -81,24 +60,18 @@ def annotated_preview(image, camera, distortion, observations, results):
     return frame
 
 
-def draw_hand(frame, camera, distortion, coordinates, color):
-    """The five MANO chains follow wrist, thumb, index, middle, ring, little."""
-    points = np.asarray(coordinates, dtype=np.float64).reshape(21, 3)
-    if not np.isfinite(points).all() or np.min(points[:, 2]) <= 0:
-        return
-    xy = cv2.projectPoints(points, np.zeros(3), np.zeros(3), camera, distortion)[0]
-    if not np.isfinite(xy).all() or np.max(np.abs(xy)) > 1e6:
-        return
-    xy = np.rint(xy.reshape(21, 2)).astype('int32')
-    for base in (1, 5, 9, 13, 17):
-        cv2.polylines(frame, [xy[[0, base, base+1, base+2, base+3]]], False, color, 2, cv2.LINE_AA)
-        cv2.circle(frame, tuple(xy[base+3]), 3, color, -1, cv2.LINE_AA)
+def local_config(name):
+    folder = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    return folder / 'visiontactile' / 'hand-cubes' / name
 
 
 class Viewer(QtWidgets.QWidget):
-    def __init__(self, *, camera_name, layout_path, language, mount_path=""):
+    def __init__(self, *, camera_name, layout_path, language, mount_path="", resources=None):
         super().__init__()
         self.english = language == 'en'
+        self.resources = resources or {}
+        self.default_mount = local_config('wrist-mounts.json')
+        self.mount_dialog = None
         self.node = self.fusion_node = self.executor = self.spin_thread = None
         self.learner = self.learning_job = None
         self.learning_pool = ThreadPoolExecutor(max_workers=1)
@@ -129,12 +102,15 @@ class Viewer(QtWidgets.QWidget):
         top.addWidget(self.run)
         mount_row = QtWidgets.QHBoxLayout()
         layout.addLayout(mount_row)
-        self.mount = QtWidgets.QLineEdit(mount_path)
+        self.mount = QtWidgets.QLineEdit(mount_path or (str(self.default_mount) if self.default_mount.is_file() else ''))
         self.mount.setPlaceholderText(self.t('可选 · 方块到模型腕部的安装参数', 'Optional cube-to-model wrist mount'))
         self.mount_browse = QtWidgets.QPushButton(self.t('选择腕部安装参数', 'Choose wrist mount'))
         self.mount_browse.clicked.connect(self.choose_mount)
         mount_row.addWidget(self.mount, 1)
         mount_row.addWidget(self.mount_browse)
+        self.calibrate = QtWidgets.QPushButton('手背标定')
+        self.calibrate.clicked.connect(self.open_mount_dialog)
+        mount_row.addWidget(self.calibrate)
         self.preview = Preview()
         self.preview.clicked.connect(self.pick)
         layout.addWidget(self.preview, 1)
@@ -176,6 +152,7 @@ class Viewer(QtWidgets.QWidget):
             widget.setEnabled(not live)
         for widget in (*self.bind_buttons, self.clear, self.learn):
             widget.setEnabled(live)
+        self.calibrate.setEnabled(self.learner is None)
         self.save.setEnabled(self.learning_job is None and self.learner is not None and self.learner.complete)
         self.run.setText(self.t('停止跟踪', 'Stop tracking') if live else self.t('开始跟踪', 'Start tracking'))
         self.learn.setText(self.t('结束布局识别', 'End layout learning') if self.learner else self.t('识别六面布局','Learn cube layout'))
@@ -197,6 +174,48 @@ class Viewer(QtWidgets.QWidget):
         if name:
             self.mount.setText(name)
 
+    def recent_frames(self):
+        with self.inbox_lock:
+            return tuple(self.frames)
+
+    def apply_mounts(self, path):
+        from .fusion_node import OpticalHandFusionNode
+        if self.fusion_node is None:
+            self.fusion_node = OpticalHandFusionNode(result_listener=self.receive_fusion, parameter_overrides=[
+                Parameter('camera_name', value=self.node.camera_name), Parameter('mount_path', value=str(path))])
+            self.executor.add_node(self.fusion_node)
+        else:
+            from .hand_fusion import read_mounts
+            self.executor.create_task(self.fusion_node.join.replace_mounts, read_mounts(path))
+
+    def open_mount_dialog(self):
+        if self.node is None:
+            self.toggle()
+        if self.node is None:
+            return
+        target = Path(self.mount.text().strip()) if self.mount.text().strip() else self.default_mount
+        try:
+            from .mount_dialog import MountDialog
+            dialog = MountDialog(self, self.node, self.recent_frames, self.resources, target)
+        except (ImportError, OSError, ValueError, RuntimeError) as exc:
+            self.notice.setText('无法打开手背标定。' + str(exc))
+            return
+        self.mount_dialog = dialog
+        try:
+            saved = dialog.exec_() == QtWidgets.QDialog.Accepted
+        finally:
+            if self.mount_dialog is not None:
+                dialog.finish_capture()
+                self.mount_dialog = None
+            dialog.deleteLater()
+        if saved:
+            self.mount.setText(str(target))
+            try:
+                self.apply_mounts(target)
+                self.notice.setText('手背标定已保存并加载。')
+            except (ValueError, OSError, RuntimeError) as exc:
+                self.notice.setText('标定已保存。加载失败，可重新开始跟踪。' + str(exc))
+
     def toggle(self):
         if self.node is not None:
             self.stop()
@@ -208,10 +227,7 @@ class Viewer(QtWidgets.QWidget):
             self.executor = SingleThreadedExecutor()
             self.executor.add_node(self.node)
             if self.mount.text().strip():
-                from .fusion_node import OpticalHandFusionNode
-                self.fusion_node = OpticalHandFusionNode(result_listener=self.receive_fusion, parameter_overrides=[
-                    overrides[0], Parameter('mount_path', value=self.mount.text().strip())])
-                self.executor.add_node(self.fusion_node)
+                self.apply_mounts(self.mount.text().strip())
             self.spin_thread = threading.Thread(target=self.executor.spin, name='hand-cube-ros', daemon=True)
             self.spin_thread.start()
         except Exception as exc:
@@ -284,12 +300,7 @@ class Viewer(QtWidgets.QWidget):
             if message.joints_valid and results[hand].observation is not None:
                 draw_hand(frame, camera, distortion, message.joint_positions_m,
                           (255, 208, 58) if hand == 'left' else (70, 166, 255))
-        h, w = frame.shape[:2]
-        qimg = QtGui.QImage(frame.data, w, h, frame.strides[0], QtGui.QImage.Format_BGR888)
-        pixmap = QtGui.QPixmap.fromImage(qimg).scaled(self.preview.size(), QtCore.Qt.KeepAspectRatio,
-                                                     QtCore.Qt.SmoothTransformation)
-        self.preview.setPixmap(pixmap)
-        self.preview.source_geometry = (w, h, stamp)
+        self.preview.show_frame(frame, stamp)
         labels = []
         states = {'unbound':'未绑定', 'lost':'失去观测', 'ambiguous':'身份不确定', 'tracked':'跟踪中'}
         for hand, label in (('left','左手'),('right','右手')):
@@ -305,7 +316,11 @@ class Viewer(QtWidgets.QWidget):
                 elif msg is not None and msg.wrist_valid:
                     status += self.t(' · 仅腕部', ' · wrist only')
                 elif msg is not None:
-                    status += ' · ' + msg.status
+                    explanations = {'mount_missing': '这只手尚未标定', 'layout_mismatch': '请核对方块布局',
+                                    'mount_model_mismatch': '手模已更换，请重新标定这只手',
+                                    'mount_changed': '正在加载新标定', 'cube_lost': '方块暂时不可见',
+                                    'camera_timing_unavailable': '等待相机帧时序'}
+                    status += ' · ' + self.t(explanations.get(msg.status, '等待有效手部数据'), msg.status)
             labels.append(self.t(label, hand.title()) + '  ' + status)
         self.readout.setText('     |     '.join(labels))
 
@@ -369,6 +384,10 @@ class Viewer(QtWidgets.QWidget):
                 self.notice.setText(str(exc))
 
     def stop(self):
+        if self.mount_dialog is not None:
+            self.mount_dialog.reject()
+            self.mount_dialog.finish_capture()
+            self.mount_dialog = None
         if self.executor is not None:
             self.executor.shutdown()
         if self.spin_thread is not None:
@@ -395,15 +414,18 @@ class Viewer(QtWidgets.QWidget):
 def main():
     args = argparse.ArgumentParser()
     args.add_argument('--camera', default='d436')
-    local = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home()/'.config') / 'visiontactile/hand-cubes/default-30mm.json'
+    local = local_config('default-30mm.json')
     args.add_argument('--layout', default=str(local) if local.is_file() else '')
     args.add_argument('--mount', default='')
+    args.add_argument('--left-resources', default='')
+    args.add_argument('--right-resources', default='')
     args.add_argument('--language', default='zh_CN', choices=('zh_CN','en'))
     opts = args.parse_args()
     rclpy.init(args=[], signal_handler_options=SignalHandlerOptions.NO)
     try:
         app = QtWidgets.QApplication(sys.argv[:1])
-        window = Viewer(camera_name=opts.camera, layout_path=opts.layout, language=opts.language, mount_path=opts.mount)
+        window = Viewer(camera_name=opts.camera, layout_path=opts.layout, language=opts.language,
+                        mount_path=opts.mount, resources={'left': opts.left_resources, 'right': opts.right_resources})
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda *_: window.close())
         window.show()

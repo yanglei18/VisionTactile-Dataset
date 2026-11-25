@@ -7,5 +7,5 @@ if [[ ! -r /opt/ros/jazzy/setup.bash || ! -r "$root/ros2_ws/install/setup.bash" 
 fi
 source /opt/ros/jazzy/setup.bash
 source "$root/ros2_ws/install/setup.bash"
-export PYTHONPATH="$root/ros2_ws/src/vt_capture_manager${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$root/ros2_ws/src/vt_capture_manager:$root/tools/fsglove12/src${PYTHONPATH:+:$PYTHONPATH}"
 exec /usr/bin/python3 -m vt_capture_manager.optical.viewer "$@"

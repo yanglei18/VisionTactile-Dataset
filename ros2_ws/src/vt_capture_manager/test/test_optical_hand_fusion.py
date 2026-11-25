@@ -139,6 +139,24 @@ def test_missing_mount_only_affects_its_side_unavailable_timing_never_becomes_ro
     assert r.status == "cube_lost" and r.wrist is None and not r.joints
 
 
+def test_mount_reload_keeps_binding_and_rejects_another_glove_model(tmp_path):
+    mounts = read_mounts(mount_file(tmp_path))
+    join = FusionJoin(CAMERA, {})
+    join.add_timing(timing(), 2*MS)
+    join.shapes[SIDE].add(glove(), SIDE)
+    join.add_cube(SIDE, cube(), 3*MS)
+    join.replace_mounts(mounts)
+    result, = join.drain(70*MS)
+    assert result.status == "mount_changed"
+    join.add_cube(SIDE, cube(index=2), 71*MS)
+    result, = join.drain(140*MS)
+    assert result.status == "tracked" and result.joints
+    join.replace_mounts({SIDE: replace(mounts[SIDE], model_rest_sha256="0"*64)})
+    join.add_cube(SIDE, cube(index=3), 145*MS)
+    result, = join.drain(211*MS)
+    assert result.status == "mount_model_mismatch" and result.wrist is None and not result.joints
+
+
 @pytest.mark.parametrize("key,val,expected", [
     ("session_id", "next", "glove_source_changed"),
     ("config_sha256", "2"*64, "glove_source_changed"),

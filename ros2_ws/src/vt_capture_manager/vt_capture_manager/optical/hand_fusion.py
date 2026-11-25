@@ -25,6 +25,7 @@ class Mount:
     layout_sha256: str
     cube_from_wrist: RigidTransform
     sha256: str
+    model_rest_sha256: str | None = None
 
 
 def read_mounts(path):
@@ -33,20 +34,29 @@ def read_mounts(path):
         raw = stream.read(65537)
     if len(raw) > 65536:
         raise ValueError("Mount document exceeds 64 KiB")
-    doc = json.loads(raw)
+    return parse_mounts(json.loads(raw))
+
+
+def parse_mounts(doc):
+    """Validate both legacy mounts and mounts fitted to a specific neutral hand."""
     if (not isinstance(doc, dict) or set(doc) != {"schema_version", "hands"}
             or type(doc["schema_version"]) is not int or doc["schema_version"] != 1
             or not isinstance(doc["hands"], dict) or not set(doc["hands"]) <= set(HANDS)):
         raise ValueError("Expected schema_version=1 and left/right hand mounts")
     result = {}
     for hand, item in doc["hands"].items():
-        if (not isinstance(item, dict) or set(item) != {"layout_sha256", "cube_from_model_wrist"}
+        required = {"layout_sha256", "cube_from_model_wrist"}
+        if (not isinstance(item, dict) or set(item) not in (required, required | {"model_rest_sha256"})
                 or not isinstance(item["layout_sha256"], str)
                 or not re.fullmatch("[0-9a-f]{64}", item["layout_sha256"])):
             raise ValueError(f"Invalid {hand} mount/layout identity")
+        model_hash = item.get("model_rest_sha256")
+        if "model_rest_sha256" in item and (
+                not isinstance(model_hash, str) or not re.fullmatch("[0-9a-f]{64}", model_hash)):
+            raise ValueError("标定文件中的手部模型标识无效")
         transform = RigidTransform.from_dict(item["cube_from_model_wrist"])
         binding = json.dumps([hand, item], sort_keys=True, allow_nan=False, separators=(",", ":")).encode()
-        result[hand] = Mount(item["layout_sha256"], transform, hashlib.sha256(binding).hexdigest())
+        result[hand] = Mount(item["layout_sha256"], transform, hashlib.sha256(binding).hexdigest(), model_hash)
     return result
 
 
@@ -215,6 +225,11 @@ def fuse(cube, hand, camera, mounts, timing, history, now_ns=None):
         return result
     result.wrist = camera_from_cube.compose(result.mount.cube_from_wrist)
     result.status, result.shape, result.before, result.after = history.nearest_in_bracket(timing.realtime, now_ns)
+    if (result.shape is not None and result.mount.model_rest_sha256 is not None
+            and result.mount.model_rest_sha256 != result.shape.model_rest_sha256):
+        result.shape = result.wrist = None
+        result.status = "mount_model_mismatch"
+        return result
     if result.shape is not None:
         # The recorded 21 points already contain this glove frame's root rotation.
         transform = result.wrist.compose(result.shape.root.inverse())
@@ -239,6 +254,14 @@ class FusionJoin:
         self.retired = {h: deque(maxlen=16) for h in HANDS}
         self.finished = dict.fromkeys(HANDS, 0)
         self.last_timing = None
+
+    def replace_mounts(self, mounts):
+        """Called on the fusion executor between camera callbacks."""
+        for hand, queue in self.pending.items():
+            if self.mounts.get(hand) != mounts.get(hand):
+                for index, (cube, arrival, status) in queue.items():
+                    queue[index] = (cube, arrival, status or "mount_changed")
+        self.mounts = mounts
 
     def add_timing(self, msg, arrival_ns):
         stamp = stamp_ns(msg.header)

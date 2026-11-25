@@ -27,6 +27,28 @@ def test_hub_entry_opens_preview_without_legacy_initializer(qapp, monkeypatch):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
+def test_cube_calibration_uses_explicit_glove_models_including_idle_hand(qapp, monkeypatch):
+    backend = DemoBackend()
+    runtime = SimpleNamespace(repo_root=Path(__file__).resolve().parents[3], configuration={
+        "process_groups": [
+            dict(preset="tactile", parameters={"hand": "left", "resources": "/unused"}),
+            dict(preset="glove", enabled=False, parameters={"hand": "left", "resources": "/left model"}),
+            dict(preset="glove", enabled=True, parameters={"hand": "right", "resources": "/right model"}),
+        ]})
+    window = MainWindow(backend)
+    tools = DesktopTools(window, backend, runtime)
+    calls = []
+    monkeypatch.setattr(tools.cube_process, "start", lambda program, args: calls.append(args))
+    try:
+        tools.open_hand_cubes()
+        assert len(calls) == 1
+        assert calls[0][3:] == ["--left-resources", "/left model", "--right-resources", "/right model"]
+    finally:
+        window.close()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 def test_menu_construction_and_tracker_reopen_do_not_start_processes(qapp, tmp_path, monkeypatch):
     def no_spawn(*args, **kwargs):
         raise AssertionError("Opening a tool must not initialize hardware")
