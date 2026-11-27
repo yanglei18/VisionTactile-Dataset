@@ -163,12 +163,14 @@ def main(argv=None):
 
 def _run_manager(args, ros_args):
     config = load_config(args.config)
-    from vt_capture_core.ros_transport import capture_transport_environment
+    from vt_capture_core.ros_transport import capture_discovery_environment, capture_transport_environment
     environment = capture_transport_environment(os.environ)
     if environment != dict(os.environ):
         print("Capture transport: bundled Fast DDS profile (64 MiB SHM per participant, queue 4096).", flush=True)
     else:
         print("Capture transport: inherited middleware and transport configuration.", flush=True)
+    environment = capture_discovery_environment(environment)
+    print(f"Capture discovery range: {environment['ROS_AUTOMATIC_DISCOVERY_RANGE']}.", flush=True)
     os.environ.update(environment)
     import rclpy
     from rclpy.executors import ExternalShutdownException

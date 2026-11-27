@@ -34,14 +34,16 @@ def test_transport_delta_precedes_camera_includes(tmp_path, monkeypatch, custom)
     actions = module._launch_setup(context)
     first_camera = next(i for i, item in enumerate(actions) if isinstance(item, TimerAction))
     changes = [i for i, item in enumerate(actions) if isinstance(item, SetEnvironmentVariable)]
-    assert len(changes) == (0 if custom else 1)
+    # The discovery range is always set; the profile only when not customised.
+    assert len(changes) == (1 if custom else 2)
     assert all(index < first_camera for index in changes)
     assert context.environment == before  # Launch actions, not global os.environ mutation.
     for index in changes:
         actions[index].execute(context)
     assert context.environment["UNCHANGED"] == "preserve"
+    assert context.environment["ROS_AUTOMATIC_DISCOVERY_RANGE"] == "LOCALHOST"
     if custom:
-        assert context.environment == before
+        assert context.environment == {**before, "ROS_AUTOMATIC_DISCOVERY_RANGE": "LOCALHOST"}
     else:
         assert Path(context.environment["FASTRTPS_DEFAULT_PROFILES_FILE"]).is_file()
 

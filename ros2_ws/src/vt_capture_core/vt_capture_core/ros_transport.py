@@ -1,8 +1,10 @@
 """One capture transport policy, shared by manager and direct ROS launch.
 
-Only the two process-tree entry points apply this environment, before creating
-any ROS participant. Camera publishers, the controller and Recorder inherit it.
+Only the process-tree entry points (manager, direct camera launch and the
+standalone hand-cube viewer) apply this environment, before creating any ROS
+participant. Camera publishers, the controller and Recorder inherit it.
 No middleware is selected and no endpoint QoS or OS setting is changed here.
+Discovery is limited to this host unless the operator chooses otherwise.
 """
 from __future__ import annotations
 
@@ -47,3 +49,33 @@ def capture_transport_environment(
     # Fast DDS 2.x (ROS Jazzy) recognizes the historical FASTRTPS spelling.
     result["FASTRTPS_DEFAULT_PROFILES_FILE"] = str(profile)
     return result
+
+
+DISCOVERY_CHOICE = "VT_CAPTURE_DISCOVERY_RANGE"
+_DISCOVERY_RANGES = ("LOCALHOST", "SUBNET", "SYSTEM_DEFAULT", "OFF")
+
+
+def capture_discovery_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """Keep capture participants discoverable only on this host unless chosen.
+
+    Recording commands, calibration and hand-binding services and camera
+    streams carry no authentication, so other computers on the network must
+    not discover them automatically. ROS setup scripts export
+    ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET whenever it is unset, so its presence
+    is not an operator decision; multi-host capture is chosen explicitly with
+    VT_CAPTURE_DISCOVERY_RANGE (optionally with ROS_STATIC_PEERS). Participants
+    on this host with any range other than OFF still discover these processes.
+    """
+    result = dict(environment)
+    choice = result.get(DISCOVERY_CHOICE, "LOCALHOST")
+    if choice not in _DISCOVERY_RANGES:
+        raise ValueError(f"{DISCOVERY_CHOICE} must be one of {', '.join(_DISCOVERY_RANGES)}")
+    result["ROS_AUTOMATIC_DISCOVERY_RANGE"] = choice
+    return result
+
+
+def capture_process_environment(
+    environment: Mapping[str, str], *, cwd: str | Path | None = None,
+) -> dict[str, str]:
+    """The complete environment for a capture process tree entry point."""
+    return capture_discovery_environment(capture_transport_environment(environment, cwd=cwd))

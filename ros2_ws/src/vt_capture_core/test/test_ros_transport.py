@@ -84,3 +84,41 @@ def test_profile_path_survives_two_generations_of_child_inheritance(tmp_path):
     run = subprocess.run([sys.executable, "-c", parent, child], env=result, cwd=tmp_path,
                          capture_output=True, text=True, timeout=10, check=True)
     assert run.stdout.strip() == result["FASTRTPS_DEFAULT_PROFILES_FILE"]
+
+
+def discovery(base):
+    from vt_capture_core.ros_transport import capture_discovery_environment
+    return capture_discovery_environment(base)
+
+
+@pytest.mark.parametrize("inherited", [None, "SUBNET", "SYSTEM_DEFAULT", ""])
+def test_capture_discovery_stays_on_this_host_by_default(inherited):
+    # ROS setup scripts export SUBNET when unset, so it is not an operator choice.
+    base = {"ROS_DOMAIN_ID": "217", "OTHER": "untouched"}
+    if inherited is not None:
+        base["ROS_AUTOMATIC_DISCOVERY_RANGE"] = inherited
+    original = dict(base)
+    result = discovery(base)
+    assert base == original
+    assert result == {**base, "ROS_AUTOMATIC_DISCOVERY_RANGE": "LOCALHOST"}
+    assert discovery(result) == result
+
+
+@pytest.mark.parametrize("choice", ["LOCALHOST", "SUBNET", "SYSTEM_DEFAULT", "OFF"])
+def test_explicit_capture_discovery_choice_is_applied(choice):
+    base = {"VT_CAPTURE_DISCOVERY_RANGE": choice, "ROS_AUTOMATIC_DISCOVERY_RANGE": "LOCALHOST",
+            "ROS_STATIC_PEERS": "192.0.2.7"}
+    assert discovery(base) == {**base, "ROS_AUTOMATIC_DISCOVERY_RANGE": choice}
+
+
+@pytest.mark.parametrize("choice", ["", "subnet", "LAN", " LOCALHOST"])
+def test_unknown_capture_discovery_choice_is_rejected(choice):
+    with pytest.raises(ValueError, match="VT_CAPTURE_DISCOVERY_RANGE"):
+        discovery({"VT_CAPTURE_DISCOVERY_RANGE": choice})
+
+
+def test_capture_process_environment_applies_transport_and_discovery(tmp_path):
+    from vt_capture_core.ros_transport import capture_process_environment
+    base = {"ROS_AUTOMATIC_DISCOVERY_RANGE": "SUBNET"}
+    result = capture_process_environment(base, cwd=tmp_path)
+    assert result == {**environment(base, tmp_path), "ROS_AUTOMATIC_DISCOVERY_RANGE": "LOCALHOST"}

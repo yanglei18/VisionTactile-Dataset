@@ -42,6 +42,11 @@ journalctl -k -b --no-pager | tail -n 200
 参与同一次运行的终端必须使用相同的 `ROS_DOMAIN_ID`，
 并先加载 `/opt/ros/jazzy/setup.bash`，再加载所选工作空间安装。
 
+工作台后台、`triple_realsense.launch.py` 和双手方块跟踪窗口会为自身及其子进程设置
+`ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`：录制命令、标定服务和相机数据流没有身份验证，
+因此网络中的其他电脑无法自动发现它们。同一台电脑上的终端仍可看到这些 Topic。
+确需多台电脑协同时，在启动前导出 `VT_CAPTURE_DISCOVERY_RANGE=SUBNET`（可配合 `ROS_STATIC_PEERS`）。
+
 ## 图像与时间信息 Topic 诊断命令
 
 受管图像诊断使用 reliable、volatile QoS；

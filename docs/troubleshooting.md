@@ -43,6 +43,14 @@ journalctl -k -b --no-pager | tail -n 200
 All shells participating in one run must use the same `ROS_DOMAIN_ID` and
 must source `/opt/ros/jazzy/setup.bash` before the selected workspace install.
 
+The workbench manager, `triple_realsense.launch.py` and the hand-cube viewer
+set `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` for themselves and their child
+processes: recording commands, calibration services and camera streams have no
+authentication, so other computers on the network cannot discover them.
+Terminals on the same computer still see these topics. For a deliberate
+multi-computer setup, export `VT_CAPTURE_DISCOVERY_RANGE=SUBNET` (optionally
+with `ROS_STATIC_PEERS`) before starting them.
+
 ## Image and timing topic commands
 
 Use reliable, volatile QoS for managed image diagnostics and sensor-data QoS

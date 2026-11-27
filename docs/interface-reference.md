@@ -21,6 +21,14 @@ source "${VT_WS}/install/setup.bash"
 
 Every terminal in one run must use the same `ROS_DOMAIN_ID`.
 
+The workbench manager, `triple_realsense.launch.py` and the hand-cube viewer
+set `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` for themselves and their child
+processes: recording commands, calibration services and camera streams have no
+authentication, so other computers on the network cannot discover them.
+Terminals on the same computer still see these topics. For a deliberate
+multi-computer setup, export `VT_CAPTURE_DISCOVERY_RANGE=SUBNET` (optionally
+with `ROS_STATIC_PEERS`) before starting them.
+
 ## Camera launch arguments
 
 Launch with:

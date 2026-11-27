@@ -421,6 +421,9 @@ def main():
     args.add_argument('--right-resources', default='')
     args.add_argument('--language', default='zh_CN', choices=('zh_CN','en'))
     opts = args.parse_args()
+    # The binding and reset services must not be reachable from other hosts.
+    from vt_capture_core.ros_transport import capture_discovery_environment
+    os.environ.update(capture_discovery_environment(os.environ))
     rclpy.init(args=[], signal_handler_options=SignalHandlerOptions.NO)
     try:
         app = QtWidgets.QApplication(sys.argv[:1])

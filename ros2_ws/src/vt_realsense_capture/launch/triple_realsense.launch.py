@@ -7,7 +7,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-from vt_capture_core.ros_transport import capture_transport_environment
+from vt_capture_core.ros_transport import capture_process_environment
 from vt_realsense_capture.config import load_config
 from vt_realsense_capture.launch_arguments import camera_launch_arguments
 
@@ -22,8 +22,9 @@ def _launch_setup(context: LaunchContext):
     config = load_config(config_path)
 
     # Apply only policy additions to this launch context. Included cameras and
-    # the controller's Recorder child inherit the same profile as the manager.
-    environment = capture_transport_environment(context.environment)
+    # the controller's Recorder child inherit the same profile and discovery
+    # range as the manager.
+    environment = capture_process_environment(context.environment)
     actions = [SetEnvironmentVariable(name, value) for name, value in environment.items()
                if context.environment.get(name) != value]
     for index, camera in enumerate(config.cameras):
