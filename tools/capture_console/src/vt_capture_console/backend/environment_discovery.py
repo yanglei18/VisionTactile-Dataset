@@ -278,7 +278,9 @@ class _Discovery:
                     candidates=(self.root / "external/FSGlove", self.home / "visiontactile-deps/FSGlove",
                                 self.home / ".local/share/visiontactile/fsglove"))
         if hand in {"left", "right"}:
-            config = "left_from_right_initial.json" if hand == "left" else "right_current.json"
+            # Current glove firmware for both hands. right_current.json remains
+            # the historical v1 (palm node 12, 0.00875 dps/LSB) baseline.
+            config = "left_from_right_initial.json" if hand == "left" else "right_new_imu.json"
             self.select(parameters, group_id, "config", manual=True, candidates=(
                 self.root / "tools/fsglove12/src/vt_fsglove12/configs" / config,))
             self.select(parameters, group_id, "mano_assets",

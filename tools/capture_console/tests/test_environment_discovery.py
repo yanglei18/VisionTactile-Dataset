@@ -120,6 +120,29 @@ def test_repository_templates_and_scene_are_resolved_against_current_checkout(tm
     assert ("", "scene_config_path") in result.updated_fields
 
 
+def test_default_glove_configurations_match_current_firmware_for_both_hands(tmp_path):
+    # Both defaults must describe the current glove firmware (palm node 11,
+    # 0.035 dps/LSB, 104 Hz); right_current.json is the historical v1 baseline.
+    root = tmp_path / "repo"
+    configs = "tools/fsglove12/src/vt_fsglove12/configs"
+    files(root, [f"{configs}/{name}" for name in (
+        "right_current.json", "right_new_imu.json", "left_current.json", "left_from_right_initial.json")])
+    result = run(tmp_path)
+    assert parameters(result, "my_right")["config"] == str(root / configs / "right_new_imu.json")
+    assert parameters(result, "my_left")["config"] == str(root / configs / "left_from_right_initial.json")
+
+
+def test_packaged_default_glove_configurations_share_one_input_contract():
+    import json
+    configs = Path(__file__).parents[2] / "fsglove12/src/vt_fsglove12/configs"
+    right = json.loads((configs / "right_new_imu.json").read_text())
+    left = json.loads((configs / "left_from_right_initial.json").read_text())
+    for key in ("gyro_dps_per_lsb", "accel_g_per_lsb", "sample_rate_hz", "schema_version"):
+        assert right[key] == left[key]
+    assert (right["hand"], left["hand"]) == ("right", "left")
+    assert right["node_to_slot"]["11"] == left["node_to_slot"]["11"] == 0
+
+
 @pytest.mark.parametrize("group,key", [
     ("my_cameras", "config_path"), ("my_trackers", "bundle_path"),
     ("my_trackers", "role_map_path"), ("", "scene_config_path"),
