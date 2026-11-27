@@ -5,6 +5,13 @@ A physically different cube appearing at exactly the previous cube's position
 without an observable break cannot be distinguished by vision alone. The
 caller resets on camera/session changes, feeds frames including empty results,
 and checks host-side freshness before accepting an operator bind.
+
+A labelled cube that stops being detected keeps its label for a short window.
+It is re-identified with the same bounded-motion envelope, measured from where
+and when it was last seen, only if no other cube could explain the detection.
+Beyond one frame-to-frame envelope, the other physical cube must be accounted
+for (tracked, or hidden with a known last position); otherwise the operator
+binds again.
 """
 
 from collections import deque
@@ -25,9 +32,12 @@ class HandObservation:
 class BilateralTracker:
     """Carry the operator's hand labels only along unique 3-D associations."""
 
-    # An unobserved camera interval, motion outside the association envelope,
-    # or centres closer than one nominal cube edge can break identity.
+    # Frame-to-frame association covers camera intervals up to MAX_GAP_NS.
+    # Motion outside the association envelope, centres closer than one nominal
+    # cube edge, or non-monotonic time can break identity. A hidden labelled
+    # cube is re-identified for at most REACQUIRE_WINDOW_NS after last seen.
     MAX_GAP_NS = 100_000_000
+    REACQUIRE_WINDOW_NS = 500_000_000
     MAX_RELATIVE_SPEED_M_S = 2.0
     MEASUREMENT_SLACK_M = 0.008
     MIN_SEPARATION_M = 0.030
@@ -42,6 +52,8 @@ class BilateralTracker:
         self._observations = ()
         self._centres = ()
         self._indices = {}
+        # hand -> (last centre, stamp at which it was last detected)
+        self._hidden = {}
         self._tokens = ()
         self._new_tokens = count()
         self._history = deque(maxlen=64)
@@ -50,11 +62,43 @@ class BilateralTracker:
         return dict(self._result)
 
     def _break_tracks(self, status):
-        for hand in self._indices:
+        for hand in (*self._indices, *self._hidden):
             self._result[hand] = HandObservation(status)
         self._indices.clear()
+        self._hidden.clear()
+        self._clear_frame()
+
+    def _clear_frame(self):
         self._centres = self._observations = self._tokens = self._selectable = ()
         self._history.clear()
+
+    def _hide(self, hand, old, last_seen_ns):
+        self._hidden[hand] = (self._centres[old], last_seen_ns)
+        self._result[hand] = HandObservation("lost")
+
+    def _radius(self, elapsed_ns):
+        return self.MEASUREMENT_SLACK_M + self.MAX_RELATIVE_SPEED_M_S * elapsed_ns / 1_000_000_000
+
+    def _reacquire(self, stamp_ns, centres, observations, unexplained):
+        """Return hidden labels to detections that only their own cube can explain."""
+        for hand, (_, seen) in tuple(self._hidden.items()):
+            if stamp_ns - seen > self.REACQUIRE_WINDOW_NS:
+                del self._hidden[hand]
+                self._result[hand] = HandObservation("unbound")
+        reach = {hand: tuple(j for j in unexplained if dist(centre, centres[j]) <= self._radius(stamp_ns - seen))
+                 for hand, (centre, seen) in self._hidden.items()}
+        for hand, options in reach.items():
+            if len(options) != 1 or any(options[0] in other for h, other in reach.items() if h != hand):
+                continue
+            other = next(h for h in HANDS if h != hand)
+            if (stamp_ns - self._hidden[hand][1] > self.MAX_GAP_NS
+                    and other not in self._indices and other not in self._hidden):
+                # The other cube is unaccounted for and could be this detection.
+                continue
+            self._indices[hand] = options[0]
+            self._result[hand] = HandObservation("tracked", observations[options[0]])
+        for hand in self._indices:
+            self._hidden.pop(hand, None)
 
     @staticmethod
     def _centre(observation):
@@ -68,14 +112,19 @@ class BilateralTracker:
         last = self._stamp_ns
         if type(stamp_ns) is not int or stamp_ns <= 0:
             self._stamp_ns = None
-            self._break_tracks("lost")
+            self._break_tracks("unbound")
             return dict(self._result)
         self._stamp_ns = stamp_ns
         if last is not None and stamp_ns <= last:
-            self._break_tracks("lost")
+            self._break_tracks("unbound")
             return dict(self._result)
         if last is not None and stamp_ns - last > self.MAX_GAP_NS:
-            self._break_tracks("lost")
+            # No frame-to-frame association across this camera interval; the
+            # labelled cubes may still be re-identified from their last centres.
+            for hand, old in tuple(self._indices.items()):
+                self._hide(hand, old, last)
+            self._indices.clear()
+            self._clear_frame()
 
         observations = tuple(observations)
         try:
@@ -104,12 +153,17 @@ class BilateralTracker:
                 self._result[hand] = HandObservation("tracked", observations[new])
             else:
                 del self._indices[hand]
-                self._result[hand] = HandObservation("ambiguous" if forward[old] else "lost")
+                if forward[old]:
+                    self._result[hand] = HandObservation("ambiguous")
+                else:
+                    self._hide(hand, old, last)
 
         inherited_tokens = {new: self._tokens[old] for old, new in pairs.items()}
         self._tokens = tuple(inherited_tokens[j] if j in inherited_tokens else next(self._new_tokens)
                              for j in range(len(centres)))
         self._selectable = tuple(j in inherited_tokens or not matches for j, matches in enumerate(backward))
+        # Only detections that no cube visible in the previous frame can reach.
+        self._reacquire(stamp_ns, centres, observations, [j for j, matches in enumerate(backward) if not matches])
         self._centres, self._observations = centres, observations
         pixels = tuple(getattr(obs, "center_px", None) for obs in observations)
         self._history.append((stamp_ns, pixels, self._tokens, self._selectable))
@@ -121,6 +175,7 @@ class BilateralTracker:
         if self._indices.get(hand) != index and (hand in self._indices or index in self._indices.values()):
             raise ValueError("该手或方块已经绑定到另一个目标")
         self._indices[hand] = index
+        self._hidden.pop(hand, None)
         self._result[hand] = HandObservation("tracked", self._observations[index])
         return dict(self._result)
 

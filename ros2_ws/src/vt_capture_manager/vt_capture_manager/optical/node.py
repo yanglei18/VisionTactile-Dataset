@@ -25,6 +25,9 @@ HANDS = ("left", "right")
 PREFIX = "/hand_cube_tracking"
 # Bound waiting for a current image, including decode/detection, in host monotonic time.
 BIND_MAX_AGE_S = 0.25
+# Failures of one frame's processing, not of the camera or its geometry. The
+# frame is treated as one in which no cube was detected, so labels can coast.
+TRANSIENT_FAILURES = frozenset({"detection_failed", "processing_late"})
 
 
 def _calibration(msg, frame):
@@ -248,7 +251,10 @@ class HandCubeNode(Node):
                         (not failure and not self._source_is_current(_stamp_ns(msg.header)))):
                     failure = "processing_late"
                 if failure:
-                    self._tracker.reset()
+                    if failure in TRANSIENT_FAILURES:
+                        self._tracker.update(_stamp_ns(msg.header), ())
+                    else:
+                        self._tracker.reset()
                     observations = []
                     result = None
                 else:

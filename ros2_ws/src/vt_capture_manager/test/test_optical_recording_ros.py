@@ -160,8 +160,10 @@ def test_bilateral_camera_source_and_occlusion_survive_closed_mcap(tmp_path, mon
                 if row.valid:
                     vec = row.pose.position
                     np.testing.assert_allclose([vec.x,vec.y,vec.z], (lp if hand=="left" else rp)[0], atol=.003)
-            assert [row.valid for row in rows] == ([False,True,True,False,False] if hand == "left" else [False,False,True,True,True])
-        assert statuses == {"left":["unbound","tracked","tracked","lost","lost"], "right":["unbound","unbound","tracked","tracked","tracked"]}
+            # The left cube is hidden in frame 4 and reacquired in frame 5 while the
+            # right hand stays tracked.
+            assert [row.valid for row in rows] == ([False,True,True,False,True] if hand == "left" else [False,False,True,True,True])
+        assert statuses == {"left":["unbound","tracked","tracked","lost","tracked"], "right":["unbound","unbound","tracked","tracked","tracked"]}
         report = dict(synthetic=True,camera_size=[960,600],source_frames=5,
                       frame_intervals_ns=np.diff(stamps).tolist(), source_rgb_payloads_verified=5, shared_parent_headers_verified=10,
                       repeated_ids=[2,5],visible_cube_counts=[1,2,2,1,2],status_by_hand=statuses,

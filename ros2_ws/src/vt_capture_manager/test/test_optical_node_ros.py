@@ -99,6 +99,18 @@ def test_two_identical_cubes_bind_publish_and_lose_visibility():
         assert previews[-1][0].shape == (600, 960, 3)
         assert previews[-1][-1] == stamps[4]
         assert all(v.status == "tracked" for v in previews[-1][4].values())
+        # A transient detection failure is an unobserved frame: labels survive.
+        original_detect = tracker._detector.detect
+
+        def fail_once(*args):
+            tracker._detector.detect = original_detect
+            raise RuntimeError("synthetic detector failure")
+
+        tracker._detector.detect = fail_once
+        failed = send(both_image, 41)
+        assert all(msg.status == "detection_failed" and not msg.valid for msg in failed.values())
+        recovered = send(both_image, 42)
+        assert all(msg.valid and msg.status == "tracked" for msg in recovered.values())
         lost = send(grey, 5)
         assert all(not msg.valid and msg.visible_cube_count == 0 for msg in lost.values())
         assert not call(bind_left).success

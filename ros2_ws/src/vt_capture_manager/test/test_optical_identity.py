@@ -69,23 +69,104 @@ def test_separated_depth_allows_projected_centres_to_overlap():
     assert rows["left"].observation == far
 
 
-def test_one_frame_miss_requires_rebind_only_for_the_missing_hand():
+def test_one_frame_miss_keeps_the_label_and_reacquires_within_reach():
     tracker = setup_pair()
     a, b = cube(.18), cube(-.18)
     result = tracker.update(3 * FRAME_NS, [b])
     assert result["left"].status == "lost" and result["left"].observation is None
     assert result["right"].observation == b
-    result = tracker.update(4 * FRAME_NS, [a, b])
-    assert result["left"].observation is None
+    result = tracker.update(4 * FRAME_NS, [cube(.19), b])
+    assert result["left"].status == "tracked" and result["left"].observation == cube(.19)
     assert result["right"].observation == b
-    assert tracker.bind("left")["left"].observation == a
 
 
-def test_same_position_after_empty_frame_never_auto_rebinds():
+def test_short_simultaneous_dropout_reacquires_both_hands():
+    tracker = setup_pair()
+    for i in range(3, 6):
+        result = tracker.update(i * FRAME_NS, [])
+        assert all(s.status == "lost" and s.observation is None for s in result.values())
+    result = tracker.update(6 * FRAME_NS, [cube(-.16), cube(.15)])
+    assert result["left"].observation == cube(.15)
+    assert result["right"].observation == cube(-.16)
+
+
+def test_hidden_hand_reacquires_while_the_other_hand_stays_tracked():
+    # The recorded cube video's longest dropout was 0.31 s (about 10 frames).
+    tracker = setup_pair()
+    b = cube(-.18)
+    for i in range(3, 12):
+        assert tracker.update(i * FRAME_NS, [b])["left"].status == "lost"
+    result = tracker.update(12 * FRAME_NS, [b, cube(.30)])
+    assert result["left"].observation == cube(.30)
+    assert result["right"].observation == b
+
+
+def test_empty_frame_reacquires_only_the_hand_that_can_reach_the_cube():
     tracker = setup_pair()
     tracker.update(3 * FRAME_NS, [])
     result = tracker.update(4 * FRAME_NS, [cube(-.18)])
+    assert result["right"].observation == cube(-.18)
+    assert result["left"].status == "lost" and result["left"].observation is None
+
+
+def test_cube_reachable_by_both_hidden_hands_is_never_assigned():
+    tracker = setup_pair()
+    for i in range(3, 9):
+        tracker.update(i * FRAME_NS, [])
+    # After about 0.2 s both previous centres can reach a cube at the midline.
+    result = tracker.update(9 * FRAME_NS, [cube(0.)])
     assert all(s.status == "lost" and s.observation is None for s in result.values())
+    # The operator can still decide explicitly.
+    assert tracker.bind("left")["left"].observation == cube(0.)
+
+
+def test_long_dropout_needs_an_explicit_bind():
+    tracker = setup_pair()
+    t = 2 * FRAME_NS
+    while t <= 2 * FRAME_NS + BilateralTracker.REACQUIRE_WINDOW_NS:
+        t += FRAME_NS
+        tracker.update(t, [])
+    result = tracker.update(t + FRAME_NS, [cube(.18), cube(-.18)])
+    assert all(s.status == "unbound" and s.observation is None for s in result.values())
+    with pytest.raises(ValueError):
+        tracker.bind("left")
+
+
+def test_reacquiring_beyond_one_frame_gap_needs_the_other_cube_accounted_for():
+    # Only the left hand is labelled; the right cube's position is unknown, so a
+    # cube appearing after a longer gap could be either physical cube.
+    tracker = BilateralTracker()
+    tracker.update(FRAME_NS, [cube(.18)])
+    tracker.bind("left")
+    for i in range(2, 6):
+        tracker.update(i * FRAME_NS, [])
+    result = tracker.update(6 * FRAME_NS, [cube(.20)])
+    assert result["left"].status == "lost" and result["left"].observation is None
+    # Within one frame-to-frame envelope, the same risk as ordinary tracking applies.
+    tracker = BilateralTracker()
+    tracker.update(FRAME_NS, [cube(.18)])
+    tracker.bind("left")
+    tracker.update(2 * FRAME_NS, [])
+    assert tracker.update(3 * FRAME_NS, [cube(.19)])["left"].observation == cube(.19)
+
+
+def test_visible_anonymous_cube_is_not_taken_by_a_hidden_hand():
+    tracker = BilateralTracker()
+    tracker.update(FRAME_NS, [cube(.18)])
+    tracker.bind("left")
+    tracker.update(2 * FRAME_NS, [cube(.18), cube(-.18)])
+    tracker.update(3 * FRAME_NS, [cube(-.18)])
+    result = tracker.update(4 * FRAME_NS, [cube(-.17)])
+    assert result["left"].status == "lost" and result["left"].observation is None
+
+
+def test_manual_bind_replaces_a_hidden_hand_label():
+    tracker = setup_pair()
+    tracker.update(3 * FRAME_NS, [cube(-.18)])
+    tracker.update(4 * FRAME_NS, [cube(-.18), cube(.60)])
+    assert tracker.bind("left")["left"].observation == cube(.60)
+    result = tracker.update(5 * FRAME_NS, [cube(-.18), cube(.60)])
+    assert result["left"].observation == cube(.60) and result["right"].observation == cube(-.18)
 
 
 def test_crossing_with_multiple_admissible_matches_drops_both_assignments():
@@ -125,15 +206,26 @@ def test_invalid_or_unresolvable_detections_clear_the_frame_for_binding(visible)
         tracker.bind("left")
 
 
-@pytest.mark.parametrize("t", [2 * FRAME_NS, FRAME_NS, 0, 2 * FRAME_NS + 150_000_000])
+@pytest.mark.parametrize("t", [2 * FRAME_NS, FRAME_NS, 0])
 def test_time_discontinuity_and_camera_reset_cannot_transfer_identity(t):
     tracker = setup_pair()
     result = tracker.update(t, [cube(-.18), cube(.18)])
-    assert all(s.status == "lost" and s.observation is None for s in result.values())
+    assert all(s.status == "unbound" and s.observation is None for s in result.values())
     status = tracker.reset()
     assert all(s.status == "unbound" for s in status.values())
     with pytest.raises(ValueError):
         tracker.bind("right")
+
+
+def test_camera_frame_gap_inside_window_reacquires_only_unique_matches():
+    tracker = setup_pair()
+    t = 2 * FRAME_NS + 150_000_000
+    result = tracker.update(t, [cube(-.18), cube(.18)])
+    assert result["left"].observation == cube(.18)
+    assert result["right"].observation == cube(-.18)
+    tracker = setup_pair()
+    result = tracker.update(2 * FRAME_NS + 400_000_000, [cube(.0), cube(.05)])
+    assert all(s.status == "lost" and s.observation is None for s in result.values())
 
 
 def test_motion_out_of_reach_is_not_silently_attached_to_previous_hand():
